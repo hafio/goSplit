@@ -58,7 +58,7 @@ jobs:
       # Gating scan: fails the job (and blocks the push steps below) on any
       # fixable vulnerability. Scope with `severity:` to gate only some levels.
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.img.outputs.name }}:${{ github.sha }}
           severity: HIGH,CRITICAL
