@@ -1,0 +1,29 @@
+# Default: SQLite — no database container, just a data volume. One command:
+#   docker compose up --build
+#
+# PostgreSQL: uncomment the `db` service + its depends_on, and set
+#   DATABASE_URL=postgres://gosplit:gosplit@db:5432/gosplit?sslmode=disable
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - gosplit-data:/data
+    restart: unless-stopped
+    # depends_on:
+    #   - db
+
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: gosplit
+  #     POSTGRES_PASSWORD: gosplit
+  #     POSTGRES_DB: gosplit
+  #   volumes:
+  #     - gosplit-pg:/var/lib/postgresql/data
+  #   restart: unless-stopped
+
+volumes:
+  gosplit-data:
+  # gosplit-pg:

@@ -1,0 +1,12 @@
+{{define "content"}}
+<div class="auth-card">
+  <h1>{{.T "title.forgot_password"}}</h1>
+  <p class="muted">{{.T "auth.forgot_hint"}}</p>
+  <form method="post" action="/forgot-password" class="stack">
+    {{template "csrf" .CSRF}}
+    <label>{{.T "form.email"}}<input type="email" name="email" required autocomplete="email"></label>
+    <button type="submit">{{.T "auth.send_reset"}}</button>
+  </form>
+  <div class="auth-links"><a href="/login">{{.T "auth.back_to_signin"}}</a></div>
+</div>
+{{end}}

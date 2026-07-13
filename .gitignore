@@ -1,0 +1,30 @@
+# Binaries
+/gosplit
+/out/
+*.exe
+
+# Local data (SQLite file, WAL, uploads)
+/data/
+*.db
+*.db-shm
+*.db-wal
+
+# Env
+.env
+
+# Coverage / test artifacts
+coverage.out
+coverage.html
+
+# Dev script logs
+scripts/logs/
+
+# Golden fixtures are committed; local scratch is not
+*.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+#Notepad++
+nppBackup

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="{{.Lang}}" data-accent="{{.Theme}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="{{themeHex .Theme false}}" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="{{themeHex .Theme true}}" media="(prefers-color-scheme: dark)">
+  <title>{{if .Title}}{{.Title}} · {{end}}GoSplit</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" id="favicon">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">GoSplit</a>
+  {{if .User}}
+  <nav class="nav" aria-label="Primary">
+    <a href="/balances"{{if eq .Nav "balances"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#wallet"/></svg>{{.T "nav.balances"}}</a>
+    <a href="/friends"{{if eq .Nav "friends"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#users"/></svg>{{.T "nav.friends"}}</a>
+    <a href="/groups"{{if eq .Nav "groups"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#home"/></svg>{{.T "nav.groups"}}</a>
+    <a href="/activity"{{if eq .Nav "activity"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#list"/></svg>{{.T "nav.activity"}}</a>
+    <a href="/recurring"><svg class="icon"><use href="/static/icons.svg#repeat"/></svg>{{.T "nav.recurring"}}</a>
+    <a href="/expenses/new" class="a-btn sm"><svg class="icon"><use href="/static/icons.svg#plus"/></svg>{{.T "expense.add"}}</a>
+  </nav>
+  <div class="spacer"></div>
+  <details class="menu">
+    <summary>{{if .User.Name}}{{.User.Name}}{{else}}{{.User.Email}}{{end}}</summary>
+    <div class="menu-panel">
+      <a href="/profile">{{.T "action.profile"}}</a>
+      <a href="/import">{{.T "nav.import"}}</a>
+      <a href="/bank">{{.T "nav.bank"}}</a>
+      {{if .User.IsAdmin}}<a href="/admin">{{.T "action.admin"}}</a>{{end}}
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        <button type="submit" class="linkbtn">{{.T "action.signout"}}</button>
+      </form>
+    </div>
+  </details>
+  {{end}}
+</header>
+
+<main class="container">
+  {{if .Flash}}<div class="flash ok">{{.Flash}}</div>{{end}}
+  {{if .Error}}<div class="flash err">{{.Error}}</div>{{end}}
+  {{template "content" .}}
+</main>
+
+<footer class="site-footer">
+  <a href="https://github.com/hafio/gosplit" target="_blank" rel="noopener noreferrer">github.com/hafio/gosplit</a>
+</footer>
+
+<nav class="bottom-nav" aria-label="Mobile">
+  {{if .User}}
+  <a href="/balances"{{if eq .Nav "balances"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#wallet"/></svg>{{.T "nav.balances"}}</a>
+  <a href="/friends"{{if eq .Nav "friends"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#users"/></svg>{{.T "nav.friends"}}</a>
+  <a href="/expenses/new" class="fab" aria-label="{{.T "expense.add"}}"><svg class="icon"><use href="/static/icons.svg#plus"/></svg></a>
+  <a href="/groups"{{if eq .Nav "groups"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#home"/></svg>{{.T "nav.groups"}}</a>
+  <a href="/activity"{{if eq .Nav "activity"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#list"/></svg>{{.T "nav.activity"}}</a>
+  {{end}}
+</nav>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/sw.js').catch(function(){});
+  });
+}
+// Tint the favicon's "$" box with the active accent theme (resolves per
+// selected theme and light/dark), falling back to the static favicon.svg.
+(function () {
+  try {
+    var cs = getComputedStyle(document.documentElement);
+    var bg = cs.getPropertyValue('--accent').trim();
+    var fg = cs.getPropertyValue('--accent-ink').trim();
+    if (!bg) return;
+    var link = document.getElementById('favicon');
+    if (!link) return;
+    fetch(link.href).then(function (r) { return r.text(); }).then(function (svg) {
+      svg = svg.replace(/(id="fav-box"[^>]*fill=")[^"]*(")/, '$1' + bg + '$2');
+      if (fg) svg = svg.replace(/(id="fav-dollar"[^>]*fill=")[^"]*(")/, '$1' + fg + '$2');
+      link.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+    }).catch(function () { /* keep the static favicon */ });
+  } catch (e) { /* keep the static favicon */ }
+})();
+</script>
+</body>
+</html>
+

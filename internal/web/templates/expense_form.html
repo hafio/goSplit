@@ -1,0 +1,107 @@
+{{define "content"}}
+<h1>{{.Data.Heading}}</h1>
+
+{{if .Data.GroupChanged}}
+<div class="flash warn">{{.T "form.group_changed_warning"}}</div>
+{{end}}
+
+<form method="post" action="{{.Data.Action}}" class="expense-form" id="expense-form">
+  {{template "csrf" .CSRF}}
+
+  {{if .Data.AllowRetarget}}
+  <div class="target-bar">
+    <span class="target-lab">{{.T "form.adding_to"}}</span>
+    <select name="group_id" class="target-select" data-retarget aria-label="{{.T "form.adding_to"}}">
+      <option value=""{{if not .Data.SelectedGroupID}} selected{{end}}>{{.T "form.direct"}}</option>
+      {{range .Data.Groups}}<option value="{{.ID}}"{{if eq .ID $.Data.SelectedGroupID}} selected{{end}}>{{.Name}}</option>{{end}}
+    </select>
+  </div>
+  {{else if not .Data.ShowTarget}}<input type="hidden" name="group_id" value="{{.Data.GroupIDStr}}">{{end}}
+
+  <div class="amount-hero">
+    <details class="picker" data-picker="currency">
+      <summary class="pill cur-btn" aria-haspopup="true">{{.Data.Currency}}</summary>
+      <div class="picker-panel" role="menu">
+        <label class="picker-opt"><input type="radio" name="currency" value="{{.Data.Currency}}" checked><b>{{.Data.Currency}}</b></label>
+        {{range currencyCodes}}{{if ne . $.Data.Currency}}<label class="picker-opt"><input type="radio" name="currency" value="{{.}}"><b>{{.}}</b></label>{{end}}{{end}}
+      </div>
+    </details>
+    <input class="amt" type="text" inputmode="decimal" name="amount" value="{{.Data.AmountStr}}" required aria-label="{{.T "form.amount"}}">
+  </div>
+
+  <div class="desc-row">
+    <details class="picker" data-picker="category">
+      <summary class="pill" aria-haspopup="true"><span class="cat-emo">{{categoryEmoji .Data.Category}}</span><span class="cat-lbl">{{.Data.Category}}</span></summary>
+      <div class="picker-panel grid" role="menu">
+        <label class="picker-opt picker-cat"><input type="radio" name="category" value="{{.Data.Category}}" checked><em>{{categoryEmoji .Data.Category}}</em>{{.Data.Category}}</label>
+        {{range categories}}{{if ne .Name $.Data.Category}}<label class="picker-opt picker-cat"><input type="radio" name="category" value="{{.Name}}"><em>{{.Emoji}}</em>{{.Name}}</label>{{end}}{{end}}
+      </div>
+    </details>
+    <input class="desc" type="text" name="name" value="{{.Data.Name}}" required placeholder="{{.T "form.description"}}" aria-label="{{.T "form.description"}}">
+  </div>
+
+  <p class="paidby-line">{{.T "form.paid_by"}}
+    <details class="picker" data-picker="paidby">
+      <summary class="pill" aria-haspopup="true">{{range .Data.Candidates}}{{if eq .ID $.Data.PaidBy}}<span class="ava sm" style="--c:{{avatarColor .ID}}">{{initials .Name .Name}}</span> {{.Name}}{{end}}{{end}} <svg class="icon" style="width:13px;height:13px"><use href="/static/icons.svg#chev-down"></use></svg></summary>
+      <div class="picker-panel" role="menu">
+        {{range .Data.Candidates}}<label class="picker-opt"><input type="radio" name="paid_by" value="{{.ID}}"{{if eq .ID $.Data.PaidBy}} checked{{end}}><span class="ava sm" style="--c:{{avatarColor .ID}}">{{initials .Name .Name}}</span> {{.Name}}</label>{{end}}
+      </div>
+    </details>
+  </p>
+
+  {{if .Data.ShowTarget}}
+  <div class="field-lab">{{.T "form.target"}}</div>
+  <select name="target_group" class="native-select" data-move-target aria-label="{{.T "form.target"}}">
+    <option value="none"{{if not .Data.TargetGroupID}} selected{{end}}>{{.T "form.no_group"}}</option>
+    {{range .Data.TargetGroups}}<option value="{{.ID}}"{{if eq .ID $.Data.TargetGroupSel}} selected{{end}}>{{.Name}}</option>{{end}}
+  </select>
+  {{end}}
+
+  <div class="field-lab">{{.T "form.split"}}</div>
+  <div class="seg" role="group" aria-label="{{.T "form.split"}}">
+    {{range .Data.Methods}}<label title="{{.}}"><input type="radio" name="method" value="{{.}}"{{if eq . $.Data.Method}} checked{{end}}>{{methodGlyph .}}</label>{{end}}
+  </div>
+  <p class="hint hint-EQUAL">{{.T "form.hint_equal"}}</p>
+  <p class="hint hint-EXACT">{{.T "form.hint_exact"}}</p>
+  <p class="hint hint-PERCENTAGE">{{.T "form.hint_percentage"}}</p>
+  <p class="hint hint-SHARE">{{.T "form.hint_share"}}</p>
+  <p class="hint hint-ADJUSTMENT">{{.T "form.hint_adjustment"}}</p>
+
+  <div class="field-lab">{{.T "form.with"}}</div>
+  <div class="card participants-list">
+    {{range .Data.Candidates}}
+    <label class="p-row">
+      <input class="inc" type="checkbox" name="include_{{.ID}}" value="1"{{if .Included}} checked{{end}} aria-label="{{$.T "form.include"}} {{.Name}}">
+      <span class="tick"><svg class="icon" style="width:12px;height:12px"><use href="/static/icons.svg#check"></use></svg></span>
+      <span class="ava sm" style="--c:{{avatarColor .ID}}">{{initials .Name .Name}}</span>
+      <span class="p-name">{{.Name}}</span>
+      <span class="p-val"><span class="p-preview" aria-hidden="true"></span><input type="text" name="value_{{.ID}}" value="{{.Value}}" size="8" aria-label="{{$.T "form.split_value"}} {{.Name}}"></span>
+    </label>
+    {{end}}
+  </div>
+
+  <div class="field-lab">{{.T "form.date"}}</div>
+  <div class="date-row">
+    <div class="chips date-chips">
+      <button type="button" class="chip" data-days="0">{{.T "form.today"}}</button>
+      <button type="button" class="chip" data-days="-1">{{.T "form.yesterday"}}</button>
+    </div>
+    <input type="date" name="date" value="{{.Data.Date}}" required aria-label="{{.T "form.date"}}">
+  </div>
+
+  {{if .Data.ShowNote}}
+  <div class="field-lab">{{.T "form.note"}}</div>
+  <textarea name="note" rows="3" class="form-note" placeholder="{{.T "detail.note_placeholder"}}" aria-label="{{.T "form.note"}}">{{.Data.Note}}</textarea>
+  {{end}}
+
+  {{if .Data.GroupChanged}}
+  <label class="ack"><input type="checkbox" name="ack" value="1" required> {{.T "form.ack"}}</label>
+  {{end}}
+
+  <div class="form-actions">
+    <button type="submit" class="a-btn"><svg class="icon"><use href="/static/icons.svg#check"></use></svg> {{.Data.SubmitLabel}}</button>
+    <a class="a-btn ghost" href="{{.Data.CancelURL}}">{{.T "action.cancel"}}</a>
+  </div>
+</form>
+<script src="/static/expense_form.js" defer></script>
+{{end}}

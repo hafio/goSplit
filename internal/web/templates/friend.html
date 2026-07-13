@@ -1,0 +1,34 @@
+{{define "content"}}
+<div class="m-head">
+  <span class="ava lg" style="--c:{{avatarColor .Data.Friend.ID}}">{{initials .Data.Friend.Name .Data.Friend.Email}}</span>
+  <div style="flex:1;min-width:0">
+    <h1>{{if .Data.Friend.Name}}{{.Data.Friend.Name}}{{else}}{{.Data.Friend.Email}}{{end}}</h1>
+    <div class="balances-inline">
+      {{range .Data.Balances}}<span class="{{if gt .Amount 0}}pos{{else}}neg{{end}}">{{if gt .Amount 0}}{{$.T "friend.owes_you"}}{{else}}{{$.T "friend.you_owe"}}{{end}} {{money (abs64 .Amount) .Currency}} {{.Currency}}</span> {{else}}<span class="muted">{{.T "friend.settled"}}</span>{{end}}
+    </div>
+  </div>
+  <details class="omenu">
+    <summary class="a-btn ghost icon-only" aria-label="{{.T "action.options"}}"><svg class="icon"><use href="/static/icons.svg#dots"></use></svg></summary>
+    <div class="omenu-panel">
+      <a href="/friends/{{.Data.Friend.ID}}/convert"><svg class="icon"><use href="/static/icons.svg#repeat"></use></svg>{{.T "expense.convert"}}</a>
+      <a href="/friends/{{.Data.Friend.ID}}/collapse"><svg class="icon"><use href="/static/icons.svg#archive"></use></svg>{{.T "archive.title"}}</a>
+      <form method="post" action="/friends/{{.Data.Friend.ID}}/hide">
+        {{template "csrf" .CSRF}}
+        <button type="submit"><svg class="icon"><use href="/static/icons.svg#x"></use></svg>{{if .Data.Hidden}}{{.T "friend.unhide"}}{{else}}{{.T "friend.hide"}}{{end}}</button>
+      </form>
+      <form method="post" action="/friends/{{.Data.Friend.ID}}/delete" onsubmit="return confirm('{{.T "friend.delete_confirm"}}')">
+        {{template "csrf" .CSRF}}
+        <button type="submit" class="danger"><svg class="icon"><use href="/static/icons.svg#trash"></use></svg>{{.T "friend.delete"}}</button>
+      </form>
+    </div>
+  </details>
+</div>
+
+<div class="group-actions">
+  <a class="a-btn" href="/expenses/new?friend={{.Data.Friend.ID}}"><svg class="icon"><use href="/static/icons.svg#plus"></use></svg> {{.T "expense.add"}}</a>
+  <a class="a-btn sec" href="/friends/{{.Data.Friend.ID}}/settle"><svg class="icon"><use href="/static/icons.svg#banknote"></use></svg> {{.T "expense.settle"}}</a>
+</div>
+
+{{template "filterbar" (dict "Action" (printf "/friends/%d" .Data.Friend.ID) "Filter" .Data.Filter "ShowScope" false "Root" .)}}
+{{template "expense_table" (dict "Groups" .Data.Expenses "Root" .)}}
+{{end}}

@@ -1,0 +1,34 @@
+{{define "content"}}
+<div class="m-head">
+  <h1>{{.T "title.groups"}}</h1>
+  <details class="add-inline">
+    <summary class="a-btn sec sm"><svg class="icon"><use href="/static/icons.svg#plus"></use></svg>{{.T "groups.create"}}</summary>
+    <form method="post" action="/groups/create" class="inline-form">
+      {{template "csrf" .CSRF}}
+      <input type="text" name="name" placeholder="{{.T "groups.create"}}" required>
+      <input type="text" name="currency" value="USD" size="4" aria-label="{{.T "profile.default_currency"}}">
+      <button type="submit" class="a-btn sm">{{.T "groups.create"}}</button>
+    </form>
+  </details>
+</div>
+
+{{if .Data.Groups}}
+<div class="card">
+  {{range .Data.Groups}}
+  <a class="l-row{{if .Group.IsArchived}} dim{{end}}" href="/groups/{{.Group.ID}}">
+    <span class="ava" style="--c:{{avatarColor .Group.ID}}">{{initials .Group.Name .Group.Name}}</span>
+    <div class="l-main">
+      <div class="l-title">{{.Group.Name}}{{if .Group.IsArchived}} <span class="tag">{{$.T "groups.archived"}}</span>{{end}}</div>
+      <div class="l-sub">
+        {{.MemberCount}} {{$.T "groups.members"}}
+        {{range .Balances}} · <span class="{{if gt .Amount 0}}pos{{else}}neg{{end}}">{{money .Amount .Currency}} {{.Currency}}</span>{{end}}
+      </div>
+    </div>
+    <svg class="icon chev"><use href="/static/icons.svg#chev-right"></use></svg>
+  </a>
+  {{end}}
+</div>
+{{else}}
+{{template "empty_state" (dict "Icon" "home" "Text" (.T "groups.empty") "CTAHref" "" "CTALabel" "")}}
+{{end}}
+{{end}}

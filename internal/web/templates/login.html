@@ -1,0 +1,25 @@
+{{define "content"}}
+<div class="auth-card">
+  <h1>{{.T "title.sign_in"}}</h1>
+
+  <form method="post" action="/login" class="stack">
+    {{template "csrf" .CSRF}}
+    <label>{{.T "form.email"}}<input type="email" name="email" required autocomplete="email"></label>
+    <label>{{.T "form.password"}}<input type="password" name="password" required autocomplete="current-password"></label>
+    <button type="submit">{{.T "title.sign_in"}}</button>
+  </form>
+
+  <p class="muted">{{.T "auth.or"}}</p>
+
+  <form method="post" action="/auth/magic" class="stack">
+    {{template "csrf" .CSRF}}
+    <label>{{.T "auth.magic_email"}}<input type="email" name="email" required autocomplete="email"></label>
+    <button type="submit" class="secondary">{{.T "auth.magic_send"}}</button>
+  </form>
+
+  <div class="auth-links">
+    <a href="/register">{{.T "title.create_account"}}</a>
+    <a href="/forgot-password">{{.T "auth.forgot_link"}}</a>
+  </div>
+</div>
+{{end}}

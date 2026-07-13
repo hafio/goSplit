@@ -1,0 +1,11 @@
+{{define "content"}}
+<div class="auth-card">
+  <h1>{{.T "title.reset_password"}}</h1>
+  <form method="post" action="/reset-password" class="stack">
+    {{template "csrf" .CSRF}}
+    <input type="hidden" name="token" value="{{.Data.Token}}">
+    <label>{{.T "auth.new_password"}}<input type="password" name="password" required minlength="8" autocomplete="new-password"></label>
+    <button type="submit">{{.T "auth.set_new_password"}}</button>
+  </form>
+</div>
+{{end}}

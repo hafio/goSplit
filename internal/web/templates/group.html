@@ -1,0 +1,72 @@
+{{define "content"}}
+{{$root := .}}
+<div class="m-head">
+  <span class="ava lg" style="--c:{{avatarColor .Data.Group.ID}}">{{initials .Data.Group.Name .Data.Group.Name}}</span>
+  <div style="flex:1;min-width:0">
+    <h1>{{.Data.Group.Name}}{{if .Data.Group.IsArchived}} <span class="tag">{{.T "groups.archived"}}</span>{{end}}</h1>
+    <div class="member-line">
+      <span class="ava-stack">{{range .Data.Members}}<span class="ava sm" style="--c:{{avatarColor .ID}}" title="{{if .Name}}{{.Name}}{{else}}{{.Email}}{{end}}">{{initials .Name .Email}}</span>{{end}}</span>
+      <span class="l-sub">{{len .Data.Members}} {{.T "groups.members"}}</span>
+    </div>
+  </div>
+  <details class="omenu">
+    <summary class="a-btn ghost icon-only" aria-label="{{.T "action.options"}}"><svg class="icon"><use href="/static/icons.svg#dots"></use></svg></summary>
+    <div class="omenu-panel">
+      <form method="post" action="/groups/{{.Data.Group.ID}}/simplify">
+        {{template "csrf" .CSRF}}
+        <button type="submit"><svg class="icon"><use href="/static/icons.svg#shuffle"></use></svg>{{if .Data.Group.SimplifyDebts}}{{.T "group.simplify_off"}}{{else}}{{.T "group.simplify_on"}}{{end}}</button>
+      </form>
+      <form method="post" action="/groups/{{.Data.Group.ID}}/archive">
+        {{template "csrf" .CSRF}}
+        <button type="submit"><svg class="icon"><use href="/static/icons.svg#archive"></use></svg>{{if .Data.Group.IsArchived}}{{.T "group.unarchive"}}{{else}}{{.T "group.archive"}}{{end}}</button>
+      </form>
+      <a href="/groups/{{.Data.Group.ID}}/collapse"><svg class="icon"><use href="/static/icons.svg#archive"></use></svg>{{.T "archive.title"}}</a>
+    </div>
+  </details>
+</div>
+
+<details class="add-inline group-invite">
+  <summary class="a-btn sec sm"><svg class="icon"><use href="/static/icons.svg#user-plus"></use></svg>{{.T "group.invite"}}</summary>
+  <form method="post" action="/groups/{{.Data.Group.ID}}/invite" class="inline-form">
+    {{template "csrf" .CSRF}}
+    <input type="email" name="email" placeholder="friend@example.com" required aria-label="{{.T "group.invite"}}">
+    <button type="submit" class="a-btn sm">{{.T "group.invite"}}</button>
+  </form>
+</details>
+
+{{if .Data.Position}}
+<div class="stat-hero">
+  <span class="lbl">{{.T "balances.net_position"}}</span>
+  <div class="big">{{range .Data.Position}}<span style="white-space:nowrap;margin-right:.6rem">{{if gt .Amount 0}}+{{end}}{{money .Amount .Currency}} {{.Currency}}</span>{{end}}</div>
+</div>
+{{end}}
+
+<div class="group-actions">
+  <a class="a-btn" href="/expenses/new?group={{.Data.Group.ID}}"><svg class="icon"><use href="/static/icons.svg#plus"></use></svg> {{.T "expense.add"}}</a>
+</div>
+
+<h2>{{if .Data.Group.SimplifyDebts}}{{.T "group.simplified"}}{{else}}{{.T "title.balances"}}{{end}}</h2>
+{{if .Data.Simplified}}
+<div class="card">
+  {{range .Data.Simplified}}
+  <div class="l-row">
+    <span class="ava sm" style="--c:{{avatarColor .FromID}}">{{initials .FromName .FromName}}</span>
+    <svg class="icon" style="width:14px"><use href="/static/icons.svg#arrow-right"></use></svg>
+    <span class="ava sm" style="--c:{{avatarColor .ToID}}">{{initials .ToName .ToName}}</span>
+    <div class="l-main">
+      <div class="l-sub">{{.FromName}} → {{.ToName}}</div>
+      <div class="l-title" style="font-size:.9rem">{{money .Amount .Currency}} {{.Currency}}</div>
+    </div>
+    {{if eq .FromID $root.User.ID}}<a class="a-btn sec sm" href="/friends/{{.ToID}}/settle"><svg class="icon"><use href="/static/icons.svg#banknote"></use></svg> {{$root.T "expense.settle"}}</a>{{end}}
+  </div>
+  {{end}}
+</div>
+{{else}}
+<p class="muted">{{.T "group.settled"}}</p>
+{{end}}
+<p class="muted small">{{.T "group.join_link"}}: <code>{{.Data.JoinURL}}</code></p>
+
+<h2>{{.T "group.expenses"}}</h2>
+{{template "filterbar" (dict "Action" (printf "/groups/%d" .Data.Group.ID) "Filter" .Data.Filter "ShowScope" false "Root" .)}}
+{{template "expense_table" (dict "Groups" .Data.Expenses "Root" .)}}
+{{end}}

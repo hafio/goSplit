@@ -1,0 +1,61 @@
+{{define "content"}}
+<h1>{{.T "title.profile"}}</h1>
+<div class="cols">
+  <section>
+    <h2>{{.T "profile.details"}}</h2>
+    <form method="post" action="/profile" class="stack" enctype="multipart/form-data">
+      {{template "csrf" .CSRF}}
+      <label>{{.T "form.name"}}<input type="text" name="name" value="{{.User.Name}}"></label>
+      <label>{{.T "form.email"}}<input type="email" value="{{.User.Email}}" disabled></label>
+      <label>{{.T "form.currency"}}<input type="text" name="currency" value="{{.User.Currency}}" size="4"></label>
+      <label>{{.T "profile.default_currency"}}<input type="text" name="default_currency" value="{{.User.DefaultCurrency}}" size="4"></label>
+      <label>{{.T "form.language"}}
+        <select name="language">
+          {{range .Data.Languages}}<option value="{{.}}"{{if eq . $.User.PreferredLanguage}} selected{{end}}>{{.}}</option>{{end}}
+        </select>
+      </label>
+      <fieldset class="appearance">
+        <legend>{{.T "profile.theme_color"}}</legend>
+        <div class="sw-row">
+          {{range themes}}
+          <label class="sw" title="{{$.T (printf "theme.%s" .Slug)}}">
+            <input type="radio" name="theme" value="{{.Slug}}"{{if eq .Slug $.User.ThemeColor}} checked{{end}}>
+            <i style="--sw:{{.LightAccent}}"></i>{{$.T (printf "theme.%s" .Slug)}}
+          </label>
+          {{end}}
+        </div>
+      </fieldset>
+      <label>{{.T "profile.avatar"}}<input type="file" name="avatar" accept="image/*"></label>
+      <button type="submit">{{.T "action.save"}}</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>{{.T "profile.change_password"}}</h2>
+    <form method="post" action="/profile/password" class="stack">
+      {{template "csrf" .CSRF}}
+      <label>{{.T "profile.current_password"}}<input type="password" name="current" autocomplete="current-password"></label>
+      <label>{{.T "auth.new_password"}}<input type="password" name="password" minlength="8" required autocomplete="new-password"></label>
+      <button type="submit">{{.T "profile.update_password"}}</button>
+    </form>
+
+    <h2>{{.T "profile.notifications"}}</h2>
+    <p class="muted small">{{.T "profile.push_hint"}}</p>
+    <div class="inline">
+      <button type="button" id="push-enable"
+        data-msg-unsupported="{{.T "push.unsupported"}}"
+        data-msg-unconfigured="{{.T "push.unconfigured"}}"
+        data-msg-denied="{{.T "push.denied"}}"
+        data-msg-enabled="{{.T "push.enabled"}}">{{.T "profile.push_enable"}}</button>
+      <button type="button" id="push-test" class="secondary"
+        data-msg-test-sent="{{.T "push.test_sent"}}"
+        data-msg-test-failed="{{.T "push.test_failed"}}">{{.T "profile.push_test"}}</button>
+    </div>
+    <p class="muted small" id="push-status"></p>
+
+    <h2>{{.T "profile.account"}}</h2>
+    <a class="btn secondary" href="/profile/export">{{.T "profile.export"}}</a>
+  </section>
+</div>
+<script src="/static/push.js" defer></script>
+{{end}}

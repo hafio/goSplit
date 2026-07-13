@@ -1,0 +1,40 @@
+{{define "content"}}
+<h1>{{.T "recurring.title"}}</h1>
+
+<form method="post" action="/recurring" class="inline-form">
+  {{template "csrf" .CSRF}}
+  <label>{{.T "recurring.template"}}
+    <select name="template_id" required aria-label="{{.T "recurring.template"}}">
+      {{range .Data.Templates}}<option value="{{.ID}}">{{.Name}}</option>{{else}}<option value="" disabled>{{$.T "recurring.none_eligible"}}</option>{{end}}
+    </select>
+  </label>
+  <label>{{.T "recurring.schedule_cron"}}
+    <input type="text" name="cron" placeholder="0 9 1 * *" value="0 9 1 * *" required aria-label="{{.T "recurring.schedule_cron"}}">
+  </label>
+  <button type="submit">{{.T "recurring.schedule"}}</button>
+</form>
+<p class="muted small">{{.T "recurring.hint"}} <code>0 9 1 * *</code> {{.T "recurring.hint_example"}}</p>
+
+{{if .Data.Recurrences}}
+<table class="grid">
+  <thead><tr><th>{{.T "recurring.template"}}</th><th>{{.T "recurring.schedule"}}</th><th>{{.T "recurring.next_run"}}</th><th></th></tr></thead>
+  <tbody>
+  {{range .Data.Recurrences}}
+  <tr>
+    <td>{{.TemplateName}}</td>
+    <td><code>{{.Cron}}</code></td>
+    <td class="date">{{.NextRun}}</td>
+    <td class="actions">
+      <form method="post" action="/recurring/{{.ID}}/delete" class="inline" onsubmit="return confirm('{{$.T "recurring.delete_confirm"}}')">
+        {{template "csrf" $.CSRF}}
+        <button class="linkbtn danger">{{$.T "detail.delete"}}</button>
+      </form>
+    </td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="muted">{{.T "recurring.empty"}}</p>
+{{end}}
+{{end}}

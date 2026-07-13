@@ -1,0 +1,41 @@
+{{define "content"}}
+<h1>{{.T "bank.title"}}</h1>
+
+{{if not .Data.Enabled}}
+<p class="muted">{{.T "bank.not_configured"}}</p>
+{{else}}
+<div class="inline" style="margin-bottom:1rem">
+  <button type="button" id="bank-connect"
+    data-msg-link-failed="{{.T "bank.link_failed"}}"
+    data-msg-token-failed="{{.T "bank.token_failed"}}"
+    data-msg-connected="{{.T "bank.connected"}}"
+    data-msg-connect-failed="{{.T "bank.connect_failed"}}">{{.T "bank.connect"}}</button>
+  <form method="post" action="/bank/sync" class="inline">
+    {{template "csrf" .CSRF}}
+    <button type="submit" class="secondary">{{.T "bank.sync"}}</button>
+  </form>
+</div>
+<p class="muted small" id="bank-status"></p>
+
+{{if .Data.Transactions}}
+<table class="grid">
+  <thead><tr><th>{{.T "bank.date"}}</th><th>{{.T "bank.description"}}</th><th class="num">{{.T "form.amount"}}</th><th></th></tr></thead>
+  <tbody>
+  {{range .Data.Transactions}}
+  <tr>
+    <td class="date">{{.Date}}</td>
+    <td>{{.Name}}</td>
+    <td class="num">{{.Amount}} {{.Currency}}</td>
+    <td class="actions"><a class="linkbtn" href="/bank/tx/{{.ID}}/convert">{{$.T "bank.to_expense"}}</a></td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="muted">{{.T "bank.empty"}}</p>
+{{end}}
+
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<script src="/static/bank.js" defer></script>
+{{end}}
+{{end}}

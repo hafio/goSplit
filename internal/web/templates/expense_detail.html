@@ -1,0 +1,53 @@
+{{define "content"}}
+{{with .Data}}
+<div class="m-head">
+  <span class="cat cat-lg">{{if eq .SplitType "SETTLEMENT"}}💸{{else if .IsArchive}}🗂️{{else}}{{categoryEmoji .Category}}{{end}}</span>
+  <div style="flex:1;min-width:0">
+    <h1>{{.Name}} {{if .Deleted}}<span class="tag danger">{{$.T "feed.deleted"}}</span>{{end}}</h1>
+    <div class="l-sub">{{money .Amount .Currency}} {{.Currency}} · {{.Date}}</div>
+  </div>
+  {{if not .Deleted}}
+  <div class="m-actions">
+    {{if .Movable}}<a class="a-btn ghost icon-only" href="/expenses/{{.ID}}/move" aria-label="{{$.T "detail.edit"}}" title="{{$.T "detail.edit"}}"><svg class="icon"><use href="/static/icons.svg#pencil"></use></svg></a>{{end}}
+    <form method="post" action="/expenses/{{.ID}}/delete" onsubmit="return confirm('{{$.T "detail.delete_confirm"}}')">
+      {{template "csrf" $.CSRF}}
+      <button type="submit" class="a-btn danger-ghost icon-only" aria-label="{{$.T "detail.delete"}}" title="{{$.T "detail.delete"}}"><svg class="icon"><use href="/static/icons.svg#trash"></use></svg></button>
+    </form>
+  </div>
+  {{end}}
+</div>
+
+<div class="card receipt">
+  <div class="l-row"><div class="l-main"><div class="l-sub">{{$.T "form.paid_by"}}</div></div><div class="l-end"><span class="amt">{{.PaidByName}}</span></div></div>
+  <div class="l-row"><div class="l-main"><div class="l-sub">{{$.T "detail.category"}}</div></div><div class="l-end">{{categoryEmoji .Category}} {{.Category}}</div></div>
+  <div class="l-row"><div class="l-main"><div class="l-sub">{{$.T "form.split"}}</div></div><div class="l-end">{{.SplitType}}</div></div>
+  <div class="l-row"><div class="l-main"><div class="l-sub">{{$.T "detail.group"}}</div></div><div class="l-end">{{if .GroupName}}{{.GroupName}}{{else}}<span class="muted">{{$.T "detail.direct"}}</span>{{end}}</div></div>
+</div>
+
+<h2>{{$.T "detail.split_breakdown"}}</h2>
+<div class="card">
+  {{range .Participants}}
+  <div class="l-row">
+    <span class="ava sm" style="--c:{{avatarColor .UserID}}">{{initials .Name .Name}}</span>
+    <div class="l-main"><div class="l-title" style="font-weight:550">{{.Name}}</div></div>
+    <div class="l-end"><span class="amt {{if gt .Amount 0}}pos{{else if lt .Amount 0}}neg{{end}}">{{money .Amount $.Data.Currency}}</span></div>
+  </div>
+  {{end}}
+</div>
+
+<h2>{{$.T "detail.note"}}</h2>
+{{if .IsArchive}}
+{{$rows := csvRows .Note}}
+{{if $rows}}
+<div class="tbl-scroll">
+  <table class="grid">
+    <thead><tr>{{range index $rows 0}}<th>{{.}}</th>{{end}}</tr></thead>
+    <tbody>{{range slice $rows 1}}<tr>{{range .}}<td>{{.}}</td>{{end}}</tr>{{end}}</tbody>
+  </table>
+</div>
+{{else}}<p class="muted">{{$.T "detail.note_empty"}}</p>{{end}}
+{{else}}
+{{if .Note}}<div class="card note-body">{{.Note}}</div>{{else}}<p class="muted">{{$.T "detail.note_empty"}}</p>{{end}}
+{{end}}
+{{end}}
+{{end}}

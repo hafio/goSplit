@@ -1,0 +1,93 @@
+{{/* Shared §5.2 filter bar. Expects Action (string), Filter (map), ShowScope
+    (bool). Search stays visible; advanced filters fold into a disclosure; active
+    filters render as removable chip links (no JS — chips drop one query param). */}}
+{{define "filterbar"}}
+{{$root := .Root}}
+{{$f := .Filter}}{{$a := .Action}}
+{{$active := or $f.q $f.min $f.max $f.from $f.to (and (ne $f.scope "all") (ne $f.scope ""))}}
+<form class="filterbar" method="get" action="{{$a}}">
+  <div class="search-wrap">
+    <svg class="icon"><use href="/static/icons.svg#search"></use></svg>
+    <input type="search" name="q" value="{{$f.q}}" placeholder="{{$root.T "filter.search_placeholder"}}" aria-label="{{$root.T "filter.search_placeholder"}}">
+  </div>
+  <details class="filter-adv{{if $active}} has-active{{end}}">
+    <summary class="a-btn ghost icon-only" aria-label="{{$root.T "filter.filters"}}"><svg class="icon"><use href="/static/icons.svg#sliders"></use></svg></summary>
+    <div class="filter-panel">
+      <div class="field-lab">{{$root.T "form.amount"}}</div>
+      <div class="prow">
+        <input type="number" step="0.01" name="min" value="{{$f.min}}" placeholder="{{$root.T "filter.min"}}" aria-label="{{$root.T "filter.min_amount"}}">
+        <input type="number" step="0.01" name="max" value="{{$f.max}}" placeholder="{{$root.T "filter.max"}}" aria-label="{{$root.T "filter.max_amount"}}">
+      </div>
+      <div class="field-lab">{{$root.T "filter.dates"}}</div>
+      <div class="prow">
+        <input type="date" name="from" value="{{$f.from}}" aria-label="{{$root.T "filter.from_date"}}">
+        <input type="date" name="to" value="{{$f.to}}" aria-label="{{$root.T "filter.to_date"}}">
+      </div>
+      {{if .ShowScope}}
+      <div class="field-lab">{{$root.T "filter.scope"}}</div>
+      <div class="seg mini">
+        <label title="{{$root.T "filter.all"}}"><input type="radio" name="scope" value="all"{{if or (eq $f.scope "all") (eq $f.scope "")}} checked{{end}}>{{$root.T "filter.all"}}</label>
+        <label title="{{$root.T "filter.groups"}}"><input type="radio" name="scope" value="group"{{if eq $f.scope "group"}} checked{{end}}>{{$root.T "filter.groups"}}</label>
+        <label title="{{$root.T "filter.direct"}}"><input type="radio" name="scope" value="nongroup"{{if eq $f.scope "nongroup"}} checked{{end}}>{{$root.T "filter.direct"}}</label>
+      </div>
+      {{end}}
+      <button type="submit" class="a-btn sm">{{$root.T "filter.apply"}}</button>
+    </div>
+  </details>
+</form>
+{{if $active}}
+<div class="chips filter-chips">
+  {{if $f.q}}<a class="chip" href="{{queryWithout $f $a "q"}}">“{{$f.q}}” <span class="x">×</span></a>{{end}}
+  {{if $f.min}}<a class="chip" href="{{queryWithout $f $a "min"}}">≥ {{$f.min}} <span class="x">×</span></a>{{end}}
+  {{if $f.max}}<a class="chip" href="{{queryWithout $f $a "max"}}">≤ {{$f.max}} <span class="x">×</span></a>{{end}}
+  {{if $f.from}}<a class="chip" href="{{queryWithout $f $a "from"}}">≥ {{$f.from}} <span class="x">×</span></a>{{end}}
+  {{if $f.to}}<a class="chip" href="{{queryWithout $f $a "to"}}">≤ {{$f.to}} <span class="x">×</span></a>{{end}}
+  {{if and (ne $f.scope "all") (ne $f.scope "")}}<a class="chip" href="{{queryWithout $f $a "scope"}}">{{if eq $f.scope "group"}}{{$root.T "filter.groups"}}{{else}}{{$root.T "filter.direct"}}{{end}} <span class="x">×</span></a>{{end}}
+  <a class="chip clear-chip" href="{{$a}}">{{$root.T "filter.clear_all"}}</a>
+</div>
+{{end}}
+{{end}}
+
+{{define "csrf"}}<input type="hidden" name="csrf_token" value="{{.}}">{{end}}
+
+{{/* Shared designed empty state. Expects Icon, Text, and optional CTAHref/CTALabel. */}}
+{{define "empty_state"}}
+<div class="empty">
+  <svg class="icon"><use href="/static/icons.svg#{{.Icon}}"></use></svg>
+  <p>{{.Text}}</p>
+  {{if .CTAHref}}<a class="a-btn" href="{{.CTAHref}}">{{.CTALabel}}</a>{{end}}
+</div>
+{{end}}
+
+{{/* Month-grouped expense feed. Expects a dict: Groups ([]monthGroup) and Root
+    (the ViewData, for i18n via $root.T). */}}
+{{define "expense_table"}}
+{{$root := .Root}}
+{{if .Groups}}
+{{range .Groups}}
+<div class="month-h">{{.Label}}</div>
+<div class="card">
+  {{range .Rows}}
+  <a class="l-row{{if .Deleted}} dim{{end}}" href="/expenses/{{.ID}}">
+    <span class="dateblk"><b>{{.DateMonthAbbr}}</b><span>{{.DateDay}}</span></span>
+    <span class="cat">{{if eq .SplitType "SETTLEMENT"}}💸{{else if eq .SplitType "ARCHIVE"}}🗂️{{else}}{{categoryEmoji .Category}}{{end}}</span>
+    <div class="l-main">
+      <div class="l-title">{{.Name}}{{if .Moved}} <span class="tag">{{$root.T "feed.moved"}}</span>{{else if .Deleted}} <span class="tag danger">{{$root.T "feed.deleted"}}</span>{{end}}</div>
+      <div class="l-sub">{{.PaidByName}} {{$root.T "feed.paid"}} {{money .Amount .Currency}} {{.Currency}}{{if .GroupName}} · {{.GroupName}}{{end}}</div>
+    </div>
+    <div class="l-end">
+      {{if eq .SplitType "SETTLEMENT"}}<span class="amt muted">{{money .Amount .Currency}}</span>
+      {{else if .HasNet}}
+        {{if gt .MyNet 0}}<span class="lbl">{{$root.T "feed.you_lent"}}</span><span class="amt pos">{{money .MyNet .Currency}}</span>
+        {{else if lt .MyNet 0}}<span class="lbl">{{$root.T "feed.you_borrowed"}}</span><span class="amt neg">{{money (abs64 .MyNet) .Currency}}</span>
+        {{else}}<span class="amt muted">—</span>{{end}}
+      {{else}}<span class="amt muted">—</span>{{end}}
+    </div>
+  </a>
+  {{end}}
+</div>
+{{end}}
+{{else}}
+<p class="muted">{{$root.T "feed.empty"}}</p>
+{{end}}
+{{end}}

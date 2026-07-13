@@ -1,0 +1,39 @@
+{{define "content"}}
+<h1>{{.T "title.balances"}}</h1>
+
+{{if .Data.Summary}}
+<div class="stat-hero">
+  <span class="lbl">{{.T "balances.net_position"}}</span>
+  <div class="big">
+    {{range .Data.Summary}}<span style="white-space:nowrap;margin-right:.6rem">{{if gt .Amount 0}}+{{end}}{{money .Amount .Currency}} {{.Currency}}</span>{{end}}
+  </div>
+  <div style="font-size:.74rem;opacity:.85">{{.T "balances.per_currency"}}</div>
+</div>
+<div class="tiles">
+  {{range .Data.Summary}}
+  <div class="tile">
+    <span class="lbl">{{if gt .Amount 0}}{{$.T "balances.you_are_owed"}}{{else}}{{$.T "balances.you_owe"}}{{end}}</span>
+    <div class="val {{if gt .Amount 0}}pos{{else}}neg{{end}}">{{money (abs64 .Amount) .Currency}} {{.Currency}}</div>
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{if .Data.Rows}}
+<div class="card">
+  {{range .Data.Rows}}
+  <a class="l-row" href="/friends/{{.FriendID}}">
+    <span class="ava" style="--c:{{avatarColor .FriendID}}">{{initials .Name .Name}}</span>
+    <div class="l-main">
+      <div class="l-title">{{.Name}}</div>
+      <div class="l-sub {{if gt .Amount 0}}pos{{else}}neg{{end}}">{{if gt .Amount 0}}{{$.T "friend.owes_you"}}{{else}}{{$.T "friend.you_owe"}}{{end}}</div>
+    </div>
+    <div class="l-end"><span class="amt {{if gt .Amount 0}}pos{{else}}neg{{end}}">{{money (abs64 .Amount) .Currency}} {{.Currency}}</span></div>
+    <svg class="icon chev"><use href="/static/icons.svg#chev-right"></use></svg>
+  </a>
+  {{end}}
+</div>
+{{else}}
+{{template "empty_state" (dict "Icon" "wallet" "Text" (.T "balances.empty") "CTAHref" "/expenses/new" "CTALabel" (.T "expense.add"))}}
+{{end}}
+{{end}}

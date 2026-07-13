@@ -1,0 +1,67 @@
+{{define "content"}}
+<div class="m-head">
+  <span class="ava" style="--c:{{avatarColor .Data.Friend.ID}}">{{initials .Data.Friend.Name .Data.Friend.Email}}</span>
+  <div style="flex:1;min-width:0">
+    <h1>{{.T "convert.title"}} {{if .Data.Friend.Name}}{{.Data.Friend.Name}}{{else}}{{.Data.Friend.Email}}{{end}}</h1>
+    <div class="l-sub">{{.T "convert.subtitle"}}</div>
+  </div>
+</div>
+
+<form method="post" action="/friends/{{.Data.FriendID}}/convert" class="convert-form" id="convert-form">
+  {{template "csrf" .CSRF}}
+
+  {{if .Data.Balances}}
+  <div class="field-lab">{{.T "convert.balances"}}</div>
+  <div class="chips" id="cvChips">
+    {{range .Data.Balances}}
+    <button type="button" class="chip" data-cur="{{.Currency}}" data-amt="{{money (abs64 .Amount) .Currency}}" data-dir="{{if gt .Amount 0}}owed{{else}}owe{{end}}">
+      <span class="{{if gt .Amount 0}}pos{{else}}neg{{end}}">{{if gt .Amount 0}}{{$.T "friend.owes_you"}}{{else}}{{$.T "friend.you_owe"}}{{end}} {{money (abs64 .Amount) .Currency}} {{.Currency}}</span>
+    </button>
+    {{end}}
+  </div>
+  {{end}}
+
+  <div class="field-lab">{{.T "convert.direction"}}</div>
+  <div class="seg" id="cvDir" role="group" aria-label="{{.T "convert.direction"}}">
+    {{$fname := .Data.Friend.Name}}{{if not $fname}}{{$fname = .Data.Friend.Email}}{{end}}
+    <label><input type="radio" name="direction" value="owed"{{if eq .Data.Direction "owed"}} checked{{end}}><span class="ava sm" style="--c:{{avatarColor .Data.Friend.ID}}">{{initials .Data.Friend.Name .Data.Friend.Email}}</span> {{$fname}} {{.T "convert.friend_owes"}}</label>
+    <label><input type="radio" name="direction" value="owe"{{if eq .Data.Direction "owe"}} checked{{end}}><span class="ava sm" style="--c:{{avatarColor $.User.ID}}">{{initials $.User.Name $.User.Email}}</span> {{.T "convert.you_owe"}} {{$fname}}</label>
+  </div>
+
+  <div class="cv-eq">
+    <div class="cv-side">
+      <span class="lbl">{{.T "convert.from_anchor"}}</span>
+      <input class="amt" type="text" inputmode="decimal" name="from_amount" id="cvFrom" value="{{.Data.FromAmount}}" required aria-label="{{.T "convert.from_anchor"}}">
+      <select class="cur" name="from_currency" id="cvFromCur" aria-label="{{.T "convert.from_anchor"}}">
+        {{range currencyCodes}}<option value="{{.}}"{{if eq . $.Data.FromCurrency}} selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </div>
+    <div class="cv-arrow"><svg class="icon"><use href="/static/icons.svg#arrow-right"></use></svg></div>
+    <div class="cv-side">
+      <span class="lbl">{{.T "convert.to"}}</span>
+      <input class="amt" type="text" inputmode="decimal" name="to_amount" id="cvTo" value="" required aria-label="{{.T "convert.to"}}">
+      <select class="cur" name="to_currency" id="cvToCur" aria-label="{{.T "convert.to"}}">
+        {{range currencyCodes}}<option value="{{.}}"{{if eq . $.Data.ToCurrency}} selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </div>
+  </div>
+
+  <div class="cv-rate">
+    <span class="eqn">1 <span id="cvRateFrom">{{.Data.FromCurrency}}</span> =</span>
+    <input id="cvRate" type="text" inputmode="decimal" value="" aria-label="{{.T "convert.rate"}}">
+    <span class="eqn" id="cvRateTo">{{.Data.ToCurrency}}</span>
+    <span class="rate-src fetched" id="cvSrc" data-fetched="{{.T "convert.fetched"}}" data-custom="{{.T "convert.custom"}}">{{.T "convert.fetched"}}</span>
+    <button type="button" class="iconbtn" id="cvRefresh" title="{{.T "convert.refetch"}}" aria-label="{{.T "convert.refetch"}}"><svg class="icon"><use href="/static/icons.svg#repeat"></use></svg></button>
+  </div>
+
+  <p class="cv-summary" id="cvSummary"></p>
+
+  <div class="date-row" style="margin-top:.6rem">
+    <input type="date" name="date" value="{{.Data.Date}}" aria-label="{{.T "form.date"}}">
+    <div style="flex:1"></div>
+    <button type="submit" class="a-btn"><svg class="icon"><use href="/static/icons.svg#check"></use></svg> {{.T "expense.convert"}}</button>
+    <a class="a-btn ghost" href="/friends/{{.Data.FriendID}}">{{.T "action.cancel"}}</a>
+  </div>
+</form>
+<script src="/static/convert.js" defer></script>
+{{end}}

@@ -1,0 +1,10 @@
+{{define "content"}}
+<h1>{{.T "import.title"}}</h1>
+<p class="muted">{{.T "import.hint"}}</p>
+
+<form method="post" action="/import/splitwise" class="stack">
+  {{template "csrf" .CSRF}}
+  <label>{{.T "import.api_key"}}<input type="password" name="api_key" required autocomplete="off"></label>
+  <button type="submit">{{.T "import.submit"}}</button>
+</form>
+{{end}}

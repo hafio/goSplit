@@ -1,0 +1,32 @@
+{{define "content"}}
+<div class="m-head">
+  <h1>{{.T "title.friends"}}</h1>
+  <details class="add-inline">
+    <summary class="a-btn sec sm"><svg class="icon"><use href="/static/icons.svg#user-plus"></use></svg>{{.T "friends.add"}}</summary>
+    <form method="post" action="/friends/add" class="inline-form">
+      {{template "csrf" .CSRF}}
+      <input type="email" name="email" placeholder="friend@example.com" required aria-label="{{.T "friends.add"}}">
+      <button type="submit" class="a-btn sm">{{.T "friends.add"}}</button>
+    </form>
+  </details>
+</div>
+
+{{if .Data.Friends}}
+<div class="card">
+  {{range .Data.Friends}}
+  <a class="l-row{{if .Hidden}} dim{{end}}" href="/friends/{{.User.ID}}">
+    <span class="ava" style="--c:{{avatarColor .User.ID}}">{{initials .User.Name .User.Email}}</span>
+    <div class="l-main">
+      <div class="l-title">{{if .User.Name}}{{.User.Name}}{{else}}{{.User.Email}}{{end}}</div>
+      <div class="l-sub">
+        {{range .Balances}}<span class="{{if gt .Amount 0}}pos{{else}}neg{{end}}">{{if gt .Amount 0}}{{$.T "friend.owes_you"}}{{else}}{{$.T "friend.you_owe"}}{{end}} {{money (abs64 .Amount) .Currency}} {{.Currency}}</span> {{else}}{{$.T "friend.settled"}}{{end}}
+      </div>
+    </div>
+    <svg class="icon chev"><use href="/static/icons.svg#chev-right"></use></svg>
+  </a>
+  {{end}}
+</div>
+{{else}}
+{{template "empty_state" (dict "Icon" "users" "Text" (.T "friends.empty") "CTAHref" "/expenses/new" "CTALabel" (.T "expense.add"))}}
+{{end}}
+{{end}}

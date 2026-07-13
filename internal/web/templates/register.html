@@ -1,0 +1,13 @@
+{{define "content"}}
+<div class="auth-card">
+  <h1>{{.T "title.create_account"}}</h1>
+  <form method="post" action="/register" class="stack">
+    {{template "csrf" .CSRF}}
+    <label>{{.T "form.name"}}<input type="text" name="name" autocomplete="name"></label>
+    <label>{{.T "form.email"}}<input type="email" name="email" required autocomplete="email"></label>
+    <label>{{.T "form.password"}}<input type="password" name="password" required minlength="8" autocomplete="new-password"></label>
+    <button type="submit">{{.T "title.create_account"}}</button>
+  </form>
+  <div class="auth-links"><a href="/login">{{.T "auth.back_to_signin"}}</a></div>
+</div>
+{{end}}

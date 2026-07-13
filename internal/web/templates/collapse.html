@@ -1,0 +1,30 @@
+{{define "content"}}
+<div class="m-head"><h1>{{.T "archive.title"}} · {{.Data.Target}}</h1></div>
+<div class="flash warn">{{.T "archive.warning"}}</div>
+
+<form method="get" action="{{.Data.Action}}" class="stack">
+  <label>{{.T "archive.before"}}
+    <input type="date" name="before" value="{{if .Data.Before}}{{.Data.Before}}{{else}}{{.Data.Today}}{{end}}" required>
+  </label>
+  <button type="submit" class="a-btn"><svg class="icon"><use href="/static/icons.svg#search"></use></svg> {{.T "archive.preview"}}</button>
+</form>
+
+{{if .Data.Before}}
+  {{if .Data.Counts}}
+  <div class="card" style="margin-top:1rem;padding:.9rem">
+    <p>{{.T "archive.will_collapse"}}</p>
+    <ul class="members">
+      {{range $cur, $n := .Data.Counts}}<li><strong>{{$n}}</strong> × {{$cur}}</li>{{end}}
+    </ul>
+    <form method="post" action="{{.Data.Action}}" class="group-actions" onsubmit="return confirm('{{.T "archive.confirm_prompt"}}')">
+      {{template "csrf" .CSRF}}
+      <input type="hidden" name="before" value="{{.Data.Before}}">
+      <button type="submit" class="a-btn"><svg class="icon"><use href="/static/icons.svg#archive"></use></svg> {{.T "archive.confirm"}} ({{.Data.Total}})</button>
+      <a class="a-btn ghost" href="{{.Data.CancelURL}}">{{.T "action.cancel"}}</a>
+    </form>
+  </div>
+  {{else}}
+  <p class="muted" style="margin-top:1rem">{{.T "archive.nothing"}}</p>
+  {{end}}
+{{end}}
+{{end}}

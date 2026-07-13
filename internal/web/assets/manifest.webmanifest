@@ -1,0 +1,13 @@
+{
+  "name": "GoSplit",
+  "short_name": "GoSplit",
+  "description": "Split expenses with friends and groups.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#100c0e",
+  "theme_color": "#8d3f4c",
+  "icons": [
+    { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
