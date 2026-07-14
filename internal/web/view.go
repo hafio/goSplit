@@ -4,8 +4,10 @@
 package web
 
 import (
+	"crypto/sha256"
 	"embed"
 	"encoding/csv"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"io"
@@ -63,6 +65,38 @@ var templatesFS embed.FS
 //go:embed assets/*
 var assetsFS embed.FS
 
+// assetHashes maps asset filename → short content hash, computed once at
+// startup so templates can emit fingerprinted, immutable-cacheable URLs.
+var assetHashes = func() map[string]string {
+	m := map[string]string{}
+	entries, err := assetsFS.ReadDir("assets")
+	if err != nil {
+		return m
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		b, err := assetsFS.ReadFile("assets/" + e.Name())
+		if err != nil {
+			continue
+		}
+		sum := sha256.Sum256(b)
+		m[e.Name()] = hex.EncodeToString(sum[:5])
+	}
+	return m
+}()
+
+const staticPrefix = "/static/"
+
+// assetURL returns the fingerprinted /static URL for an embedded asset.
+func assetURL(name string) string {
+	if h, ok := assetHashes[name]; ok {
+		return staticPrefix + name + "?v=" + h
+	}
+	return staticPrefix + name
+}
+
 // Renderer holds the parsed page templates and the i18n bundle.
 type Renderer struct {
 	pages  map[string]*template.Template
@@ -96,6 +130,7 @@ var funcs = template.FuncMap{
 	"csvRows":       csvRows,
 	"themes":        Themes,
 	"themeHex":      themeHex,
+	"asset":         assetURL,
 }
 
 // pageFiles maps a logical page name to its content template file. Each page is
@@ -198,13 +233,22 @@ func (r *Renderer) Render(w http.ResponseWriter, status int, page string, vd Vie
 	}
 }
 
-// AssetsHandler serves embedded static assets under /static/.
+// AssetsHandler serves embedded static assets under /static/. Fingerprinted
+// URLs (?v=<hash>) are immutable; unversioned ones get a short cache.
 func (r *Renderer) AssetsHandler() http.Handler {
 	sub, err := fs.Sub(assetsFS, "assets")
 	if err != nil {
 		panic(err)
 	}
-	return http.StripPrefix("/static/", http.FileServer(http.FS(sub)))
+	fileServer := http.StripPrefix(staticPrefix, http.FileServer(http.FS(sub)))
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Query().Get("v") != "" {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+		}
+		fileServer.ServeHTTP(w, req)
+	})
 }
 
 // Asset returns a single embedded asset's bytes (for manifest/service worker

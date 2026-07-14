@@ -1,6 +1,9 @@
 package web
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestInitials(t *testing.T) {
 	cases := []struct {
@@ -60,6 +63,19 @@ func TestCategoryEmoji(t *testing.T) {
 		if got := categoryEmoji(in); got != want {
 			t.Errorf("categoryEmoji(%q)=%q want %q", in, got, want)
 		}
+	}
+}
+
+func TestAssetURLFingerprinted(t *testing.T) {
+	got := assetURL("app.css")
+	if !strings.HasPrefix(got, "/static/app.css?v=") {
+		t.Fatalf("assetURL(app.css)=%q want fingerprinted URL", got)
+	}
+	if assetURL("app.css") != got {
+		t.Fatal("assetURL not stable across calls")
+	}
+	if want := "/static/nope.css"; assetURL("nope.css") != want {
+		t.Fatalf("assetURL(nope.css)=%q want %q", assetURL("nope.css"), want)
 	}
 }
 

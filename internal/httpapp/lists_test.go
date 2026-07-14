@@ -17,7 +17,7 @@ func TestListsRenderComponents(t *testing.T) {
 	if !strings.Contains(friends, `class="ava"`) {
 		t.Errorf("friends page missing avatar rows")
 	}
-	if !strings.Contains(friends, "icons.svg#chev-right") {
+	if !strings.Contains(friends, "#chev-right") {
 		t.Errorf("friends page missing chevron icon")
 	}
 

@@ -2,7 +2,7 @@
 <div class="m-head">
   <h1>{{.T "title.groups"}}</h1>
   <details class="add-inline">
-    <summary class="a-btn sec sm"><svg class="icon"><use href="/static/icons.svg#plus"></use></svg>{{.T "groups.create"}}</summary>
+    <summary class="a-btn sec sm"><svg class="icon"><use href="{{asset "icons.svg"}}#plus"></use></svg>{{.T "groups.create"}}</summary>
     <form method="post" action="/groups/create" class="inline-form">
       {{template "csrf" .CSRF}}
       <input type="text" name="name" placeholder="{{.T "groups.create"}}" required>
@@ -24,7 +24,7 @@
         {{range .Balances}} · <span class="{{if gt .Amount 0}}pos{{else}}neg{{end}}">{{money .Amount .Currency}} {{.Currency}}</span>{{end}}
       </div>
     </div>
-    <svg class="icon chev"><use href="/static/icons.svg#chev-right"></use></svg>
+    <svg class="icon chev"><use href="{{asset "icons.svg"}}#chev-right"></use></svg>
   </a>
   {{end}}
 </div>

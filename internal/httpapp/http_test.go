@@ -112,6 +112,28 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestStaticCacheHeaders(t *testing.T) {
+	h := newHarness(t)
+
+	resp := h.get("/static/app.css?v=x")
+	_ = body(t, resp)
+	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Fatalf("fingerprinted asset Cache-Control = %q, want immutable", cc)
+	}
+
+	resp = h.get("/static/app.css")
+	_ = body(t, resp)
+	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "max-age=3600") {
+		t.Fatalf("unversioned asset Cache-Control = %q, want max-age=3600", cc)
+	}
+
+	resp = h.get("/sw.js")
+	_ = body(t, resp)
+	if cc := resp.Header.Get("Cache-Control"); cc != "no-cache" {
+		t.Fatalf("sw.js Cache-Control = %q, want no-cache", cc)
+	}
+}
+
 func TestLoginRequiredRedirect(t *testing.T) {
 	h := newHarness(t)
 	// Do not follow redirects so we can see the 303.

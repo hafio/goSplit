@@ -1,5 +1,5 @@
 {{define "content"}}
 <h1>{{.T "title.activity"}}</h1>
 {{template "filterbar" (dict "Action" "/activity" "Filter" .Data.Filter "ShowScope" true "Root" .)}}
-{{template "expense_table" (dict "Groups" .Data.Items "Root" .)}}
+{{template "expense_table" (dict "Groups" .Data.Items "Root" . "ShowAllHref" .Data.ShowAllHref)}}
 {{end}}

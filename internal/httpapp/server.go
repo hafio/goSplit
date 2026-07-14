@@ -42,104 +42,111 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.RealIP)
 	r.Use(requestLogger)
 	r.Use(middleware.Recoverer)
-	r.Use(s.Auth.Authenticate)
-	r.Use(s.Auth.VerifyCSRF)
+	r.Use(middleware.Compress(5))
 
-	// Static + PWA + health (public).
+	// Public assets + health: no session lookup, no CSRF, cacheable.
 	r.Handle("/static/*", s.Renderer.AssetsHandler())
-	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir(s.Cfg.UploadDir))))
+	r.Handle("/uploads/*", cacheControl("public, max-age=3600",
+		http.StripPrefix("/uploads/", http.FileServer(http.Dir(s.Cfg.UploadDir)))))
 	r.Get("/healthz", s.handleHealth)
-	r.Get("/manifest.webmanifest", s.serveAsset("manifest.webmanifest", "application/manifest+json"))
-	r.Get("/sw.js", s.serveAsset("sw.js", "application/javascript"))
-	r.Get("/offline", s.handleOffline)
+	r.Get("/manifest.webmanifest", s.serveAsset("manifest.webmanifest", "application/manifest+json", "public, max-age=3600"))
+	r.Get("/sw.js", s.serveAsset("sw.js", "application/javascript", "no-cache"))
 
-	// Auth (public).
-	r.Get("/login", s.handleLoginPage)
-	r.Post("/login", s.handleLogin)
-	r.Get("/register", s.handleRegisterPage)
-	r.Post("/register", s.handleRegister)
-	r.Get("/forgot-password", s.handleForgotPage)
-	r.Post("/forgot-password", s.handleForgot)
-	r.Get("/reset-password", s.handleResetPage)
-	r.Post("/reset-password", s.handleReset)
-	r.Post("/auth/magic", s.handleMagicRequest)
-	r.Get("/auth/magic", s.handleMagicConsume)
-	r.Post("/logout", s.handleLogout)
-
-	r.Get("/", s.handleHome)
-
-	// Authenticated area.
+	// Everything else needs the session/CSRF context.
 	r.Group(func(r chi.Router) {
-		r.Use(s.Auth.RequireUser)
+		r.Use(s.Auth.Authenticate)
+		r.Use(s.Auth.VerifyCSRF)
 
-		r.Get("/balances", s.handleBalances)
+		r.Get("/offline", s.handleOffline)
 
-		r.Get("/friends", s.handleFriends)
-		r.Post("/friends/add", s.handleFriendAdd)
-		r.Get("/friends/{id}", s.handleFriendDetail)
-		r.Post("/friends/{id}/hide", s.handleFriendHide)
-		r.Post("/friends/{id}/delete", s.handleFriendDelete)
-		r.Get("/friends/{id}/settle", s.handleSettlePage)
-		r.Post("/friends/{id}/settle", s.handleSettle)
-		r.Get("/friends/{id}/convert", s.handleConvertPage)
-		r.Post("/friends/{id}/convert", s.handleConvert)
-		r.Get("/rates", s.handleRate)
-		r.Get("/friends/{id}/collapse", s.handleFriendCollapsePage)
-		r.Post("/friends/{id}/collapse", s.handleFriendCollapse)
+		// Auth (public).
+		r.Get("/login", s.handleLoginPage)
+		r.Post("/login", s.handleLogin)
+		r.Get("/register", s.handleRegisterPage)
+		r.Post("/register", s.handleRegister)
+		r.Get("/forgot-password", s.handleForgotPage)
+		r.Post("/forgot-password", s.handleForgot)
+		r.Get("/reset-password", s.handleResetPage)
+		r.Post("/reset-password", s.handleReset)
+		r.Post("/auth/magic", s.handleMagicRequest)
+		r.Get("/auth/magic", s.handleMagicConsume)
+		r.Post("/logout", s.handleLogout)
 
-		r.Get("/groups", s.handleGroups)
-		r.Post("/groups/create", s.handleGroupCreate)
-		r.Get("/groups/{id}", s.handleGroupDetail)
-		r.Post("/groups/{id}/archive", s.handleGroupArchive)
-		r.Get("/groups/{id}/collapse", s.handleGroupCollapsePage)
-		r.Post("/groups/{id}/collapse", s.handleGroupCollapse)
-		r.Post("/groups/{id}/simplify", s.handleGroupSimplify)
-		r.Post("/groups/{id}/invite", s.handleGroupInvite)
-		r.Post("/groups/join/{publicId}", s.handleGroupJoin)
-		r.Get("/g/{publicId}", s.handleGroupJoinPage)
+		r.Get("/", s.handleHome)
 
-		r.Get("/expenses/new", s.handleExpenseNew)
-		r.Post("/expenses", s.handleExpenseCreate)
-		r.Get("/expenses/{id}", s.handleExpenseDetail)
-		r.Post("/expenses/{id}/delete", s.handleExpenseDelete)
-		r.Get("/expenses/{id}/move", s.handleExpenseMovePage)
-		r.Post("/expenses/{id}/move", s.handleExpenseMove)
+		// Authenticated area.
+		r.Group(func(r chi.Router) {
+			r.Use(s.Auth.RequireUser)
 
-		r.Get("/activity", s.handleActivity)
+			r.Get("/balances", s.handleBalances)
 
-		r.Get("/recurring", s.handleRecurringList)
-		r.Post("/recurring", s.handleRecurringCreate)
-		r.Post("/recurring/{id}/delete", s.handleRecurringDelete)
+			r.Get("/friends", s.handleFriends)
+			r.Post("/friends/add", s.handleFriendAdd)
+			r.Get("/friends/{id}", s.handleFriendDetail)
+			r.Post("/friends/{id}/hide", s.handleFriendHide)
+			r.Post("/friends/{id}/delete", s.handleFriendDelete)
+			r.Get("/friends/{id}/settle", s.handleSettlePage)
+			r.Post("/friends/{id}/settle", s.handleSettle)
+			r.Get("/friends/{id}/convert", s.handleConvertPage)
+			r.Post("/friends/{id}/convert", s.handleConvert)
+			r.Get("/rates", s.handleRate)
+			r.Get("/friends/{id}/collapse", s.handleFriendCollapsePage)
+			r.Post("/friends/{id}/collapse", s.handleFriendCollapse)
 
-		r.Get("/push/public-key", s.handlePushPublicKey)
-		r.Post("/push/subscribe", s.handlePushSubscribe)
-		r.Post("/push/unsubscribe", s.handlePushUnsubscribe)
-		r.Post("/push/test", s.handlePushTest)
+			r.Get("/groups", s.handleGroups)
+			r.Post("/groups/create", s.handleGroupCreate)
+			r.Get("/groups/{id}", s.handleGroupDetail)
+			r.Post("/groups/{id}/archive", s.handleGroupArchive)
+			r.Get("/groups/{id}/collapse", s.handleGroupCollapsePage)
+			r.Post("/groups/{id}/collapse", s.handleGroupCollapse)
+			r.Post("/groups/{id}/simplify", s.handleGroupSimplify)
+			r.Post("/groups/{id}/invite", s.handleGroupInvite)
+			r.Post("/groups/join/{publicId}", s.handleGroupJoin)
+			r.Get("/g/{publicId}", s.handleGroupJoinPage)
 
-		r.Get("/import", s.handleImportPage)
-		r.Post("/import/splitwise", s.handleImportSplitwise)
+			r.Get("/expenses/new", s.handleExpenseNew)
+			r.Post("/expenses", s.handleExpenseCreate)
+			r.Get("/expenses/{id}", s.handleExpenseDetail)
+			r.Post("/expenses/{id}/delete", s.handleExpenseDelete)
+			r.Get("/expenses/{id}/move", s.handleExpenseMovePage)
+			r.Post("/expenses/{id}/move", s.handleExpenseMove)
 
-		r.Get("/bank", s.handleBankPage)
-		r.Post("/bank/link-token", s.handleBankLinkToken)
-		r.Post("/bank/exchange", s.handleBankExchange)
-		r.Post("/bank/sync", s.handleBankSync)
-		r.Get("/bank/tx/{txid}/convert", s.handleBankConvert)
+			r.Get("/activity", s.handleActivity)
 
-		r.Get("/profile", s.handleProfile)
-		r.Post("/profile", s.handleProfileUpdate)
-		r.Post("/profile/password", s.handlePasswordChange)
-		r.Get("/profile/export", s.handleExport)
-	})
+			r.Get("/recurring", s.handleRecurringList)
+			r.Post("/recurring", s.handleRecurringCreate)
+			r.Post("/recurring/{id}/delete", s.handleRecurringDelete)
 
-	// Admin area.
-	r.Group(func(r chi.Router) {
-		r.Use(s.Auth.RequireUser, s.Auth.RequireAdmin)
-		r.Get("/admin", s.handleAdmin)
-		r.Post("/admin/users/create", s.handleAdminCreate)
-		r.Post("/admin/users/{id}", s.handleAdminUpdate)
-		r.Post("/admin/users/{id}/password", s.handleAdminSetPassword)
-		r.Post("/admin/users/{id}/toggle", s.handleAdminToggle)
-		r.Post("/admin/users/{id}/magic", s.handleAdminMagic)
+			r.Get("/push/public-key", s.handlePushPublicKey)
+			r.Post("/push/subscribe", s.handlePushSubscribe)
+			r.Post("/push/unsubscribe", s.handlePushUnsubscribe)
+			r.Post("/push/test", s.handlePushTest)
+
+			r.Get("/import", s.handleImportPage)
+			r.Post("/import/splitwise", s.handleImportSplitwise)
+
+			r.Get("/bank", s.handleBankPage)
+			r.Post("/bank/link-token", s.handleBankLinkToken)
+			r.Post("/bank/exchange", s.handleBankExchange)
+			r.Post("/bank/sync", s.handleBankSync)
+			r.Get("/bank/tx/{txid}/convert", s.handleBankConvert)
+
+			r.Get("/profile", s.handleProfile)
+			r.Post("/profile", s.handleProfileUpdate)
+			r.Post("/profile/password", s.handlePasswordChange)
+			r.Get("/profile/export", s.handleExport)
+		})
+
+		// Admin area.
+		r.Group(func(r chi.Router) {
+			r.Use(s.Auth.RequireUser, s.Auth.RequireAdmin)
+			r.Get("/admin", s.handleAdmin)
+			r.Post("/admin/users/create", s.handleAdminCreate)
+			r.Post("/admin/users/{id}", s.handleAdminUpdate)
+			r.Post("/admin/users/{id}/password", s.handleAdminSetPassword)
+			r.Post("/admin/users/{id}/toggle", s.handleAdminToggle)
+			r.Post("/admin/users/{id}/magic", s.handleAdminMagic)
+		})
 	})
 
 	return r
@@ -231,7 +238,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, dest, http.StatusSeeOther)
 }
 
-func (s *Server) serveAsset(name, contentType string) http.HandlerFunc {
+func (s *Server) serveAsset(name, contentType, cache string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		b, err := web.Asset(name)
 		if err != nil {
@@ -239,8 +246,17 @@ func (s *Server) serveAsset(name, contentType string) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Cache-Control", cache)
 		_, _ = w.Write(b)
 	}
+}
+
+// cacheControl sets a Cache-Control header before delegating to next.
+func cacheControl(v string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", v)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) handleOffline(w http.ResponseWriter, r *http.Request) {

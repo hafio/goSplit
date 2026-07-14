@@ -8,27 +8,27 @@
     </div>
   </div>
   <details class="omenu">
-    <summary class="a-btn ghost icon-only" aria-label="{{.T "action.options"}}"><svg class="icon"><use href="/static/icons.svg#dots"></use></svg></summary>
+    <summary class="a-btn ghost icon-only" aria-label="{{.T "action.options"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#dots"></use></svg></summary>
     <div class="omenu-panel">
-      <a href="/friends/{{.Data.Friend.ID}}/convert"><svg class="icon"><use href="/static/icons.svg#repeat"></use></svg>{{.T "expense.convert"}}</a>
-      <a href="/friends/{{.Data.Friend.ID}}/collapse"><svg class="icon"><use href="/static/icons.svg#archive"></use></svg>{{.T "archive.title"}}</a>
+      <a href="/friends/{{.Data.Friend.ID}}/convert"><svg class="icon"><use href="{{asset "icons.svg"}}#repeat"></use></svg>{{.T "expense.convert"}}</a>
+      <a href="/friends/{{.Data.Friend.ID}}/collapse"><svg class="icon"><use href="{{asset "icons.svg"}}#archive"></use></svg>{{.T "archive.title"}}</a>
       <form method="post" action="/friends/{{.Data.Friend.ID}}/hide">
         {{template "csrf" .CSRF}}
-        <button type="submit"><svg class="icon"><use href="/static/icons.svg#x"></use></svg>{{if .Data.Hidden}}{{.T "friend.unhide"}}{{else}}{{.T "friend.hide"}}{{end}}</button>
+        <button type="submit"><svg class="icon"><use href="{{asset "icons.svg"}}#x"></use></svg>{{if .Data.Hidden}}{{.T "friend.unhide"}}{{else}}{{.T "friend.hide"}}{{end}}</button>
       </form>
       <form method="post" action="/friends/{{.Data.Friend.ID}}/delete" onsubmit="return confirm('{{.T "friend.delete_confirm"}}')">
         {{template "csrf" .CSRF}}
-        <button type="submit" class="danger"><svg class="icon"><use href="/static/icons.svg#trash"></use></svg>{{.T "friend.delete"}}</button>
+        <button type="submit" class="danger"><svg class="icon"><use href="{{asset "icons.svg"}}#trash"></use></svg>{{.T "friend.delete"}}</button>
       </form>
     </div>
   </details>
 </div>
 
 <div class="group-actions">
-  <a class="a-btn" href="/expenses/new?friend={{.Data.Friend.ID}}"><svg class="icon"><use href="/static/icons.svg#plus"></use></svg> {{.T "expense.add"}}</a>
-  <a class="a-btn sec" href="/friends/{{.Data.Friend.ID}}/settle"><svg class="icon"><use href="/static/icons.svg#banknote"></use></svg> {{.T "expense.settle"}}</a>
+  <a class="a-btn" href="/expenses/new?friend={{.Data.Friend.ID}}"><svg class="icon"><use href="{{asset "icons.svg"}}#plus"></use></svg> {{.T "expense.add"}}</a>
+  <a class="a-btn sec" href="/friends/{{.Data.Friend.ID}}/settle"><svg class="icon"><use href="{{asset "icons.svg"}}#banknote"></use></svg> {{.T "expense.settle"}}</a>
 </div>
 
 {{template "filterbar" (dict "Action" (printf "/friends/%d" .Data.Friend.ID) "Filter" .Data.Filter "ShowScope" false "Root" .)}}
-{{template "expense_table" (dict "Groups" .Data.Expenses "Root" .)}}
+{{template "expense_table" (dict "Groups" .Data.Expenses "Root" . "ShowAllHref" .Data.ShowAllHref)}}
 {{end}}

@@ -338,6 +338,9 @@ a.l-row:hover { background: color-mix(in srgb, var(--accent) 5%, var(--panel)); 
 .appearance { border: 1px solid var(--line); border-radius: 8px; padding: .4rem .7rem .6rem; margin: 0; }
 .appearance legend { font-size: .8rem; color: var(--muted); padding: 0 .3rem; }
 
+/* "Show all" link when a feed page is truncated at feedLimit */
+.feed-more { text-align: center; margin: .8rem 0; }
+
 /* designed empty state */
 .empty { text-align: center; color: var(--muted); padding: 2.5rem 1rem; display: flex;
   flex-direction: column; align-items: center; gap: .6rem; }
@@ -420,3 +423,14 @@ input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px
 /* Underline-style hero amounts: recolor the underline, no boxy ring. */
 .amount-hero input.amt:hover, .cv-side input.amt:hover { border-bottom-color: var(--accent); }
 .amount-hero input.amt:focus, .cv-side input.amt:focus, .search-wrap input:focus { box-shadow: none; }
+
+/* htmx boost: thin top progress bar while a request is in flight */
+body.htmx-request::before {
+  content: ""; position: fixed; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--accent); z-index: 1000;
+  animation: pageload 1s ease-out infinite;
+}
+@keyframes pageload {
+  from { transform: scaleX(0); transform-origin: left; }
+  to   { transform: scaleX(1); transform-origin: left; }
+}

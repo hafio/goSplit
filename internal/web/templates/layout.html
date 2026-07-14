@@ -6,22 +6,22 @@
   <meta name="theme-color" content="{{themeHex .Theme false}}" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="{{themeHex .Theme true}}" media="(prefers-color-scheme: dark)">
   <title>{{if .Title}}{{.Title}} · {{end}}GoSplit</title>
-  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" id="favicon">
+  <link rel="icon" type="image/svg+xml" href="{{asset "favicon.svg"}}" id="favicon">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/static/app.css">
-  <script src="/static/htmx.min.js" defer></script>
+  <link rel="stylesheet" href="{{asset "app.css"}}">
+  <script src="{{asset "htmx.min.js"}}" defer></script>
 </head>
-<body>
+<body hx-boost="true" hx-indicator="body">
 <header class="topbar">
   <a class="brand" href="/">GoSplit</a>
   {{if .User}}
   <nav class="nav" aria-label="Primary">
-    <a href="/balances"{{if eq .Nav "balances"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#wallet"/></svg>{{.T "nav.balances"}}</a>
-    <a href="/friends"{{if eq .Nav "friends"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#users"/></svg>{{.T "nav.friends"}}</a>
-    <a href="/groups"{{if eq .Nav "groups"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#home"/></svg>{{.T "nav.groups"}}</a>
-    <a href="/activity"{{if eq .Nav "activity"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#list"/></svg>{{.T "nav.activity"}}</a>
-    <a href="/recurring"><svg class="icon"><use href="/static/icons.svg#repeat"/></svg>{{.T "nav.recurring"}}</a>
-    <a href="/expenses/new" class="a-btn sm"><svg class="icon"><use href="/static/icons.svg#plus"/></svg>{{.T "expense.add"}}</a>
+    <a href="/balances"{{if eq .Nav "balances"}} class="on"{{end}}><svg class="icon"><use href="{{asset "icons.svg"}}#wallet"/></svg>{{.T "nav.balances"}}</a>
+    <a href="/friends"{{if eq .Nav "friends"}} class="on"{{end}}><svg class="icon"><use href="{{asset "icons.svg"}}#users"/></svg>{{.T "nav.friends"}}</a>
+    <a href="/groups"{{if eq .Nav "groups"}} class="on"{{end}}><svg class="icon"><use href="{{asset "icons.svg"}}#home"/></svg>{{.T "nav.groups"}}</a>
+    <a href="/activity"{{if eq .Nav "activity"}} class="on"{{end}}><svg class="icon"><use href="{{asset "icons.svg"}}#list"/></svg>{{.T "nav.activity"}}</a>
+    <a href="/recurring"><svg class="icon"><use href="{{asset "icons.svg"}}#repeat"/></svg>{{.T "nav.recurring"}}</a>
+    <a href="/expenses/new" class="a-btn sm"><svg class="icon"><use href="{{asset "icons.svg"}}#plus"/></svg>{{.T "expense.add"}}</a>
   </nav>
   <div class="spacer"></div>
   <details class="menu">
@@ -31,7 +31,7 @@
       <a href="/import">{{.T "nav.import"}}</a>
       <a href="/bank">{{.T "nav.bank"}}</a>
       {{if .User.IsAdmin}}<a href="/admin">{{.T "action.admin"}}</a>{{end}}
-      <form method="post" action="/logout">
+      <form method="post" action="/logout" hx-boost="false">
         <input type="hidden" name="csrf_token" value="{{.CSRF}}">
         <button type="submit" class="linkbtn">{{.T "action.signout"}}</button>
       </form>
@@ -52,11 +52,11 @@
 
 <nav class="bottom-nav" aria-label="Mobile">
   {{if .User}}
-  <a href="/balances"{{if eq .Nav "balances"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#wallet"/></svg>{{.T "nav.balances"}}</a>
-  <a href="/friends"{{if eq .Nav "friends"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#users"/></svg>{{.T "nav.friends"}}</a>
-  <a href="/expenses/new" class="fab" aria-label="{{.T "expense.add"}}"><svg class="icon"><use href="/static/icons.svg#plus"/></svg></a>
-  <a href="/groups"{{if eq .Nav "groups"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#home"/></svg>{{.T "nav.groups"}}</a>
-  <a href="/activity"{{if eq .Nav "activity"}} class="on"{{end}}><svg class="icon"><use href="/static/icons.svg#list"/></svg>{{.T "nav.activity"}}</a>
+  <a href="/balances"{{if eq .Nav "balances"}} class="on"{{end}}><svg class="icon"><use href="{{asset "icons.svg"}}#wallet"/></svg>{{.T "nav.balances"}}</a>
+  <a href="/friends"{{if eq .Nav "friends"}} class="on"{{end}}><svg class="icon"><use href="{{asset "icons.svg"}}#users"/></svg>{{.T "nav.friends"}}</a>
+  <a href="/expenses/new" class="fab" aria-label="{{.T "expense.add"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#plus"/></svg></a>
+  <a href="/groups"{{if eq .Nav "groups"}} class="on"{{end}}><svg class="icon"><use href="{{asset "icons.svg"}}#home"/></svg>{{.T "nav.groups"}}</a>
+  <a href="/activity"{{if eq .Nav "activity"}} class="on"{{end}}><svg class="icon"><use href="{{asset "icons.svg"}}#list"/></svg>{{.T "nav.activity"}}</a>
   {{end}}
 </nav>
 

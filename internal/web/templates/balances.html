@@ -29,7 +29,7 @@
       <div class="l-sub {{if gt .Amount 0}}pos{{else}}neg{{end}}">{{if gt .Amount 0}}{{$.T "friend.owes_you"}}{{else}}{{$.T "friend.you_owe"}}{{end}}</div>
     </div>
     <div class="l-end"><span class="amt {{if gt .Amount 0}}pos{{else}}neg{{end}}">{{money (abs64 .Amount) .Currency}} {{.Currency}}</span></div>
-    <svg class="icon chev"><use href="/static/icons.svg#chev-right"></use></svg>
+    <svg class="icon chev"><use href="{{asset "icons.svg"}}#chev-right"></use></svg>
   </a>
   {{end}}
 </div>

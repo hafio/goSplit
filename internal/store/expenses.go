@@ -45,6 +45,7 @@ type ExpenseFilter struct {
 	Descr     string // raw user text; `*` = wildcard, plain = substring
 	Scope     GroupScope
 	GroupID   *int64 // specific-group selector (activity feed)
+	Limit     int    // max rows returned; 0 = unlimited
 }
 
 // apply appends this filter's conditions (using `?` placeholders) to a WHERE
@@ -294,7 +295,7 @@ func (s *Store) ListFriendExpenses(ctx context.Context, me, friend int64, f Expe
 	f.Scope = ScopeAll
 	f.GroupID = nil
 	f.apply(&conds, &args)
-	return s.queryExpenses(ctx, conds, args)
+	return s.queryExpenses(ctx, conds, args, f.Limit)
 }
 
 // ListGroupExpenses returns a group's expenses, newest first, with §5.2 filters.
@@ -304,7 +305,7 @@ func (s *Store) ListGroupExpenses(ctx context.Context, groupID int64, f ExpenseF
 	f.Scope = ScopeAll
 	f.GroupID = nil
 	f.apply(&conds, &args)
-	return s.queryExpenses(ctx, conds, args)
+	return s.queryExpenses(ctx, conds, args, f.Limit)
 }
 
 // ListActivity returns all expenses (incl. soft-deleted, for the activity feed)
@@ -317,7 +318,7 @@ func (s *Store) ListActivity(ctx context.Context, userID int64, f ExpenseFilter)
 	}
 	args := []any{userID, userID, userID}
 	f.apply(&conds, &args)
-	return s.queryExpenses(ctx, conds, args)
+	return s.queryExpenses(ctx, conds, args, f.Limit)
 }
 
 // notCollapsible excludes expenses that must stay live: currency-conversion
@@ -337,7 +338,7 @@ func (s *Store) ListDirectCollapsible(ctx context.Context, me, friend int64, cut
 		"(SELECT COUNT(*) FROM expense_participants ep WHERE ep.expense_id = e.id) = 2",
 		notCollapsible,
 	}
-	return s.queryExpenses(ctx, conds, []any{cutoff, me, friend})
+	return s.queryExpenses(ctx, conds, []any{cutoff, me, friend}, 0)
 }
 
 // ListGroupCollapsible returns a group's expenses dated before cutoff — the
@@ -349,7 +350,7 @@ func (s *Store) ListGroupCollapsible(ctx context.Context, groupID int64, cutoff 
 		"e.expense_date < ?",
 		notCollapsible,
 	}
-	return s.queryExpenses(ctx, conds, []any{groupID, cutoff})
+	return s.queryExpenses(ctx, conds, []any{groupID, cutoff}, 0)
 }
 
 // HistoricalBatch is one currency's collapse: the synthetic "Historical
@@ -416,9 +417,13 @@ func inPlaceholders(n int) string {
 	return strings.Repeat("?, ", n-1) + "?"
 }
 
-func (s *Store) queryExpenses(ctx context.Context, conds []string, args []any) ([]*Expense, error) {
+func (s *Store) queryExpenses(ctx context.Context, conds []string, args []any, limit int) ([]*Expense, error) {
 	q := `SELECT ` + expenseCols + ` FROM expenses e WHERE ` + strings.Join(conds, " AND ") +
 		` ORDER BY e.expense_date DESC, e.created_at DESC`
+	if limit > 0 {
+		q += ` LIMIT ?`
+		args = append(args, limit)
+	}
 	rows, err := s.DB.QueryContext(ctx, s.rebind(q), args...)
 	if err != nil {
 		return nil, err

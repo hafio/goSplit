@@ -100,6 +100,7 @@
   "feed.moved": "movido",
   "feed.deleted": "eliminado",
   "feed.empty": "Ningún gasto coincide.",
+  "feed.show_all": "Mostrar todo",
   "profile.appearance": "Apariencia",
   "profile.theme_color": "Color del tema",
   "theme.burgundy": "Burdeos",

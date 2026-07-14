@@ -24,7 +24,7 @@ func TestGroupDetailPolish(t *testing.T) {
 	})
 
 	b := body(t, h.get("/groups/1"))
-	for _, want := range []string{`class="ava-stack"`, "icons.svg#dots", "icons.svg#archive", "month-h"} {
+	for _, want := range []string{`class="ava-stack"`, "icons.svg?v=", "#dots", "#archive", "month-h"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("group page missing %q", want)
 		}

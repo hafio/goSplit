@@ -99,3 +99,52 @@ func (s *Store) UserGroupBalances(ctx context.Context, groupID, userID int64) ([
 	}
 	return scanBalances(rows)
 }
+
+// GroupMemberCounts returns the member count of every group the user belongs to.
+func (s *Store) GroupMemberCounts(ctx context.Context, userID int64) (map[int64]int, error) {
+	rows, err := s.DB.QueryContext(ctx, s.rebind(
+		`SELECT group_id, COUNT(*) FROM group_users
+		 WHERE group_id IN (SELECT group_id FROM group_users WHERE user_id = ?)
+		 GROUP BY group_id`), userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]int{}
+	for rows.Next() {
+		var gid int64
+		var n int
+		if err := rows.Scan(&gid, &n); err != nil {
+			return nil, err
+		}
+		out[gid] = n
+	}
+	return out, rows.Err()
+}
+
+// UserGroupNets returns the user's net position per group per currency in one
+// pass over balance_view (groups list page).
+func (s *Store) UserGroupNets(ctx context.Context, userID int64) (map[int64]map[string]int64, error) {
+	rows, err := s.DB.QueryContext(ctx, s.rebind(
+		`SELECT group_id, currency, SUM(amount) FROM balance_view
+		 WHERE user_id = ? AND group_id IS NOT NULL
+		 GROUP BY group_id, currency`), userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]map[string]int64{}
+	for rows.Next() {
+		var gid int64
+		var cur string
+		var amt int64
+		if err := rows.Scan(&gid, &cur, &amt); err != nil {
+			return nil, err
+		}
+		if out[gid] == nil {
+			out[gid] = map[string]int64{}
+		}
+		out[gid][cur] += amt
+	}
+	return out, rows.Err()
+}

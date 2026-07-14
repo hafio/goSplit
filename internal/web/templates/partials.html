@@ -7,11 +7,11 @@
 {{$active := or $f.q $f.min $f.max $f.from $f.to (and (ne $f.scope "all") (ne $f.scope ""))}}
 <form class="filterbar" method="get" action="{{$a}}">
   <div class="search-wrap">
-    <svg class="icon"><use href="/static/icons.svg#search"></use></svg>
+    <svg class="icon"><use href="{{asset "icons.svg"}}#search"></use></svg>
     <input type="search" name="q" value="{{$f.q}}" placeholder="{{$root.T "filter.search_placeholder"}}" aria-label="{{$root.T "filter.search_placeholder"}}">
   </div>
   <details class="filter-adv{{if $active}} has-active{{end}}">
-    <summary class="a-btn ghost icon-only" aria-label="{{$root.T "filter.filters"}}"><svg class="icon"><use href="/static/icons.svg#sliders"></use></svg></summary>
+    <summary class="a-btn ghost icon-only" aria-label="{{$root.T "filter.filters"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#sliders"></use></svg></summary>
     <div class="filter-panel">
       <div class="field-lab">{{$root.T "form.amount"}}</div>
       <div class="prow">
@@ -53,14 +53,15 @@
 {{/* Shared designed empty state. Expects Icon, Text, and optional CTAHref/CTALabel. */}}
 {{define "empty_state"}}
 <div class="empty">
-  <svg class="icon"><use href="/static/icons.svg#{{.Icon}}"></use></svg>
+  <svg class="icon"><use href="{{asset "icons.svg"}}#{{.Icon}}"></use></svg>
   <p>{{.Text}}</p>
   {{if .CTAHref}}<a class="a-btn" href="{{.CTAHref}}">{{.CTALabel}}</a>{{end}}
 </div>
 {{end}}
 
-{{/* Month-grouped expense feed. Expects a dict: Groups ([]monthGroup) and Root
-    (the ViewData, for i18n via $root.T). */}}
+{{/* Month-grouped expense feed. Expects a dict: Groups ([]monthGroup), Root
+    (the ViewData, for i18n via $root.T), and ShowAllHref (optional link to
+    re-request the full, unlimited feed). */}}
 {{define "expense_table"}}
 {{$root := .Root}}
 {{if .Groups}}
@@ -87,6 +88,7 @@
   {{end}}
 </div>
 {{end}}
+{{if .ShowAllHref}}<p class="feed-more"><a class="a-btn ghost" href="{{.ShowAllHref}}">{{$root.T "feed.show_all"}}</a></p>{{end}}
 {{else}}
 <p class="muted">{{$root.T "feed.empty"}}</p>
 {{end}}

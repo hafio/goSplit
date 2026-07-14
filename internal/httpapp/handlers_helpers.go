@@ -10,6 +10,32 @@ import (
 	"github.com/hafio/gosplit/internal/store"
 )
 
+// feedLimit caps expense feed pages so they stay fast as history grows; a
+// "Show all" link (see showAllHref below) re-requests without the cap.
+const feedLimit = 50
+
+// applyFeedLimit sets f.Limit (fetching one extra row to detect truncation)
+// unless the request asked to see everything (?all=1).
+func applyFeedLimit(r *http.Request, f *store.ExpenseFilter) bool {
+	showAll := r.URL.Query().Get("all") == "1"
+	if !showAll {
+		f.Limit = feedLimit + 1
+	}
+	return showAll
+}
+
+// showAllHref truncates expenses to feedLimit and returns a re-request link
+// with all=1 when the feed was truncated, or "" when everything already fits.
+func showAllHref(r *http.Request, showAll bool, expenses *[]*store.Expense) string {
+	if showAll || len(*expenses) <= feedLimit {
+		return ""
+	}
+	*expenses = (*expenses)[:feedLimit]
+	q := r.URL.Query()
+	q.Set("all", "1")
+	return r.URL.Path + "?" + q.Encode()
+}
+
 // expenseRow is the presentation model for the shared expense_table partial.
 type expenseRow struct {
 	ID            string

@@ -1,6 +1,13 @@
 package httpapp
 
-import "testing"
+import (
+	"context"
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/hafio/gosplit/internal/store"
+)
 
 func TestGroupByMonth(t *testing.T) {
 	rows := []expenseRow{
@@ -17,6 +24,37 @@ func TestGroupByMonth(t *testing.T) {
 	}
 	if groups[1].Label != "February 2026" || len(groups[1].Rows) != 1 {
 		t.Errorf("second group = %q with %d rows", groups[1].Label, len(groups[1].Rows))
+	}
+}
+
+func TestActivityFeedShowAll(t *testing.T) {
+	h := newHarness(t)
+	h.register("Alice", "alice@example.com", "password123")
+	ctx := context.Background()
+
+	alice, err := h.st.GetUserByEmail(ctx, "alice@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < feedLimit+1; i++ {
+		e := &store.Expense{
+			Name: "Expense", Category: "general", Amount: 1000, SplitType: "EQUAL",
+			ExpenseDate: "2025-01-01", Currency: "USD", PaidBy: alice.ID, AddedBy: alice.ID,
+		}
+		parts := []store.ExpenseParticipant{{UserID: alice.ID, Amount: 1000}}
+		if _, err := h.st.CreateExpense(ctx, e, parts); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	limited := body(t, h.get("/activity"))
+	if !strings.Contains(limited, "feed.show_all") && !strings.Contains(limited, "Show all") {
+		t.Fatal("limited activity page missing show-all link")
+	}
+
+	all := body(t, h.get("/activity?"+url.Values{"all": {"1"}}.Encode()))
+	if strings.Contains(all, "Show all") {
+		t.Fatal("?all=1 page should not show the show-all link")
 	}
 }
 

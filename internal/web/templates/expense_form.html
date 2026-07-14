@@ -42,7 +42,7 @@
 
   <p class="paidby-line">{{.T "form.paid_by"}}
     <details class="picker" data-picker="paidby">
-      <summary class="pill" aria-haspopup="true">{{range .Data.Candidates}}{{if eq .ID $.Data.PaidBy}}<span class="ava sm" style="--c:{{avatarColor .ID}}">{{initials .Name .Name}}</span> {{.Name}}{{end}}{{end}} <svg class="icon" style="width:13px;height:13px"><use href="/static/icons.svg#chev-down"></use></svg></summary>
+      <summary class="pill" aria-haspopup="true">{{range .Data.Candidates}}{{if eq .ID $.Data.PaidBy}}<span class="ava sm" style="--c:{{avatarColor .ID}}">{{initials .Name .Name}}</span> {{.Name}}{{end}}{{end}} <svg class="icon" style="width:13px;height:13px"><use href="{{asset "icons.svg"}}#chev-down"></use></svg></summary>
       <div class="picker-panel" role="menu">
         {{range .Data.Candidates}}<label class="picker-opt"><input type="radio" name="paid_by" value="{{.ID}}"{{if eq .ID $.Data.PaidBy}} checked{{end}}><span class="ava sm" style="--c:{{avatarColor .ID}}">{{initials .Name .Name}}</span> {{.Name}}</label>{{end}}
       </div>
@@ -72,7 +72,7 @@
     {{range .Data.Candidates}}
     <label class="p-row">
       <input class="inc" type="checkbox" name="include_{{.ID}}" value="1"{{if .Included}} checked{{end}} aria-label="{{$.T "form.include"}} {{.Name}}">
-      <span class="tick"><svg class="icon" style="width:12px;height:12px"><use href="/static/icons.svg#check"></use></svg></span>
+      <span class="tick"><svg class="icon" style="width:12px;height:12px"><use href="{{asset "icons.svg"}}#check"></use></svg></span>
       <span class="ava sm" style="--c:{{avatarColor .ID}}">{{initials .Name .Name}}</span>
       <span class="p-name">{{.Name}}</span>
       <span class="p-val"><span class="p-preview" aria-hidden="true"></span><input type="text" name="value_{{.ID}}" value="{{.Value}}" size="8" aria-label="{{$.T "form.split_value"}} {{.Name}}"></span>
@@ -99,9 +99,9 @@
   {{end}}
 
   <div class="form-actions">
-    <button type="submit" class="a-btn"><svg class="icon"><use href="/static/icons.svg#check"></use></svg> {{.Data.SubmitLabel}}</button>
+    <button type="submit" class="a-btn"><svg class="icon"><use href="{{asset "icons.svg"}}#check"></use></svg> {{.Data.SubmitLabel}}</button>
     <a class="a-btn ghost" href="{{.Data.CancelURL}}">{{.T "action.cancel"}}</a>
   </div>
 </form>
-<script src="/static/expense_form.js" defer></script>
+<script src="{{asset "expense_form.js"}}" defer></script>
 {{end}}

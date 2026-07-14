@@ -9,8 +9,8 @@ expenses between groups**.
 ## Stack
 
 - **Go 1.26+**, [chi](https://github.com/go-chi/chi) router, **stdlib
-  `html/template`** views, progressive-enhancement HTML (htmx-ready, works
-  without JS).
+  `html/template`** views, progressive-enhancement HTML with **htmx `hx-boost`**
+  (AJAX page swaps for snappy navigation; every flow still works without JS).
 - **SQLite (default, pure-Go `modernc.org/sqlite`)** or **PostgreSQL** — chosen
   by the `DATABASE_URL` scheme. No CGO; one binary.
 - Hand-rolled sessions (`argon2id` passwords, CSRF, secure cookies), embedded
@@ -20,8 +20,10 @@ expenses between groups**.
 > `html/template` (not `templ`) and queries use `database/sql` (not `sqlc`) —
 > both are documented alternatives in the spec. Styling is a hand-written
 > compact CSS in place of the Tailwind CLI (swap in `web/assets/app.css`).
-> `web/assets/htmx.min.js` is a placeholder; drop in the real htmx build to
-> enable fragment swaps. All core flows already work without JavaScript.
+> `web/assets/htmx.min.js` vendors htmx 2.0.10 with `hx-boost` enabled on
+> `<body>` — navigation swaps the page body over AJAX instead of a full reload.
+> Forms that change identity or theme (login, register, logout, profile) opt
+> out with `hx-boost="false"`. All core flows still work without JavaScript.
 
 ## Quick start
 

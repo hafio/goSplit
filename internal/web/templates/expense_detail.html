@@ -8,10 +8,10 @@
   </div>
   {{if not .Deleted}}
   <div class="m-actions">
-    {{if .Movable}}<a class="a-btn ghost icon-only" href="/expenses/{{.ID}}/move" aria-label="{{$.T "detail.edit"}}" title="{{$.T "detail.edit"}}"><svg class="icon"><use href="/static/icons.svg#pencil"></use></svg></a>{{end}}
+    {{if .Movable}}<a class="a-btn ghost icon-only" href="/expenses/{{.ID}}/move" aria-label="{{$.T "detail.edit"}}" title="{{$.T "detail.edit"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#pencil"></use></svg></a>{{end}}
     <form method="post" action="/expenses/{{.ID}}/delete" onsubmit="return confirm('{{$.T "detail.delete_confirm"}}')">
       {{template "csrf" $.CSRF}}
-      <button type="submit" class="a-btn danger-ghost icon-only" aria-label="{{$.T "detail.delete"}}" title="{{$.T "detail.delete"}}"><svg class="icon"><use href="/static/icons.svg#trash"></use></svg></button>
+      <button type="submit" class="a-btn danger-ghost icon-only" aria-label="{{$.T "detail.delete"}}" title="{{$.T "detail.delete"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#trash"></use></svg></button>
     </form>
   </div>
   {{end}}

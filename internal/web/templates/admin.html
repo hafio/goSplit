@@ -2,7 +2,7 @@
 <div class="m-head">
   <h1>{{.T "admin.users_title"}}</h1>
   <details class="add-inline"{{if .Error}} open{{end}}>
-    <summary class="a-btn sec sm"><svg class="icon"><use href="/static/icons.svg#user-plus"></use></svg> {{.T "admin.add_user"}}</summary>
+    <summary class="a-btn sec sm"><svg class="icon"><use href="{{asset "icons.svg"}}#user-plus"></use></svg> {{.T "admin.add_user"}}</summary>
     <form method="post" action="/admin/users/create" class="adm-editor">
       {{template "csrf" .CSRF}}
       <div class="adm-grid">
@@ -18,7 +18,7 @@
         <label>{{.T "form.password"}}<input type="password" name="password" autocomplete="new-password" minlength="8" placeholder="{{.T "admin.password_placeholder"}}"></label>
       </div>
       <div class="adm-actions">
-        <button type="submit" class="a-btn sm"><svg class="icon"><use href="/static/icons.svg#check"></use></svg> {{.T "admin.create_user"}}</button>
+        <button type="submit" class="a-btn sm"><svg class="icon"><use href="{{asset "icons.svg"}}#check"></use></svg> {{.T "admin.create_user"}}</button>
       </div>
     </form>
   </details>
@@ -44,7 +44,7 @@
           </div>
           <div class="l-sub">{{.Email}} · {{.Currency}} · {{.PreferredLanguage}}</div>
         </div>
-        <svg class="icon chev-d"><use href="/static/icons.svg#chev-down"></use></svg>
+        <svg class="icon chev-d"><use href="{{asset "icons.svg"}}#chev-down"></use></svg>
       </div>
     </summary>
     <div class="adm-editor">
@@ -65,12 +65,12 @@
           </label>
         </div>
         <div class="adm-actions">
-          <button type="submit" class="a-btn sm"><svg class="icon"><use href="/static/icons.svg#check"></use></svg> {{$.T "action.save"}}</button>
+          <button type="submit" class="a-btn sm"><svg class="icon"><use href="{{asset "icons.svg"}}#check"></use></svg> {{$.T "action.save"}}</button>
           <span class="adm-pw">
             <input type="password" name="password" autocomplete="new-password" placeholder="{{$.T "admin.new_password_placeholder"}}" aria-label="{{$.T "admin.new_password_for"}} {{.Email}}">
-            <button type="submit" formaction="/admin/users/{{.ID}}/password" class="a-btn sec sm"><svg class="icon"><use href="/static/icons.svg#key"></use></svg> {{$.T "admin.set"}}</button>
+            <button type="submit" formaction="/admin/users/{{.ID}}/password" class="a-btn sec sm"><svg class="icon"><use href="{{asset "icons.svg"}}#key"></use></svg> {{$.T "admin.set"}}</button>
           </span>
-          <button type="submit" formaction="/admin/users/{{.ID}}/magic" class="a-btn sec sm"><svg class="icon"><use href="/static/icons.svg#link"></use></svg> {{$.T "admin.magic_link"}}</button>
+          <button type="submit" formaction="/admin/users/{{.ID}}/magic" class="a-btn sec sm"><svg class="icon"><use href="{{asset "icons.svg"}}#link"></use></svg> {{$.T "admin.magic_link"}}</button>
           <button type="submit" formaction="/admin/users/{{.ID}}/toggle" class="a-btn ghost sm">{{if .IsActive}}{{$.T "admin.deactivate"}}{{else}}{{$.T "admin.activate"}}{{end}}</button>
         </div>
       </form>

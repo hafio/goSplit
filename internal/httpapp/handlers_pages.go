@@ -83,10 +83,18 @@ func (s *Server) handleFriends(w http.ResponseWriter, r *http.Request) {
 	for _, id := range u.HiddenFriendIDs {
 		hidden[id] = true
 	}
+	cum, err := s.Store.CumulatedBalances(ctx, u.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	balsByFriend := map[int64][]store.CumulatedBalance{}
+	for _, c := range cum {
+		balsByFriend[c.FriendID] = append(balsByFriend[c.FriendID], c)
+	}
 	rows := make([]friendRow, 0, len(friends))
 	for _, f := range friends {
-		bals, _ := s.Store.FriendBalance(ctx, u.ID, f.ID)
-		rows = append(rows, friendRow{User: f, Balances: bals, Hidden: hidden[f.ID]})
+		rows = append(rows, friendRow{User: f, Balances: balsByFriend[f.ID], Hidden: hidden[f.ID]})
 	}
 	s.render(w, r, "friends", "title.friends", map[string]any{"Friends": rows})
 }
@@ -107,11 +115,13 @@ func (s *Server) handleFriendDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	bals, _ := s.Store.FriendBalance(ctx, u.ID, fid)
 	filter, view := parseFilter(r)
+	showAll := applyFeedLimit(r, &filter)
 	expenses, err := s.Store.ListFriendExpenses(ctx, u.ID, fid, filter)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	href := showAllHref(r, showAll, &expenses)
 	hidden := false
 	for _, id := range u.HiddenFriendIDs {
 		if id == fid {
@@ -123,6 +133,7 @@ func (s *Server) handleFriendDetail(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "friend", friend.Name, map[string]any{
 		"Friend": friend, "Balances": bals, "Hidden": hidden,
 		"Expenses": groupByMonth(s.buildRows(ctx, nc, u.ID, expenses)), "Filter": view,
+		"ShowAllHref": href,
 	})
 }
 
@@ -172,15 +183,19 @@ func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	counts, err := s.Store.GroupMemberCounts(ctx, u.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	nets, err := s.Store.UserGroupNets(ctx, u.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	rows := make([]groupRow, 0, len(groups))
 	for _, g := range groups {
-		members, _ := s.Store.GroupMembers(ctx, g.ID)
-		bals, _ := s.Store.UserGroupBalances(ctx, g.ID, u.ID)
-		perCur := map[string]int64{}
-		for _, b := range bals {
-			perCur[b.Currency] += b.Amount
-		}
-		rows = append(rows, groupRow{Group: g, MemberCount: len(members), Balances: sortedNets(perCur)})
+		rows = append(rows, groupRow{Group: g, MemberCount: counts[g.ID], Balances: sortedNets(nets[g.ID])})
 	}
 	s.render(w, r, "groups", "title.groups", map[string]any{"Groups": rows})
 }
@@ -215,7 +230,9 @@ func (s *Server) handleGroupDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	members, _ := s.Store.GroupMembers(ctx, gid)
 	filter, view := parseFilter(r)
+	showAll := applyFeedLimit(r, &filter)
 	expenses, _ := s.Store.ListGroupExpenses(ctx, gid, filter)
+	href := showAllHref(r, showAll, &expenses)
 	nc := s.newNameCache()
 
 	simplified := s.computeGroupSettlements(ctx, nc, gid)
@@ -232,6 +249,7 @@ func (s *Server) handleGroupDetail(w http.ResponseWriter, r *http.Request) {
 		"JoinURL":    fmt.Sprintf("%s/g/%s", s.Cfg.BaseURL, g.PublicID),
 		"Simplified": simplified, "Position": sortedNets(perCur),
 		"Expenses": groupByMonth(s.buildRows(ctx, nc, u.ID, expenses)), "Filter": view,
+		"ShowAllHref": href,
 	})
 }
 
@@ -376,14 +394,17 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 			filter.GroupID = &id
 		}
 	}
+	showAll := applyFeedLimit(r, &filter)
 	expenses, err := s.Store.ListActivity(ctx, u.ID, filter)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	href := showAllHref(r, showAll, &expenses)
 	nc := s.newNameCache()
 	s.render(w, r, "activity", "title.activity", map[string]any{
 		"Items": groupByMonth(s.buildRows(ctx, nc, u.ID, expenses)), "Filter": view,
+		"ShowAllHref": href,
 	})
 }
 

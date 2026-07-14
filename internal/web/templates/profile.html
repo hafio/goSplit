@@ -3,7 +3,7 @@
 <div class="cols">
   <section>
     <h2>{{.T "profile.details"}}</h2>
-    <form method="post" action="/profile" class="stack" enctype="multipart/form-data">
+    <form method="post" action="/profile" class="stack" enctype="multipart/form-data" hx-boost="false">
       {{template "csrf" .CSRF}}
       <label>{{.T "form.name"}}<input type="text" name="name" value="{{.User.Name}}"></label>
       <label>{{.T "form.email"}}<input type="email" value="{{.User.Email}}" disabled></label>
@@ -32,7 +32,7 @@
 
   <section>
     <h2>{{.T "profile.change_password"}}</h2>
-    <form method="post" action="/profile/password" class="stack">
+    <form method="post" action="/profile/password" class="stack" hx-boost="false">
       {{template "csrf" .CSRF}}
       <label>{{.T "profile.current_password"}}<input type="password" name="current" autocomplete="current-password"></label>
       <label>{{.T "auth.new_password"}}<input type="password" name="password" minlength="8" required autocomplete="new-password"></label>
@@ -57,5 +57,5 @@
     <a class="btn secondary" href="/profile/export">{{.T "profile.export"}}</a>
   </section>
 </div>
-<script src="/static/push.js" defer></script>
+<script src="{{asset "push.js"}}" defer></script>
 {{end}}

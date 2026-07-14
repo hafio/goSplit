@@ -36,7 +36,7 @@
         {{range currencyCodes}}<option value="{{.}}"{{if eq . $.Data.FromCurrency}} selected{{end}}>{{.}}</option>{{end}}
       </select>
     </div>
-    <div class="cv-arrow"><svg class="icon"><use href="/static/icons.svg#arrow-right"></use></svg></div>
+    <div class="cv-arrow"><svg class="icon"><use href="{{asset "icons.svg"}}#arrow-right"></use></svg></div>
     <div class="cv-side">
       <span class="lbl">{{.T "convert.to"}}</span>
       <input class="amt" type="text" inputmode="decimal" name="to_amount" id="cvTo" value="" required aria-label="{{.T "convert.to"}}">
@@ -51,7 +51,7 @@
     <input id="cvRate" type="text" inputmode="decimal" value="" aria-label="{{.T "convert.rate"}}">
     <span class="eqn" id="cvRateTo">{{.Data.ToCurrency}}</span>
     <span class="rate-src fetched" id="cvSrc" data-fetched="{{.T "convert.fetched"}}" data-custom="{{.T "convert.custom"}}">{{.T "convert.fetched"}}</span>
-    <button type="button" class="iconbtn" id="cvRefresh" title="{{.T "convert.refetch"}}" aria-label="{{.T "convert.refetch"}}"><svg class="icon"><use href="/static/icons.svg#repeat"></use></svg></button>
+    <button type="button" class="iconbtn" id="cvRefresh" title="{{.T "convert.refetch"}}" aria-label="{{.T "convert.refetch"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#repeat"></use></svg></button>
   </div>
 
   <p class="cv-summary" id="cvSummary"></p>
@@ -59,9 +59,9 @@
   <div class="date-row" style="margin-top:.6rem">
     <input type="date" name="date" value="{{.Data.Date}}" aria-label="{{.T "form.date"}}">
     <div style="flex:1"></div>
-    <button type="submit" class="a-btn"><svg class="icon"><use href="/static/icons.svg#check"></use></svg> {{.T "expense.convert"}}</button>
+    <button type="submit" class="a-btn"><svg class="icon"><use href="{{asset "icons.svg"}}#check"></use></svg> {{.T "expense.convert"}}</button>
     <a class="a-btn ghost" href="/friends/{{.Data.FriendID}}">{{.T "action.cancel"}}</a>
   </div>
 </form>
-<script src="/static/convert.js" defer></script>
+<script src="{{asset "convert.js"}}" defer></script>
 {{end}}

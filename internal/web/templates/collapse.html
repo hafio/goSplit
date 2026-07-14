@@ -6,7 +6,7 @@
   <label>{{.T "archive.before"}}
     <input type="date" name="before" value="{{if .Data.Before}}{{.Data.Before}}{{else}}{{.Data.Today}}{{end}}" required>
   </label>
-  <button type="submit" class="a-btn"><svg class="icon"><use href="/static/icons.svg#search"></use></svg> {{.T "archive.preview"}}</button>
+  <button type="submit" class="a-btn"><svg class="icon"><use href="{{asset "icons.svg"}}#search"></use></svg> {{.T "archive.preview"}}</button>
 </form>
 
 {{if .Data.Before}}
@@ -19,7 +19,7 @@
     <form method="post" action="{{.Data.Action}}" class="group-actions" onsubmit="return confirm('{{.T "archive.confirm_prompt"}}')">
       {{template "csrf" .CSRF}}
       <input type="hidden" name="before" value="{{.Data.Before}}">
-      <button type="submit" class="a-btn"><svg class="icon"><use href="/static/icons.svg#archive"></use></svg> {{.T "archive.confirm"}} ({{.Data.Total}})</button>
+      <button type="submit" class="a-btn"><svg class="icon"><use href="{{asset "icons.svg"}}#archive"></use></svg> {{.T "archive.confirm"}} ({{.Data.Total}})</button>
       <a class="a-btn ghost" href="{{.Data.CancelURL}}">{{.T "action.cancel"}}</a>
     </form>
   </div>

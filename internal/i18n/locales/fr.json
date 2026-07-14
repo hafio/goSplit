@@ -88,6 +88,7 @@
   "feed.moved": "déplacée",
   "feed.deleted": "supprimée",
   "feed.empty": "Aucune dépense ne correspond.",
+  "feed.show_all": "Tout afficher",
   "profile.appearance": "Apparence",
   "profile.theme_color": "Couleur du thème",
   "theme.burgundy": "Bordeaux",

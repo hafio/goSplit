@@ -1,8 +1,9 @@
-/* GoSplit service worker: caches the offline shell + static assets. Network-
- * first for both navigations and static assets (so a redeploy's fresh CSS/JS is
- * picked up immediately), with cache fallback when offline. Bump CACHE on any
- * change to this file so old caches are purged on activate. */
-const CACHE = 'gosplit-v2';
+/* GoSplit service worker: caches the offline shell + static assets. Fingerprinted
+ * /static/* assets (?v=<hash>) are cache-first — the URL changes when content
+ * does, so a stale cache entry is never served for new content. Navigations and
+ * other GETs stay network-first with cache fallback when offline. Bump CACHE on
+ * any change to this file so old caches are purged on activate. */
+const CACHE = 'gosplit-v3';
 const SHELL = ['/offline', '/static/app.css', '/static/icon.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
@@ -41,8 +42,20 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(fetch(req).catch(() => caches.match('/offline')));
     return;
   }
-  // Static assets: network-first so redeploys are picked up right away; refresh
-  // the cache on success and fall back to it only when the network fails.
+  const url = new URL(req.url);
+  if (url.origin === location.origin && url.pathname.startsWith('/static/')) {
+    // Fingerprinted static assets: cache-first (URL changes when content does).
+    e.respondWith(
+      caches.match(req).then((hit) => hit || fetch(req).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        return res;
+      }).catch(() => caches.match(req, { ignoreSearch: true }))),
+    );
+    return;
+  }
+  // Other GETs (e.g. /uploads): network-first so fresh content is picked up
+  // right away; refresh the cache on success and fall back only when offline.
   e.respondWith(
     fetch(req).then((res) => {
       const copy = res.clone();
