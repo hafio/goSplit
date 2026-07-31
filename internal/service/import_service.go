@@ -92,6 +92,7 @@ func (s *Service) ImportFromSplitwise(ctx context.Context, actor *store.User, ap
 		} else {
 			group, err = s.Store.CreateGroup(ctx, &store.Group{
 				Name: g.Name, CreatedBy: actor.ID, DefaultCurrency: actor.DefaultCurrency,
+				SimplifyDebts:    true, // simplification on by default, as in group-create
 				SplitwiseGroupID: sql.NullString{String: swID, Valid: true},
 			})
 			if err != nil {

@@ -43,6 +43,7 @@
 
 <div class="group-actions">
   <a class="a-btn" href="/expenses/new?group={{.Data.Group.ID}}"><svg class="icon"><use href="{{asset "icons.svg"}}#plus"></use></svg> {{.T "expense.add"}}</a>
+  {{if .Data.Simplified}}<a class="a-btn sec" href="/groups/{{.Data.Group.ID}}/settle"><svg class="icon"><use href="{{asset "icons.svg"}}#banknote"></use></svg> {{.T "group.settle_all"}}</a>{{end}}
 </div>
 
 <h2>{{if .Data.Group.SimplifyDebts}}{{.T "group.simplified"}}{{else}}{{.T "title.balances"}}{{end}}</h2>
@@ -57,7 +58,7 @@
       <div class="l-sub">{{.FromName}} → {{.ToName}}</div>
       <div class="l-title" style="font-size:.9rem">{{money .Amount .Currency}} {{.Currency}}</div>
     </div>
-    {{if eq .FromID $root.User.ID}}<a class="a-btn sec sm" href="/friends/{{.ToID}}/settle"><svg class="icon"><use href="{{asset "icons.svg"}}#banknote"></use></svg> {{$root.T "expense.settle"}}</a>{{end}}
+    {{if eq .FromID $root.User.ID}}<a class="a-btn sec sm" href="/groups/{{$root.Data.Group.ID}}/settle/{{.ToID}}?cur={{.Currency}}"><svg class="icon"><use href="{{asset "icons.svg"}}#banknote"></use></svg> {{$root.T "expense.settle"}}</a>{{else if eq .ToID $root.User.ID}}<a class="a-btn sec sm" href="/groups/{{$root.Data.Group.ID}}/settle/{{.FromID}}?cur={{.Currency}}"><svg class="icon"><use href="{{asset "icons.svg"}}#banknote"></use></svg> {{$root.T "expense.settle"}}</a>{{end}}
   </div>
   {{end}}
 </div>

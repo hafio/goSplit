@@ -1,0 +1,33 @@
+{{define "content"}}
+{{$root := .}}
+<div class="m-head"><h1>{{.T "settle.all_title"}} · {{.Data.Group.Name}}</h1></div>
+{{if .Data.Transfers}}
+<p class="muted">{{.T "settle.all_intro"}}</p>
+<div class="card">
+  {{range .Data.Transfers}}
+  <div class="l-row">
+    <span class="ava sm" style="--c:{{avatarColor .FromID}}">{{initials .FromName .FromName}}</span>
+    <svg class="icon" style="width:14px"><use href="{{asset "icons.svg"}}#arrow-right"></use></svg>
+    <span class="ava sm" style="--c:{{avatarColor .ToID}}">{{initials .ToName .ToName}}</span>
+    <div class="l-main">
+      <div class="l-sub">{{.FromName}} → {{.ToName}}</div>
+      <div class="l-title" style="font-size:.9rem">{{money .Amount .Currency}} {{.Currency}}</div>
+    </div>
+  </div>
+  {{end}}
+</div>
+<form method="post" action="/groups/{{.Data.Group.ID}}/settle" class="stack" onsubmit="return confirm('{{.T "settle.confirm"}}')">
+  {{template "csrf" .CSRF}}
+  <label>{{.T "form.date"}}
+    <input type="date" name="date" value="{{.Data.Date}}" required>
+  </label>
+  <div class="group-actions">
+    <button type="submit" class="a-btn"><svg class="icon"><use href="{{asset "icons.svg"}}#banknote"></use></svg> {{.T "settle.confirm"}}</button>
+    <a class="a-btn ghost" href="/groups/{{.Data.Group.ID}}">{{.T "action.cancel"}}</a>
+  </div>
+</form>
+{{else}}
+<p class="muted">{{.T "settle.all_none"}}</p>
+<a class="a-btn ghost" href="/groups/{{.Data.Group.ID}}">{{.T "action.cancel"}}</a>
+{{end}}
+{{end}}

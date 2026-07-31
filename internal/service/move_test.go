@@ -114,8 +114,9 @@ func TestEditSameGroupNoAck(t *testing.T) {
 	}
 }
 
-// TestMoveExpenseUnauthorized confirms a user who is not the payer/creator, a
-// participant, or a group member cannot edit (the unified move/edit path).
+// TestMoveExpenseUnauthorized confirms a user who is not the payer/creator or a
+// participant cannot edit (the unified move/edit path). Group membership alone is
+// not enough — see TestMoveExpenseGroupMemberNotParticipant.
 func TestMoveExpenseUnauthorized(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newTestService(t)
@@ -133,6 +134,34 @@ func TestMoveExpenseUnauthorized(t *testing.T) {
 	}
 	if _, err := svc.MoveExpense(ctx, orig.ID, in, true); err != ErrNotEditor {
 		t.Fatalf("outsider edit: got %v, want ErrNotEditor", err)
+	}
+}
+
+// TestMoveExpenseGroupMemberNotParticipant proves the tightened rule: a member of
+// the expense's group who is not part of the transaction (not payer, creator, or a
+// participant) still cannot edit it.
+func TestMoveExpenseGroupMemberNotParticipant(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	a, _ := svc.Store.CreateUser(ctx, &store.User{Name: "A", Email: "a@x.com"})
+	b, _ := svc.Store.CreateUser(ctx, &store.User{Name: "B", Email: "b@x.com"})
+	c, _ := svc.Store.CreateUser(ctx, &store.User{Name: "C", Email: "c@x.com"})
+	g, _ := svc.Store.CreateGroup(ctx, &store.Group{Name: "G", CreatedBy: a.ID, DefaultCurrency: "USD"})
+	for _, id := range []int64{a.ID, b.ID, c.ID} {
+		_ = svc.Store.AddGroupMember(ctx, g.ID, id)
+	}
+	// Expense split only between A and B; C is a group member but not a participant.
+	orig, _ := svc.Store.CreateExpense(ctx, &store.Expense{
+		Name: "Dinner", Category: "general", Amount: 1000, SplitType: "EQUAL", ExpenseDate: "2026-01-10",
+		Currency: "USD", PaidBy: a.ID, AddedBy: a.ID, GroupID: nullInt(&g.ID),
+	}, []store.ExpenseParticipant{{UserID: a.ID, Amount: 500}, {UserID: b.ID, Amount: -500}})
+
+	in := ExpenseInput{
+		Name: "Dinner", Total: 1000, Method: split.EQUAL, Currency: "USD", ExpenseDate: "2026-01-10",
+		PaidBy: a.ID, GroupID: &g.ID, Lines: []split.Line{{UserID: a.ID}, {UserID: b.ID}}, ActorID: c.ID,
+	}
+	if _, err := svc.MoveExpense(ctx, orig.ID, in, true); err != ErrNotEditor {
+		t.Fatalf("group-member-non-participant edit: got %v, want ErrNotEditor", err)
 	}
 }
 

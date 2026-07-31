@@ -31,13 +31,18 @@ var (
 	ErrNotMember       = errors.New("all participants must be members of the target group")
 	ErrNotMovable      = errors.New("this expense cannot be moved")
 	ErrMoveNoAck       = errors.New("you must acknowledge the recalculated split")
-	ErrNotEditor       = errors.New("you can't edit this expense")
+	ErrNotEditor       = errors.New("you can't edit or delete this expense")
 	ErrExpenseNotFound = store.ErrNotFound
 )
 
 // AddExpense computes the zero-sum participant rows via the split engine and
 // persists the expense.
 func (s *Service) AddExpense(ctx context.Context, in ExpenseInput) (*store.Expense, error) {
+	if in.GroupID != nil {
+		if err := s.assertMembers(ctx, *in.GroupID, in.Lines, in.PaidBy); err != nil {
+			return nil, err
+		}
+	}
 	parts, err := s.buildParticipants(in)
 	if err != nil {
 		return nil, err
@@ -59,21 +64,20 @@ func (s *Service) AddExpense(ctx context.Context, in ExpenseInput) (*store.Expen
 	return created, nil
 }
 
-// canEditExpense reports whether actor may edit an expense: payer/creator, a
-// participant, or a member of its group.
-func (s *Service) canEditExpense(ctx context.Context, actorID int64, e *store.Expense) bool {
+// CanEditExpense reports whether actorID is a member of the transaction — its
+// payer, its creator, or one of its participants — and so may edit or delete it.
+// Group membership alone is NOT enough: a group member who is not part of this
+// expense can neither edit nor delete it.
+func (s *Service) CanEditExpense(ctx context.Context, actorID int64, e *store.Expense) bool {
 	if e.PaidBy == actorID || e.AddedBy == actorID {
 		return true
 	}
-	if parts, err := s.Store.GetParticipants(ctx, e.ID); err == nil {
-		for _, p := range parts {
-			if p.UserID == actorID {
-				return true
-			}
-		}
+	parts, err := s.Store.GetParticipants(ctx, e.ID)
+	if err != nil {
+		return false
 	}
-	if e.GroupID.Valid {
-		if ok, _ := s.Store.IsGroupMember(ctx, e.GroupID.Int64, actorID); ok {
+	for _, p := range parts {
+		if p.UserID == actorID {
 			return true
 		}
 	}
@@ -111,7 +115,8 @@ func (s *Service) Settle(ctx context.Context, sender, receiver int64, amount int
 // group member). The recalculated-split acknowledgment (acknowledged=true) is
 // required ONLY when the expense is relocated to a different group — a plain
 // in-place edit (same group, incl. direct→direct) needs no ack. Eligibility
-// (§5.2) and target membership are validated. created_at/added_by are preserved;
+// (§5.2) and target membership are validated. The actor must be a member of the
+// transaction (payer/creator/participant). created_at/added_by are preserved;
 // the note comes from the form (in.Note) and the receipt (file_key) is carried
 // over since the form doesn't resubmit it.
 func (s *Service) MoveExpense(ctx context.Context, origID string, in ExpenseInput, acknowledged bool) (*store.Expense, error) {
@@ -119,7 +124,7 @@ func (s *Service) MoveExpense(ctx context.Context, origID string, in ExpenseInpu
 	if err != nil {
 		return nil, err
 	}
-	if !s.canEditExpense(ctx, in.ActorID, orig) {
+	if !s.CanEditExpense(ctx, in.ActorID, orig) {
 		return nil, ErrNotEditor
 	}
 	if !movable(orig) {
@@ -144,6 +149,21 @@ func (s *Service) MoveExpense(ctx context.Context, origID string, in ExpenseInpu
 		return nil, err
 	}
 	return s.Store.GetExpense(ctx, origID)
+}
+
+// DeleteExpense soft-deletes an expense after confirming the actor is a member of
+// the transaction (payer/creator/participant). Deleting a settlement is the
+// supported way to reverse it: the row leaves balance_view (deleted_at IS NOT
+// NULL) and the balance is restored.
+func (s *Service) DeleteExpense(ctx context.Context, id string, actorID int64) error {
+	e, err := s.Store.GetExpense(ctx, id)
+	if err != nil {
+		return err // ErrExpenseNotFound
+	}
+	if !s.CanEditExpense(ctx, actorID, e) {
+		return ErrNotEditor
+	}
+	return s.Store.SoftDeleteExpense(ctx, id, actorID)
 }
 
 // movable enforces §5.2 eligibility: currency-conversion pairs and recurrence

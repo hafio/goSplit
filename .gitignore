@@ -12,11 +12,13 @@
 # Env
 .env
 
-# Coverage / test artifacts
+# Coverage / test artifacts (written to scripts/logs/ by the cov task)
 coverage.out
 coverage.html
+# Stray coverage profile from a mis-run cov command (unexpanded $prof variable)
+$prof
 
-# Dev script logs
+# Dev script logs (includes coverage.out / coverage.html)
 scripts/logs/
 
 # Golden fixtures are committed; local scratch is not

@@ -235,7 +235,7 @@ func (s *Server) handleGroupDetail(w http.ResponseWriter, r *http.Request) {
 	href := showAllHref(r, showAll, &expenses)
 	nc := s.newNameCache()
 
-	simplified := s.computeGroupSettlements(ctx, nc, gid)
+	simplified := s.computeGroupSettlements(ctx, nc, gid, g.SimplifyDebts)
 
 	// The current user's own per-currency net position within this group.
 	gbals, _ := s.Store.UserGroupBalances(ctx, gid, u.ID)
@@ -253,12 +253,16 @@ func (s *Server) handleGroupDetail(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// computeGroupSettlements derives per-currency net positions from the group's
-// balances and runs debt simplification (spec §9) for display. The balance_view
-// already emits both directions, so each unordered pair is counted once.
-func (s *Server) computeGroupSettlements(ctx context.Context, nc *nameCache, gid int64) []settlementRow {
+// computeGroupSettlements turns the group's balances into the payment rows shown
+// on the group page. The balance_view already emits both directions, so each
+// unordered pair is counted once. With simplify set (the group's SimplifyDebts
+// flag) the per-currency nets go through debt simplification (spec §9);
+// otherwise each pair keeps its own raw debt, oriented debtor → creditor.
+func (s *Server) computeGroupSettlements(ctx context.Context, nc *nameCache, gid int64, simplify bool) []settlementRow {
 	rows, _ := s.Store.GroupBalances(ctx, gid)
-	netByCur := map[string]map[int64]int64{}
+	// One row per unordered pair + currency. b.Amount is user_id's net vs
+	// friend_id: positive means friend_id owes user_id.
+	pairs := make([]store.Balance, 0, len(rows))
 	seen := map[string]bool{}
 	for _, b := range rows {
 		key := fmt.Sprintf("%s|%d|%d", b.Currency, min64(b.UserID, b.FriendID), max64(b.UserID, b.FriendID))
@@ -266,10 +270,16 @@ func (s *Server) computeGroupSettlements(ctx context.Context, nc *nameCache, gid
 			continue
 		}
 		seen[key] = true
+		pairs = append(pairs, b)
+	}
+	if !simplify {
+		return rawSettlementRows(ctx, nc, pairs)
+	}
+	netByCur := map[string]map[int64]int64{}
+	for _, b := range pairs {
 		if netByCur[b.Currency] == nil {
 			netByCur[b.Currency] = map[int64]int64{}
 		}
-		// b.Amount is user_id's net vs friend_id for this pair.
 		netByCur[b.Currency][b.UserID] += b.Amount
 		netByCur[b.Currency][b.FriendID] -= b.Amount
 	}
@@ -288,6 +298,33 @@ func (s *Server) computeGroupSettlements(ctx context.Context, nc *nameCache, gid
 			})
 		}
 	}
+	return out
+}
+
+// rawSettlementRows renders each pair's own debt without simplification, oriented
+// debtor → creditor, in a deterministic order.
+func rawSettlementRows(ctx context.Context, nc *nameCache, pairs []store.Balance) []settlementRow {
+	out := make([]settlementRow, 0, len(pairs))
+	for _, b := range pairs {
+		from, to, amt := b.FriendID, b.UserID, b.Amount
+		if b.Amount < 0 {
+			from, to, amt = b.UserID, b.FriendID, -b.Amount
+		}
+		out = append(out, settlementRow{
+			FromID: from, ToID: to,
+			FromName: nc.user(ctx, from), ToName: nc.user(ctx, to),
+			Amount: amt, Currency: b.Currency,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Currency != out[j].Currency {
+			return out[i].Currency < out[j].Currency
+		}
+		if out[i].FromID != out[j].FromID {
+			return out[i].FromID < out[j].FromID
+		}
+		return out[i].ToID < out[j].ToID
+	})
 	return out
 }
 
@@ -314,7 +351,9 @@ func (s *Server) handleGroupCreate(w http.ResponseWriter, r *http.Request) {
 	if cur == "" {
 		cur = u.DefaultCurrency
 	}
-	g, err := s.Store.CreateGroup(ctx, &store.Group{Name: name, CreatedBy: u.ID, DefaultCurrency: cur})
+	// Debt simplification on by default; the overflow menu turns it off to show
+	// raw pairwise balances instead.
+	g, err := s.Store.CreateGroup(ctx, &store.Group{Name: name, CreatedBy: u.ID, DefaultCurrency: cur, SimplifyDebts: true})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

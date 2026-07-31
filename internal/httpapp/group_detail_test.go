@@ -15,6 +15,7 @@ func TestGroupDetailPolish(t *testing.T) {
 	h.register("Alice", "alice@example.com", "password123")
 	h.post("/friends/add", url.Values{"email": {"bob@example.com"}})
 	h.post("/groups/create", url.Values{"name": {"Trip"}, "currency": {"USD"}})
+	h.post("/groups/1/invite", url.Values{"email": {"bob@example.com"}}) // Bob must be a member to be a participant
 
 	// Bob(2) pays for everyone → Alice(1) owes Bob, so Alice sees a Settle button.
 	h.post("/expenses", url.Values{
@@ -29,9 +30,10 @@ func TestGroupDetailPolish(t *testing.T) {
 			t.Errorf("group page missing %q", want)
 		}
 	}
-	// Alice owes Bob → settle link to bob's friend settle route.
-	if !strings.Contains(b, `/friends/2/settle`) {
-		t.Errorf("expected a settle button linking to /friends/2/settle")
+	// Alice owes Bob → settle link scoped to this group, so the payment clears the
+	// group's own balance (see settle_test.go).
+	if !strings.Contains(b, `/groups/1/settle/2`) {
+		t.Errorf("expected a settle button linking to /groups/1/settle/2")
 	}
 
 	// Overflow archive form still works (posts and redirects).

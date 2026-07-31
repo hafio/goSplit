@@ -49,13 +49,15 @@ function Task-Vet   { Step 'vet';   if ((Run 'vet'   { go vet ./... })   -eq 0) 
 function Task-Test  { Step 'test';  if ((Run 'test'  { go test ./... -count=1  })  -eq 0) { Ok 'test' }  else { Die 'test' } }
 function Task-Cov {
   Step 'cov'
-  $prof = Join-Path $ScriptDir 'coverage.out'
+  # Coverage artifacts live under logs/ (gitignored) alongside the task logs.
+  $prof = Join-Path $LogDir 'coverage.out'
+  $html = Join-Path $LogDir 'coverage.html'
   # `-p 1` serializes package test binaries: on Windows, parallel runs race to
   # exec the shared covdata.exe and hit "file in use" locks (often Defender).
   if ((Run 'cov' { go test -covermode=atomic -coverprofile=$prof -p 1 -count=1 ./... }) -ne 0) { Die 'cov' }
-  go tool cover -html=$prof -o (Join-Path $ScriptDir 'coverage.html')
+  go tool cover -html=$prof -o $html
   go tool cover -func=$prof | Select-Object -Last 1
-  Ok 'cov'
+  Ok "cov -> $html"
 }
 function Task-Vuln { Step 'vuln'; if ((Run 'vuln' { govulncheck ./... }) -ne 0) { Warn 'vuln (report-only)' } }
 # Build the distroless container image from the repo Dockerfile.

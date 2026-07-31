@@ -2,6 +2,7 @@ package httpapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -280,7 +281,8 @@ func (s *Server) handleExpenseDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	parts, _ := s.Store.GetParticipants(ctx, e.ID)
 	nc := s.newNameCache()
-	v := s.buildExpenseDetail(ctx, nc, e, parts)
+	me := s.currentUser(r)
+	v := s.buildExpenseDetail(ctx, nc, me.ID, e, parts)
 	s.render(w, r, "expense_detail", e.Name, v)
 }
 
@@ -302,14 +304,16 @@ type expenseDetailView struct {
 	GroupName    string
 	Deleted      bool
 	Movable      bool
+	CanEdit      bool
 	IsArchive    bool
 	Note         string
 	Participants []participantView
 }
 
-// buildExpenseDetail assembles the expense detail view model, resolving names
-// and computing move eligibility (§5.2: not conversions, not deleted).
-func (s *Server) buildExpenseDetail(ctx context.Context, nc *nameCache, e *store.Expense, parts []store.ExpenseParticipant) expenseDetailView {
+// buildExpenseDetail assembles the expense detail view model, resolving names,
+// computing move eligibility (§5.2: not conversions, not deleted) and whether the
+// actor may edit/delete it (payer/creator/participant — see CanEditExpense).
+func (s *Server) buildExpenseDetail(ctx context.Context, nc *nameCache, actorID int64, e *store.Expense, parts []store.ExpenseParticipant) expenseDetailView {
 	v := expenseDetailView{
 		ID: e.ID, Name: e.Name, Category: e.Category, SplitType: e.SplitType,
 		Amount: e.Amount, Currency: e.Currency, Date: dateOnly(e.ExpenseDate),
@@ -322,6 +326,7 @@ func (s *Server) buildExpenseDetail(ctx context.Context, nc *nameCache, e *store
 	v.Movable = !e.DeletedAt.Valid &&
 		e.SplitType != string(split.CURRENCY_CONVERSION) &&
 		!e.ConversionToID.Valid
+	v.CanEdit = s.Svc.CanEditExpense(ctx, actorID, e)
 	for _, p := range parts {
 		v.Participants = append(v.Participants, participantView{UserID: p.UserID, Name: nc.user(ctx, p.UserID), Amount: p.Amount})
 	}
@@ -332,7 +337,15 @@ func (s *Server) handleExpenseDelete(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := ctxTimeout(r)
 	defer cancel()
 	me := s.currentUser(r)
-	_ = s.Store.SoftDeleteExpense(ctx, chi.URLParam(r, "id"), me.ID)
+	switch err := s.Svc.DeleteExpense(ctx, chi.URLParam(r, "id"), me.ID); {
+	case errors.Is(err, service.ErrNotEditor):
+		s.renderErr(w, r, "message", "msg.delete_failed", s.tr(r, "err.not_editor"),
+			http.StatusForbidden, "actor not a member of the expense")
+		return
+	case errors.Is(err, service.ErrExpenseNotFound):
+		http.NotFound(w, r)
+		return
+	}
 	http.Redirect(w, r, "/activity", http.StatusSeeOther)
 }
 
@@ -511,12 +524,14 @@ func (s *Server) handleSettlePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bals, _ := s.Store.FriendBalance(ctx, me.ID, fid)
+	amountStr, currency := friendSettlePrefill(bals, me.DefaultCurrency)
+	paidBy, _ := s.settleDirection(ctx, me.ID, fid, nil, currency)
 	cands := []candidate{{ID: me.ID, Name: displayName(me), Included: true}, {ID: fid, Name: displayName(friend), Included: true}}
 	s.render(w, r, "expense_form", "expense.settle", map[string]any{
 		"Heading": s.tr(r, "expense.settle_with") + " " + displayName(friend), "Action": fmt.Sprintf("/friends/%d/settle", fid),
-		"Name": "Settlement", "Category": "settlement", "AmountStr": settleSuggestion(bals),
-		"Currency": settleCurrency(bals, me.DefaultCurrency), "Date": time.Now().Format("2006-01-02"),
-		"PaidBy": me.ID, "Method": "EQUAL", "Methods": []string{"EQUAL"},
+		"Name": "Settlement", "Category": "settlement", "AmountStr": amountStr,
+		"Currency": currency, "Date": time.Now().Format("2006-01-02"),
+		"PaidBy": paidBy, "Method": "EQUAL", "Methods": []string{"EQUAL"},
 		"Candidates": cands, "GroupIDStr": "", "ShowTarget": false, "IsMove": false,
 		"SubmitLabel": s.tr(r, "expense.record_settlement"), "CancelURL": fmt.Sprintf("/friends/%d", fid),
 	})
@@ -531,32 +546,238 @@ func (s *Server) handleSettle(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// A friend settlement carries no group: it clears the cross-group net shown on
+	// the friend page, not any single group's balance.
+	s.recordSettlement(ctx, w, r, me, fid, nil, fmt.Sprintf("/friends/%d", fid))
+}
+
+// handleGroupSettlePage renders the settle form for one debt *inside* a group.
+// The amount is suggested from the group's own balances (not the cross-group
+// friend net), so the payment clears exactly the row the user clicked.
+func (s *Server) handleGroupSettlePage(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := ctxTimeout(r)
+	defer cancel()
+	me := s.currentUser(r)
+	g, to, ok := s.resolveGroupSettle(ctx, w, r, me)
+	if !ok {
+		return
+	}
+	amountStr, currency := groupSettleSuggestion(
+		s.computeGroupSettlements(ctx, s.newNameCache(), g.ID, g.SimplifyDebts),
+		me.ID, to.ID, strings.ToUpper(r.URL.Query().Get("cur")), g.DefaultCurrency)
+	paidBy, _ := s.settleDirection(ctx, me.ID, to.ID, &g.ID, currency)
+	cands := []candidate{{ID: me.ID, Name: displayName(me), Included: true}, {ID: to.ID, Name: displayName(to), Included: true}}
+	s.render(w, r, "expense_form", "expense.settle", map[string]any{
+		"Heading": s.tr(r, "expense.settle_with") + " " + displayName(to),
+		"Action":  fmt.Sprintf("/groups/%d/settle/%d", g.ID, to.ID),
+		"Name":    "Settlement", "Category": "settlement", "AmountStr": amountStr,
+		"Currency": currency, "Date": time.Now().Format("2006-01-02"),
+		"PaidBy": paidBy, "Method": "EQUAL", "Methods": []string{"EQUAL"},
+		"Candidates": cands, "GroupIDStr": strconv.FormatInt(g.ID, 10), "ShowTarget": false, "IsMove": false,
+		"SubmitLabel": s.tr(r, "expense.record_settlement"), "CancelURL": fmt.Sprintf("/groups/%d", g.ID),
+	})
+}
+
+func (s *Server) handleGroupSettle(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := ctxTimeout(r)
+	defer cancel()
+	me := s.currentUser(r)
+	g, to, ok := s.resolveGroupSettle(ctx, w, r, me)
+	if !ok {
+		return
+	}
+	gid := g.ID
+	s.recordSettlement(ctx, w, r, me, to.ID, &gid, fmt.Sprintf("/groups/%d", gid))
+}
+
+// handleGroupSettleAllPage renders the whole-group settle confirmation: the
+// minimum set of transfers (min-cash-flow) that nets every member's balance to
+// zero, computed with simplify forced on regardless of the group's display
+// toggle. Consistent with per-pair settle (one transaction nets a pair), settling
+// the whole group takes the fewest payments — which may include transfers strictly
+// between other members. The listed set is exactly what a Confirm will record.
+func (s *Server) handleGroupSettleAllPage(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := ctxTimeout(r)
+	defer cancel()
+	me := s.currentUser(r)
+	g, ok := s.resolveGroupCaller(ctx, w, r, me)
+	if !ok {
+		return
+	}
+	rows := s.computeGroupSettlements(ctx, s.newNameCache(), g.ID, true)
+	s.render(w, r, "settle_group", "settle.all_title", map[string]any{
+		"Group": g, "Transfers": rows, "Date": time.Now().Format("2006-01-02"),
+	})
+}
+
+// handleGroupSettleAll records the minimal transfer set for the whole group. It
+// recomputes from current balances (idempotent — a second submit sees an empty set
+// and records nothing) and writes one SETTLEMENT per transfer with the acting
+// member as added_by, even for transfers strictly between other members.
+func (s *Server) handleGroupSettleAll(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := ctxTimeout(r)
+	defer cancel()
+	me := s.currentUser(r)
+	g, ok := s.resolveGroupCaller(ctx, w, r, me)
+	if !ok {
+		return
+	}
+	gid := g.ID
+	date := r.FormValue("date")
+	for _, t := range s.computeGroupSettlements(ctx, s.newNameCache(), gid, true) {
+		if _, err := s.Svc.Settle(ctx, t.FromID, t.ToID, t.Amount, t.Currency, &gid, date, me.ID); err != nil {
+			s.renderErr(w, r, "message", "msg.settle_failed", err.Error(), http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	http.Redirect(w, r, fmt.Sprintf("/groups/%d", gid), http.StatusSeeOther)
+}
+
+// resolveGroupCaller parses /groups/{id} and authorizes the caller: the group
+// must exist (404) and the current user must be a member (403). It writes the
+// response itself and reports ok=false when the request must not proceed. Shared
+// by the per-pair and whole-group settle handlers.
+func (s *Server) resolveGroupCaller(ctx context.Context, w http.ResponseWriter, r *http.Request, me *store.User) (*store.Group, bool) {
+	gid, ok := atoi64(chi.URLParam(r, "id"))
+	if !ok {
+		http.NotFound(w, r)
+		return nil, false
+	}
+	g, err := s.Store.GetGroup(ctx, gid)
+	if err != nil {
+		http.NotFound(w, r)
+		return nil, false
+	}
+	if member, _ := s.Store.IsGroupMember(ctx, gid, me.ID); !member {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return nil, false
+	}
+	return g, true
+}
+
+// resolveGroupSettle parses and authorizes a /groups/{id}/settle/{to} request:
+// both the caller and the recipient must be members of the group. AddExpense now
+// enforces participant membership, so every group balance is between members and a
+// non-member can never hold a settleable balance. It writes the response itself
+// and reports ok=false when the request must not proceed.
+func (s *Server) resolveGroupSettle(ctx context.Context, w http.ResponseWriter, r *http.Request, me *store.User) (*store.Group, *store.User, bool) {
+	g, ok := s.resolveGroupCaller(ctx, w, r, me)
+	if !ok {
+		return nil, nil, false
+	}
+	toID, ok := atoi64(chi.URLParam(r, "to"))
+	if !ok || toID == me.ID {
+		http.NotFound(w, r)
+		return nil, nil, false
+	}
+	if member, _ := s.Store.IsGroupMember(ctx, g.ID, toID); !member {
+		s.renderErr(w, r, "message", "msg.settle_failed", s.tr(r, "err.settle_not_member"), http.StatusBadRequest, "recipient is not a group member")
+		return nil, nil, false
+	}
+	to, err := s.Store.GetUser(ctx, toID)
+	if err != nil {
+		http.NotFound(w, r)
+		return nil, nil, false
+	}
+	return g, to, true
+}
+
+// settleDirection returns payer,receiver for a settlement between me and other in
+// this scope+currency. A settlement always runs debtor -> creditor, derived from
+// the current balance server-side and never trusted from the request. For a group
+// the direction follows the group's own suggested transfer for the pair, honouring
+// the Simplify toggle so it matches the row the user saw/clicked; for a direct
+// friend debt it follows the cross-group net. Defaults to me paying when no
+// outstanding balance is found.
+func (s *Server) settleDirection(ctx context.Context, me, other int64, groupID *int64, currency string) (from, to int64) {
+	if groupID != nil {
+		simplify := true
+		if g, err := s.Store.GetGroup(ctx, *groupID); err == nil {
+			simplify = g.SimplifyDebts
+		}
+		for _, row := range s.computeGroupSettlements(ctx, s.newNameCache(), *groupID, simplify) {
+			if row.Currency != currency {
+				continue
+			}
+			if row.FromID == me && row.ToID == other {
+				return me, other
+			}
+			if row.FromID == other && row.ToID == me {
+				return other, me
+			}
+		}
+		return me, other
+	}
+	bals, _ := s.Store.FriendBalance(ctx, me, other)
+	for _, b := range bals {
+		if b.Currency != currency {
+			continue
+		}
+		if b.Amount > 0 { // other owes me -> other pays
+			return other, me
+		}
+		return me, other
+	}
+	return me, other
+}
+
+// recordSettlement validates the posted amount and records the payment. Direction
+// (who pays whom) is derived from the current balance via settleDirection — a
+// settlement always runs debtor -> creditor — so it is never taken from the
+// request. groupID scopes the settlement to a group, or nil keeps it direct.
+func (s *Server) recordSettlement(ctx context.Context, w http.ResponseWriter, r *http.Request, me *store.User, other int64, groupID *int64, redirect string) {
 	currency := strings.ToUpper(r.FormValue("currency"))
 	amount, err := money.Parse(r.FormValue("amount"), currency)
 	if err != nil || amount <= 0 {
 		s.renderErr(w, r, "message", "msg.settle_failed", s.tr(r, "err.invalid_settlement_amount"), http.StatusBadRequest, "invalid amount")
 		return
 	}
-	// The current user pays the friend (drives their balance toward zero).
-	if _, err := s.Svc.Settle(ctx, me.ID, fid, amount, currency, nil, r.FormValue("date"), me.ID); err != nil {
+	from, to := s.settleDirection(ctx, me.ID, other, groupID, currency)
+	if _, err := s.Svc.Settle(ctx, from, to, amount, currency, groupID, r.FormValue("date"), me.ID); err != nil {
 		s.renderErr(w, r, "message", "msg.settle_failed", err.Error(), http.StatusBadRequest, err.Error())
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/friends/%d", fid), http.StatusSeeOther)
+	http.Redirect(w, r, redirect, http.StatusSeeOther)
 }
 
-func settleSuggestion(bals []store.CumulatedBalance) string {
-	for _, b := range bals {
-		if b.Amount < 0 {
-			return money.Format(-b.Amount, b.Currency)
+// groupSettleSuggestion prefills the group settle form from the group's own
+// suggested transfers. It matches the pair a<->b in either orientation, so a
+// creditor recording a debt owed to them prefills the same amount the debtor
+// would. cur (from the clicked row) selects among multi-currency debts and is
+// honoured only when it matches a real row — never echoed raw.
+func groupSettleSuggestion(rows []settlementRow, a, b int64, cur, def string) (string, string) {
+	var match *settlementRow
+	for i := range rows {
+		if !((rows[i].FromID == a && rows[i].ToID == b) || (rows[i].FromID == b && rows[i].ToID == a)) {
+			continue
+		}
+		if cur != "" && rows[i].Currency == cur {
+			match = &rows[i]
+			break
+		}
+		if match == nil {
+			match = &rows[i]
 		}
 	}
-	return ""
+	if match == nil {
+		return "", def
+	}
+	return money.Format(match.Amount, match.Currency), match.Currency
 }
 
-func settleCurrency(bals []store.CumulatedBalance, def string) string {
-	if len(bals) > 0 {
-		return bals[0].Currency
+// friendSettlePrefill seeds the friend settle form with the amount and currency of
+// the first non-zero balance in any currency, either direction — a debt you owe or
+// one owed to you. Empty amount + the default currency when nothing is outstanding.
+func friendSettlePrefill(bals []store.CumulatedBalance, def string) (string, string) {
+	for _, b := range bals {
+		if b.Amount == 0 {
+			continue
+		}
+		amt := b.Amount
+		if amt < 0 {
+			amt = -amt
+		}
+		return money.Format(amt, b.Currency), b.Currency
 	}
-	return def
+	return "", def
 }

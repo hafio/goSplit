@@ -34,10 +34,11 @@ task_vet()   { step "vet";   run vet go vet ./...       && ok vet   || die vet; 
 task_test()  { step "test";  run test go test ./...      && ok test  || die test; }
 task_cov()   {
   step "cov"
-  run cov go test -covermode=atomic -coverprofile="$SCRIPT_DIR/coverage.out" -p 1 -count=1 ./... || die cov
-  go tool cover -html="$SCRIPT_DIR/coverage.out" -o "$SCRIPT_DIR/coverage.html"
-  go tool cover -func="$SCRIPT_DIR/coverage.out" | tail -1
-  ok "cov -> $SCRIPT_DIR/coverage.html"
+  # Coverage artifacts live under logs/ (gitignored) alongside the task logs.
+  run cov go test -covermode=atomic -coverprofile="$LOG_DIR/coverage.out" -p 1 -count=1 ./... || die cov
+  go tool cover -html="$LOG_DIR/coverage.out" -o "$LOG_DIR/coverage.html"
+  go tool cover -func="$LOG_DIR/coverage.out" | tail -1
+  ok "cov -> $LOG_DIR/coverage.html"
 }
 task_vuln()  { step "vuln"; run vuln govulncheck ./... || warn "vuln (report-only)"; }
 # Build the distroless container image from the repo Dockerfile.

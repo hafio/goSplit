@@ -1,9 +1,13 @@
 /* GoSplit service worker: caches the offline shell + static assets. Fingerprinted
  * /static/* assets (?v=<hash>) are cache-first — the URL changes when content
  * does, so a stale cache entry is never served for new content. Navigations and
- * other GETs stay network-first with cache fallback when offline. Bump CACHE on
- * any change to this file so old caches are purged on activate. */
-const CACHE = 'gosplit-v3';
+ * all other GETs are network-first with a NET_TIMEOUT cap: they always load live
+ * from the server, cache a copy on success, and fall back to that cache only when
+ * offline or when the network hangs past the timeout (navigations fall back to the
+ * /offline shell if the page was never cached). Bump CACHE on any change to this
+ * file so old caches are purged on activate. */
+const CACHE = 'gosplit-v4';
+const NET_TIMEOUT = 10000;
 const SHELL = ['/offline', '/static/app.css', '/static/icon.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
@@ -35,13 +39,21 @@ self.addEventListener('notificationclick', (e) => {
   }));
 });
 
+// fetch(req) but rejects if the network does not respond within `ms`, so a slow
+// or hung connection falls back to cache instead of spinning indefinitely.
+function networkWithTimeout(req, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('network timeout')), ms);
+    fetch(req).then(
+      (res) => { clearTimeout(timer); resolve(res); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
-  if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).catch(() => caches.match('/offline')));
-    return;
-  }
   const url = new URL(req.url);
   if (url.origin === location.origin && url.pathname.startsWith('/static/')) {
     // Fingerprinted static assets: cache-first (URL changes when content does).
@@ -54,13 +66,16 @@ self.addEventListener('fetch', (e) => {
     );
     return;
   }
-  // Other GETs (e.g. /uploads): network-first so fresh content is picked up
-  // right away; refresh the cache on success and fall back only when offline.
+  // Navigations and all other GETs: always load live from the server (capped at
+  // NET_TIMEOUT); refresh the cached copy on success and fall back to cache only
+  // when offline or timed out — navigations use the /offline shell if uncached.
   e.respondWith(
-    fetch(req).then((res) => {
+    networkWithTimeout(req, NET_TIMEOUT).then((res) => {
       const copy = res.clone();
       caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
       return res;
-    }).catch(() => caches.match(req)),
+    }).catch(() => caches.match(req).then((hit) =>
+      hit || (req.mode === 'navigate' ? caches.match('/offline') : Response.error()),
+    )),
   );
 });

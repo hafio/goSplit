@@ -156,6 +156,7 @@ var pageFiles = map[string]string{
 	"import":         "import.html",
 	"bank":           "bank.html",
 	"collapse":       "collapse.html",
+	"settle_group":   "settle_group.html",
 }
 
 // NewRenderer parses all page templates once at startup and loads i18n.
@@ -225,7 +226,13 @@ func (r *Renderer) Render(w http.ResponseWriter, status int, page string, vd Vie
 	if vd.Theme == "" || !ValidTheme(vd.Theme) {
 		vd.Theme = DefaultTheme
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	h := w.Header()
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	// Pages are always served fresh from the server; never cached client-side
+	// (static assets keep their own long-lived caching in AssetsHandler).
+	h.Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	h.Set("Pragma", "no-cache")
+	h.Set("Expires", "0")
 	w.WriteHeader(status)
 	if err := t.ExecuteTemplate(w, "layout.html", vd); err != nil {
 		// Header already written; log-and-continue is the best we can do.

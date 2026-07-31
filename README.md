@@ -83,9 +83,16 @@ row `(user, friend)` means **friend owes user**. Balances stay **per currency**.
 Auth (magic-link + password, register/login/change/forgot/reset, admin
 auto-promotion, deactivation, plus an admin console to create users, edit any user's
 details, set/reset a password (revoking their sessions), and mint a sign-in link), friends (add/hide/delete, per-friend balances +
-filtered history that includes shared-group expenses), groups (create/join-link/invite/archive, debt simplification,
+filtered history that includes shared-group expenses), groups (create/join-link/invite/archive, a debt-simplification
+toggle that switches between the minimal transfer set and raw pairwise balances,
 detailed balances, **move expenses** between/into/out of groups via a guided
-re-split), expenses (all five split methods + settlements, soft-delete, receipts,
+re-split), expenses (all five split methods + **scoped settlements** — both ways (settle what
+you owe or record what you're owed, direction derived server-side from the balance),
+per pair or whole-group (one action records the minimum set of transfers that nets
+every member), reversed by deleting the settlement; settling from a group clears that
+group's balance, settling from a friend clears the cross-group net (see
+[docs/settlements.md](docs/settlements.md)); editing or deleting an expense is limited
+to its own members (payer/creator/participant) — soft-delete, receipts,
 negative amounts; the add form shows and lets you switch the target — a group or
 direct; a free-text note per expense; and **archive history** — collapse all
 transactions before a date into one balance-preserving "Historical Transactions"

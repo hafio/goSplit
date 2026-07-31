@@ -101,6 +101,19 @@ func (h *harness) register(name, email, password string) {
 	_ = body(h.t, resp)
 }
 
+// login switches the active session to an existing user via the password form.
+// The CSRF cookie is a double-submit token (not session-bound), so the jar's
+// existing token carries across the login.
+func (h *harness) login(email, password string) {
+	h.t.Helper()
+	_ = body(h.t, h.get("/login")) // ensure a CSRF cookie exists
+	resp := h.post("/login", url.Values{"email": {email}, "password": {password}})
+	if resp.StatusCode != http.StatusOK { // followed redirect -> 200 homepage
+		h.t.Fatalf("login status %d", resp.StatusCode)
+	}
+	_ = body(h.t, resp)
+}
+
 func TestHealth(t *testing.T) {
 	h := newHarness(t)
 	resp := h.get("/healthz")
@@ -131,6 +144,24 @@ func TestStaticCacheHeaders(t *testing.T) {
 	_ = body(t, resp)
 	if cc := resp.Header.Get("Cache-Control"); cc != "no-cache" {
 		t.Fatalf("sw.js Cache-Control = %q, want no-cache", cc)
+	}
+}
+
+func TestPageNoStoreHeaders(t *testing.T) {
+	h := newHarness(t)
+
+	// An HTML page (the login page renders through Renderer.Render) must be
+	// served fresh every time and never cached client-side.
+	resp := h.get("/login")
+	_ = body(t, resp)
+	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "no-store") {
+		t.Fatalf("page Cache-Control = %q, want no-store", cc)
+	}
+	if p := resp.Header.Get("Pragma"); p != "no-cache" {
+		t.Fatalf("page Pragma = %q, want no-cache", p)
+	}
+	if e := resp.Header.Get("Expires"); e != "0" {
+		t.Fatalf("page Expires = %q, want 0", e)
 	}
 }
 
