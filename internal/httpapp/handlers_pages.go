@@ -238,6 +238,19 @@ func (s *Server) handleGroupDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	members, _ := s.Store.GroupMembers(ctx, gid)
+	// Friends of the current user who aren't already in the group -- the "add a
+	// friend by name" picker. Self is never a friend, so it's excluded for free.
+	friends, _ := s.Store.ListFriends(ctx, u.ID)
+	inGroup := make(map[int64]bool, len(members))
+	for _, m := range members {
+		inGroup[m.ID] = true
+	}
+	addable := make([]*store.User, 0, len(friends))
+	for _, f := range friends {
+		if !inGroup[f.ID] {
+			addable = append(addable, f)
+		}
+	}
 	filter, view := parseFilter(r)
 	showAll := applyFeedLimit(r, &filter)
 	expenses, _ := s.Store.ListGroupExpenses(ctx, gid, filter)
@@ -254,7 +267,7 @@ func (s *Server) handleGroupDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.render(w, r, "group", g.Name, map[string]any{
-		"Group": g, "Members": members,
+		"Group": g, "Members": members, "AddableFriends": addable,
 		"JoinURL":    fmt.Sprintf("%s/g/%s", s.Cfg.BaseURL, g.PublicID),
 		"Simplified": simplified, "Position": sortedNets(perCur),
 		"Expenses": groupByMonth(s.buildRows(ctx, nc, u.ID, expenses)), "Filter": view,
@@ -401,7 +414,13 @@ func (s *Server) handleGroupInvite(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	u := s.currentUser(r)
 	gid, _ := atoi64(chi.URLParam(r, "id"))
-	_ = s.Svc.InviteToGroup(ctx, u, gid, r.FormValue("email"))
+	// Prefer the friend picker (add an existing friend by name); fall back to the
+	// email field for inviting someone who isn't a friend yet.
+	if fid, ok := atoi64(r.FormValue("friend_id")); ok && fid > 0 {
+		_ = s.Svc.AddFriendToGroup(ctx, u, gid, fid)
+	} else {
+		_ = s.Svc.InviteToGroup(ctx, u, gid, r.FormValue("email"))
+	}
 	http.Redirect(w, r, fmt.Sprintf("/groups/%d", gid), http.StatusSeeOther)
 }
 

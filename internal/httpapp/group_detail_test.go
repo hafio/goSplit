@@ -1,6 +1,7 @@
 package httpapp
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strings"
@@ -42,5 +43,36 @@ func TestGroupDetailPolish(t *testing.T) {
 		t.Fatalf("archive status %d", resp.StatusCode)
 	} else {
 		_ = body(t, resp)
+	}
+}
+
+// TestGroupAddFriendByPicker checks the "add a member by picking a friend" flow:
+// the group page offers a friend dropdown, posting friend_id adds that friend, and
+// once added the friend is no longer offered.
+func TestGroupAddFriendByPicker(t *testing.T) {
+	h := newHarness(t)
+	h.register("Alice", "alice@example.com", "password123")
+	h.post("/friends/add", url.Values{"email": {"bob@example.com"}}) // Bob = user 2, now Alice's friend
+	h.post("/groups/create", url.Values{"name": {"Trip"}, "currency": {"USD"}})
+
+	// The group page offers a friend picker listing Bob (a friend, not yet a member).
+	page := body(t, h.get("/groups/1"))
+	if !strings.Contains(page, `name="friend_id"`) {
+		t.Fatal("group page missing the friend picker")
+	}
+	if !strings.Contains(page, "bob@example.com") {
+		t.Fatalf("friend picker missing bob: %s", page)
+	}
+
+	// Adding Bob via the picker makes him a group member.
+	h.post("/groups/1/invite", url.Values{"friend_id": {"2"}})
+	if ok, _ := h.st.IsGroupMember(context.Background(), 1, 2); !ok {
+		t.Fatal("bob should be a group member after the picker add")
+	}
+
+	// Bob was Alice's only friend, so with him in the group the picker is gone.
+	page = body(t, h.get("/groups/1"))
+	if strings.Contains(page, `name="friend_id"`) {
+		t.Error("picker should be absent once the only addable friend has joined")
 	}
 }

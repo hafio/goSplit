@@ -83,7 +83,8 @@ row `(user, friend)` means **friend owes user**. Balances stay **per currency**.
 Auth (magic-link + password, register/login/change/forgot/reset, admin
 auto-promotion, deactivation, plus an admin console to create users, edit any user's
 details, set/reset a password (revoking their sessions), and mint a sign-in link), friends (add/hide/delete, per-friend balances +
-filtered history that includes shared-group expenses), groups (create/join-link/invite,
+filtered history that includes shared-group expenses), groups (create/join-link, add a
+member by picking an existing friend by name or inviting anyone else by email,
 **archive** — hides the group from the normal lists, aggregate balances and activity feed
 into a collapsed Archived section that still shows its own unsettled debt, with its
 expenses viewable via Activity's off-by-default Archived filter; a debt-simplification

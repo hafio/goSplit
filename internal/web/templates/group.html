@@ -26,7 +26,17 @@
 </div>
 
 <details class="add-inline group-invite">
-  <summary class="a-btn sec sm"><svg class="icon"><use href="{{asset "icons.svg"}}#user-plus"></use></svg>{{.T "group.invite"}}</summary>
+  <summary class="a-btn sec sm"><svg class="icon"><use href="{{asset "icons.svg"}}#user-plus"></use></svg>{{.T "group.add_member"}}</summary>
+  {{if .Data.AddableFriends}}
+  <form method="post" action="/groups/{{.Data.Group.ID}}/invite" class="inline-form">
+    {{template "csrf" .CSRF}}
+    <select name="friend_id" required aria-label="{{.T "group.add_member"}}">
+      <option value="" disabled selected>{{.T "group.choose_friend"}}</option>
+      {{range .Data.AddableFriends}}<option value="{{.ID}}">{{if .Name}}{{.Name}}{{else}}{{.Email}}{{end}}</option>{{end}}
+    </select>
+    <button type="submit" class="a-btn sm">{{.T "group.add"}}</button>
+  </form>
+  {{end}}
   <form method="post" action="/groups/{{.Data.Group.ID}}/invite" class="inline-form">
     {{template "csrf" .CSRF}}
     <input type="email" name="email" placeholder="friend@example.com" required aria-label="{{.T "group.invite"}}">

@@ -104,6 +104,29 @@ func (s *Service) InviteToGroup(ctx context.Context, actor *store.User, groupID 
 	return nil
 }
 
+// AddFriendToGroup adds an existing friend of the actor to a group. Unlike
+// InviteToGroup it takes a friend user ID (chosen from a picker) instead of an
+// email and sends no invite -- the friend already has an account and a link to
+// the actor. AreFriends is a defense-in-depth guard: the picker only offers real
+// friends, but a hand-crafted POST must not add an arbitrary user.
+func (s *Service) AddFriendToGroup(ctx context.Context, actor *store.User, groupID, friendID int64) error {
+	member, err := s.Store.IsGroupMember(ctx, groupID, actor.ID)
+	if err != nil {
+		return err
+	}
+	if !member {
+		return errors.New("only members can invite others")
+	}
+	ok, err := s.Store.AreFriends(ctx, actor.ID, friendID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("that user is not in your friends")
+	}
+	return s.Store.AddGroupMember(ctx, groupID, friendID)
+}
+
 // sendInvite emails an invitation without blocking the caller. Sending runs in
 // its own goroutine with a bounded context so a slow or unreachable SMTP server
 // never stalls the HTTP request that triggered it.

@@ -75,8 +75,8 @@
     "semantic_hash": "23c709e7e725c592be1084958409f537"
   },
   "internal/httpapp/group_detail_test.go": {
-    "mtime": 1785492051.101015,
-    "ast_hash": "3ac5ea2ad8012a99f0231390e3e64ff4",
+    "mtime": 1785519321.6897063,
+    "ast_hash": "83dd01f88a8a57101333e645d1fb65a6",
     "semantic_hash": ""
   },
   "internal/httpapp/handlers_auth.go": {
@@ -110,8 +110,8 @@
     "semantic_hash": ""
   },
   "internal/httpapp/handlers_pages.go": {
-    "mtime": 1785514850.6866105,
-    "ast_hash": "a5b4054a599dc3b4e5344ea87f2c091e",
+    "mtime": 1785519210.875868,
+    "ast_hash": "2a3fe0b494143c07d40a8299858b5213",
     "semantic_hash": ""
   },
   "internal/httpapp/handlers_push.go": {
@@ -155,8 +155,8 @@
     "semantic_hash": ""
   },
   "internal/i18n/locales/en.json": {
-    "mtime": 1785514897.341157,
-    "ast_hash": "639e38e0fb3ff01ce2a6bc4cfbf1cc7e",
+    "mtime": 1785519233.6711178,
+    "ast_hash": "a01747bfec294c9def1cea42859105cd",
     "semantic_hash": ""
   },
   "internal/i18n/locales/es.json": {
@@ -210,8 +210,8 @@
     "semantic_hash": ""
   },
   "internal/service/friends_service.go": {
-    "mtime": 1783874805.9288638,
-    "ast_hash": "de81de963ededd667778f29bb84104c3",
+    "mtime": 1785519190.428798,
+    "ast_hash": "f19f2431d78bacb1557be73b80e2265d",
     "semantic_hash": ""
   },
   "internal/service/import_service.go": {
@@ -460,8 +460,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1785515636.668685,
-    "ast_hash": "04ec9194caac3e8577a56468a6552a51",
+    "mtime": 1785519343.6545968,
+    "ast_hash": "56ccb3891caa56e258a0a3c10c1f72b1",
     "semantic_hash": ""
   },
   "docker-compose.yml": {
@@ -520,8 +520,8 @@
     "semantic_hash": ""
   },
   "internal/web/templates/group.html": {
-    "mtime": 1785488890.499131,
-    "ast_hash": "9c9155753a7f71c9985fa557dbe5ef92",
+    "mtime": 1785519384.1739514,
+    "ast_hash": "19f5d7d5d67ffa40b45d770bf4a4ba76",
     "semantic_hash": ""
   },
   "internal/web/templates/groups.html": {
@@ -827,6 +827,11 @@
   "internal/httpapp/archived_test.go": {
     "mtime": 1785515448.5449662,
     "ast_hash": "4a00a27d88cc08b6433f652a1a3a4898",
+    "semantic_hash": ""
+  },
+  "internal/service/friends_service_test.go": {
+    "mtime": 1785519303.516023,
+    "ast_hash": "5a65cc310d07380dd6fd6f2dbd348379",
     "semantic_hash": ""
   }
 }
