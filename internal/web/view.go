@@ -35,7 +35,7 @@ func csvRows(s string) [][]string {
 }
 
 // filterKeys is the frozen §5.2 filter query-string contract.
-var filterKeys = []string{"q", "min", "max", "from", "to", "scope"}
+var filterKeys = []string{"q", "min", "max", "from", "to", "scope", "archived"}
 
 // queryWithout rebuilds a filter URL (action + query string) from the current
 // filter map minus one key — used to render a removable filter chip as a plain

@@ -4,7 +4,7 @@
 {{define "filterbar"}}
 {{$root := .Root}}
 {{$f := .Filter}}{{$a := .Action}}
-{{$active := or $f.q $f.min $f.max $f.from $f.to (and (ne $f.scope "all") (ne $f.scope ""))}}
+{{$active := or $f.q $f.min $f.max $f.from $f.to (and (ne $f.scope "all") (ne $f.scope "")) (eq $f.archived "1")}}
 <form class="filterbar" method="get" action="{{$a}}">
   <div class="search-wrap">
     <svg class="icon"><use href="{{asset "icons.svg"}}#search"></use></svg>
@@ -31,6 +31,9 @@
         <label title="{{$root.T "filter.direct"}}"><input type="radio" name="scope" value="nongroup"{{if eq $f.scope "nongroup"}} checked{{end}}>{{$root.T "filter.direct"}}</label>
       </div>
       {{end}}
+      {{if .ShowArchived}}
+      <label class="filter-check"><input type="checkbox" name="archived" value="1"{{if eq $f.archived "1"}} checked{{end}}> {{$root.T "filter.archived"}}</label>
+      {{end}}
       <button type="submit" class="a-btn sm">{{$root.T "filter.apply"}}</button>
     </div>
   </details>
@@ -43,6 +46,7 @@
   {{if $f.from}}<a class="chip" href="{{queryWithout $f $a "from"}}">≥ {{$f.from}} <span class="x">×</span></a>{{end}}
   {{if $f.to}}<a class="chip" href="{{queryWithout $f $a "to"}}">≤ {{$f.to}} <span class="x">×</span></a>{{end}}
   {{if and (ne $f.scope "all") (ne $f.scope "")}}<a class="chip" href="{{queryWithout $f $a "scope"}}">{{if eq $f.scope "group"}}{{$root.T "filter.groups"}}{{else}}{{$root.T "filter.direct"}}{{end}} <span class="x">×</span></a>{{end}}
+  {{if eq $f.archived "1"}}<a class="chip" href="{{queryWithout $f $a "archived"}}">{{$root.T "filter.archived"}} <span class="x">×</span></a>{{end}}
   <a class="chip clear-chip" href="{{$a}}">{{$root.T "filter.clear_all"}}</a>
 </div>
 {{end}}

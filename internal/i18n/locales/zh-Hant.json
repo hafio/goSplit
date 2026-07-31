@@ -252,6 +252,7 @@
   "filter.all": "全部",
   "filter.groups": "群組",
   "filter.direct": "直接",
+  "filter.archived": "已封存",
   "filter.apply": "套用",
   "filter.clear_all": "清除全部",
   "nav.import": "匯入",

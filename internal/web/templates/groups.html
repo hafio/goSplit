@@ -28,7 +28,28 @@
   </a>
   {{end}}
 </div>
-{{else}}
+{{else if not .Data.Archived}}
 {{template "empty_state" (dict "Icon" "home" "Text" (.T "groups.empty") "CTAHref" "" "CTALabel" "")}}
+{{end}}
+
+{{if .Data.Archived}}
+<details class="arch-section">
+  <summary>{{.T "groups.archived"}} ({{len .Data.Archived}})</summary>
+  <div class="card">
+    {{range .Data.Archived}}
+    <a class="l-row dim" href="/groups/{{.Group.ID}}">
+      <span class="ava" style="--c:{{avatarColor .Group.ID}}">{{initials .Group.Name .Group.Name}}</span>
+      <div class="l-main">
+        <div class="l-title">{{.Group.Name}} <span class="tag">{{$.T "groups.archived"}}</span></div>
+        <div class="l-sub">
+          {{.MemberCount}} {{$.T "groups.members"}}
+          {{range .Balances}} · <span class="{{if gt .Amount 0}}pos{{else}}neg{{end}}">{{money .Amount .Currency}} {{.Currency}}</span>{{end}}
+        </div>
+      </div>
+      <svg class="icon chev"><use href="{{asset "icons.svg"}}#chev-right"></use></svg>
+    </a>
+    {{end}}
+  </div>
+</details>
 {{end}}
 {{end}}

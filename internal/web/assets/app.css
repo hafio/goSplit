@@ -272,6 +272,18 @@ a.l-row:hover { background: color-mix(in srgb, var(--accent) 5%, var(--panel)); 
 .field-lab { font-size: .72rem; font-weight: 650; letter-spacing: .05em; text-transform: uppercase;
   color: var(--muted); margin: .9rem 0 .35rem; }
 
+/* single-checkbox filter row (Activity "archived" toggle) */
+.filter-check { display: flex; align-items: center; gap: .45rem; font-size: .85rem;
+  color: var(--ink); margin: .5rem 0 .2rem; cursor: pointer; }
+
+/* normally-hidden archived-groups disclosure on the groups page */
+.arch-section { margin-top: 1rem; }
+.arch-section > summary { list-style: none; cursor: pointer; color: var(--muted);
+  font-size: .82rem; font-weight: 650; letter-spacing: .03em; text-transform: uppercase;
+  padding: .35rem .25rem; }
+.arch-section > summary::-webkit-details-marker { display: none; }
+.arch-section > .card { margin-top: .4rem; }
+
 /* overflow menu (native <details>) */
 .omenu { position: relative; display: inline-block; }
 .omenu > summary { list-style: none; cursor: pointer; display: inline-flex; }

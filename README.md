@@ -83,7 +83,10 @@ row `(user, friend)` means **friend owes user**. Balances stay **per currency**.
 Auth (magic-link + password, register/login/change/forgot/reset, admin
 auto-promotion, deactivation, plus an admin console to create users, edit any user's
 details, set/reset a password (revoking their sessions), and mint a sign-in link), friends (add/hide/delete, per-friend balances +
-filtered history that includes shared-group expenses), groups (create/join-link/invite/archive, a debt-simplification
+filtered history that includes shared-group expenses), groups (create/join-link/invite,
+**archive** — hides the group from the normal lists, aggregate balances and activity feed
+into a collapsed Archived section that still shows its own unsettled debt, with its
+expenses viewable via Activity's off-by-default Archived filter; a debt-simplification
 toggle that switches between the minimal transfer set and raw pairwise balances,
 detailed balances, **move expenses** between/into/out of groups via a guided
 re-split), expenses (all five split methods + **scoped settlements** — both ways (settle what
@@ -100,9 +103,10 @@ entry per currency, moving the originals into an archive table and keeping a CSV
 audit in the note), live per-currency balances & a filtered activity feed, an
 installable PWA (manifest + offline service worker).
 
-**Filtering (§5.2):** description (`*` wildcard), amount range, date range, and
-group scope — combine with AND, travel as GET query params, and never affect
-computed balances.
+**Filtering (§5.2):** description (`*` wildcard), amount range, date range,
+group scope, and an Activity-only **archived** toggle (off by default; surfaces
+expenses from archived groups) — combine with AND, travel as GET query params,
+and never affect computed balances.
 
 **Currency conversion:** pluggable rate providers (Frankfurter / OpenExchangeRates,
 selected by `CURRENCY_RATE_PROVIDER`) with a DB rate cache; conversions create a

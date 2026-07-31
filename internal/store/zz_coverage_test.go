@@ -931,6 +931,121 @@ func TestCovFriendAndGroupBalances(t *testing.T) {
 	}
 }
 
+// TestCovArchivedGroupExclusion verifies that archiving a group drops it from
+// the aggregate balances (CumulatedBalances, FriendBalance) and the default
+// activity feed, while its own per-group views (UserGroupNets, GroupBalances)
+// and detail feed (ListGroupExpenses) still surface it, and IncludeArchived
+// opts the activity feed back in. Direct (non-group) balances must survive the
+// archive -- exercising the `group_id IS NULL OR ...` guard.
+func TestCovArchivedGroupExclusion(t *testing.T) {
+	ctx := context.Background()
+	st := openTestStore(t)
+	a := covUser(t, st, "ArchA")
+	b := covUser(t, st, "ArchB")
+
+	g, err := st.CreateGroup(ctx, &Group{Name: "Trip", CreatedBy: a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddGroupMember(ctx, g.ID, b.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Group expense: a paid 1000, b owes 500 (a sees b at +500 in this group).
+	ge := &Expense{Name: "grouptrip", Category: "general", Amount: 1000, SplitType: "EQUAL",
+		ExpenseDate: "2025-02-01", Currency: "USD", PaidBy: a.ID, AddedBy: a.ID,
+		GroupID: sql.NullInt64{Int64: g.ID, Valid: true}}
+	if _, err := st.CreateExpense(ctx, ge, []ExpenseParticipant{{UserID: a.ID, Amount: 500}, {UserID: b.ID, Amount: -500}}); err != nil {
+		t.Fatal(err)
+	}
+	// Direct expense: a paid 200, b owes 100 (must survive archiving).
+	covDirectExpense(t, st, "directsnack", "2025-02-02", a.ID,
+		[]ExpenseParticipant{{UserID: a.ID, Amount: 100}, {UserID: b.ID, Amount: -100}})
+
+	// Before archiving: aggregate sees group 500 + direct 100 = 600.
+	cum, err := st.CumulatedBalances(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cum) != 1 || cum[0].Amount != 600 {
+		t.Fatalf("pre-archive CumulatedBalances = %+v, want b/USD/600", cum)
+	}
+
+	if err := st.SetGroupArchived(ctx, g.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// After archiving: the group's 500 leaves the aggregate; direct 100 stays.
+	cum, err = st.CumulatedBalances(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cum) != 1 || cum[0].Amount != 100 {
+		t.Errorf("post-archive CumulatedBalances = %+v, want b/USD/100 (direct only)", cum)
+	}
+	fb, err := st.FriendBalance(ctx, a.ID, b.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fb) != 1 || fb[0].Amount != 100 {
+		t.Errorf("post-archive FriendBalance = %+v, want b/USD/100", fb)
+	}
+
+	// Per-group views still include the archived group's own debt.
+	nets, err := st.UserGroupNets(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nets[g.ID]["USD"] != 500 {
+		t.Errorf("UserGroupNets[g][USD] = %d, want 500 (archived kept per-group)", nets[g.ID]["USD"])
+	}
+	gb, err := st.GroupBalances(ctx, g.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gb) != 2 {
+		t.Errorf("GroupBalances = %d rows, want 2 (archived kept)", len(gb))
+	}
+
+	// Activity feed hides the archived group's expense by default...
+	act, err := st.ListActivity(ctx, a.ID, ExpenseFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, e := range act {
+		names[e.Name] = true
+	}
+	if names["grouptrip"] {
+		t.Errorf("ListActivity (default) should exclude archived-group expense: %v", names)
+	}
+	if !names["directsnack"] {
+		t.Errorf("ListActivity (default) dropped direct expense: %v", names)
+	}
+
+	// ...but shows it when the caller opts in.
+	act, err = st.ListActivity(ctx, a.ID, ExpenseFilter{IncludeArchived: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	names = map[string]bool{}
+	for _, e := range act {
+		names[e.Name] = true
+	}
+	if !names["grouptrip"] {
+		t.Errorf("ListActivity(IncludeArchived) should include archived-group expense: %v", names)
+	}
+
+	// The archived group's own detail feed still lists its expense.
+	gexp, err := st.ListGroupExpenses(ctx, g.ID, ExpenseFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gexp) != 1 || gexp[0].Name != "grouptrip" {
+		t.Errorf("ListGroupExpenses should still list archived group's expense: %+v", gexp)
+	}
+}
+
 // --- scheduler locks ---------------------------------------------------------
 
 func TestCovAcquireLock(t *testing.T) {

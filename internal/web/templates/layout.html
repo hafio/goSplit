@@ -27,16 +27,16 @@
     <a href="/expenses/new" class="a-btn sm"><svg class="icon"><use href="{{asset "icons.svg"}}#plus"/></svg>{{.T "expense.add"}}</a>
   </nav>
   <div class="spacer"></div>
-  <details class="menu">
-    <summary>{{if .User.Name}}{{.User.Name}}{{else}}{{.User.Email}}{{end}}</summary>
-    <div class="menu-panel">
-      <a href="/profile">{{.T "action.profile"}}</a>
-      <a href="/import">{{.T "nav.import"}}</a>
-      <a href="/bank">{{.T "nav.bank"}}</a>
-      {{if .User.IsAdmin}}<a href="/admin">{{.T "action.admin"}}</a>{{end}}
+  <a class="a-btn ghost icon-only" href="/profile" title="{{.T "action.profile"}}" aria-label="{{.T "action.profile"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#user"/></svg></a>
+  <details class="omenu">
+    <summary class="a-btn ghost icon-only" aria-label="{{.T "action.options"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#dots"/></svg></summary>
+    <div class="omenu-panel">
+      <a href="/import"><svg class="icon"><use href="{{asset "icons.svg"}}#download"/></svg>{{.T "nav.import"}}</a>
+      <a href="/bank"><svg class="icon"><use href="{{asset "icons.svg"}}#banknote"/></svg>{{.T "nav.bank"}}</a>
+      {{if .User.IsAdmin}}<a href="/admin"><svg class="icon"><use href="{{asset "icons.svg"}}#shield"/></svg>{{.T "action.admin"}}</a>{{end}}
       <form method="post" action="/logout" hx-boost="false">
-        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-        <button type="submit" class="linkbtn">{{.T "action.signout"}}</button>
+        {{template "csrf" .CSRF}}
+        <button type="submit" class="danger"><svg class="icon"><use href="{{asset "icons.svg"}}#log-out"/></svg>{{.T "action.signout"}}</button>
       </form>
     </div>
   </details>

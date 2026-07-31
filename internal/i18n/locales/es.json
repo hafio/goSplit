@@ -264,6 +264,7 @@
   "filter.all": "Todos",
   "filter.groups": "Grupos",
   "filter.direct": "Directo",
+  "filter.archived": "Archivados",
   "filter.apply": "Aplicar",
   "filter.clear_all": "Limpiar todo",
   "nav.import": "Importar",

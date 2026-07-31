@@ -252,6 +252,7 @@
   "filter.all": "전체",
   "filter.groups": "그룹",
   "filter.direct": "직접",
+  "filter.archived": "보관됨",
   "filter.apply": "적용",
   "filter.clear_all": "모두 지우기",
   "nav.import": "가져오기",

@@ -252,6 +252,7 @@
   "filter.all": "Tous",
   "filter.groups": "Groupes",
   "filter.direct": "Direct",
+  "filter.archived": "Archivés",
   "filter.apply": "Appliquer",
   "filter.clear_all": "Tout effacer",
   "nav.import": "Importer",

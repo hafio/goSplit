@@ -29,11 +29,14 @@ func scanBalances(rows interface {
 }
 
 // CumulatedBalances returns each friend's net per currency for a user, summed
-// across all groups and direct balances (per-currency, never cross-summed).
+// across all direct balances and non-archived groups (per-currency, never
+// cross-summed). Archived groups leave the aggregate totals; their own debt is
+// still visible per-group via UserGroupNets/GroupBalances.
 func (s *Store) CumulatedBalances(ctx context.Context, userID int64) ([]CumulatedBalance, error) {
 	rows, err := s.DB.QueryContext(ctx, s.rebind(
 		`SELECT friend_id, currency, SUM(amount) AS amount
 		 FROM balance_view WHERE user_id = ?
+		   AND (group_id IS NULL OR group_id NOT IN (SELECT id FROM groups WHERE archived_at IS NOT NULL))
 		 GROUP BY friend_id, currency
 		 HAVING SUM(amount) <> 0
 		 ORDER BY friend_id, currency`), userID)
@@ -53,11 +56,12 @@ func (s *Store) CumulatedBalances(ctx context.Context, userID int64) ([]Cumulate
 }
 
 // FriendBalance returns the per-currency net between a user and one friend
-// (direct + all shared groups combined).
+// (direct + all shared non-archived groups combined; archived groups excluded).
 func (s *Store) FriendBalance(ctx context.Context, userID, friendID int64) ([]CumulatedBalance, error) {
 	rows, err := s.DB.QueryContext(ctx, s.rebind(
 		`SELECT friend_id, currency, SUM(amount) AS amount
 		 FROM balance_view WHERE user_id = ? AND friend_id = ?
+		   AND (group_id IS NULL OR group_id NOT IN (SELECT id FROM groups WHERE archived_at IS NOT NULL))
 		 GROUP BY friend_id, currency
 		 HAVING SUM(amount) <> 0
 		 ORDER BY currency`), userID, friendID)

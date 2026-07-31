@@ -46,6 +46,10 @@ type ExpenseFilter struct {
 	Scope     GroupScope
 	GroupID   *int64 // specific-group selector (activity feed)
 	Limit     int    // max rows returned; 0 = unlimited
+	// IncludeArchived shows expenses that belong to archived groups. Default
+	// false hides them from the normal feeds (Activity, friend history); the
+	// Activity "archived" filter and a group's own detail page set it true.
+	IncludeArchived bool
 }
 
 // apply appends this filter's conditions (using `?` placeholders) to a WHERE
@@ -81,6 +85,14 @@ func (f ExpenseFilter) apply(conds *[]string, args *[]any) {
 	if f.GroupID != nil {
 		*conds = append(*conds, "e.group_id = ?")
 		*args = append(*args, *f.GroupID)
+	}
+	// Archived groups leave the normal feeds (Activity, friend history). Skip the
+	// exclusion when the caller opts in -- the Activity "archived" filter or a
+	// group's own detail page (ListGroupExpenses) -- or targets one specific group
+	// via GroupID (the Activity group selector). The `group_id IS NULL` guard keeps
+	// direct (non-group) expenses.
+	if !f.IncludeArchived && f.GroupID == nil {
+		*conds = append(*conds, "(e.group_id IS NULL OR e.group_id NOT IN (SELECT id FROM groups WHERE archived_at IS NOT NULL))")
 	}
 }
 
@@ -304,6 +316,9 @@ func (s *Store) ListGroupExpenses(ctx context.Context, groupID int64, f ExpenseF
 	args := []any{groupID}
 	f.Scope = ScopeAll
 	f.GroupID = nil
+	// A group's own page always lists its expenses, even when the group is
+	// archived; the archived-exclusion in apply() only targets the other feeds.
+	f.IncludeArchived = true
 	f.apply(&conds, &args)
 	return s.queryExpenses(ctx, conds, args, f.Limit)
 }

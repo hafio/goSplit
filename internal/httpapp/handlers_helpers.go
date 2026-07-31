@@ -171,8 +171,10 @@ func parseFilter(r *http.Request) (store.ExpenseFilter, map[string]string) {
 	view := map[string]string{
 		"q": q.Get("q"), "min": q.Get("min"), "max": q.Get("max"),
 		"from": q.Get("from"), "to": q.Get("to"), "scope": q.Get("scope"),
+		"archived": q.Get("archived"),
 	}
 	f.Descr = q.Get("q")
+	f.IncludeArchived = q.Get("archived") == "1"
 	if v := q.Get("min"); v != "" {
 		if m, err := money.Parse(v, "USD"); err == nil {
 			f.AmountMin = &m

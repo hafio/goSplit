@@ -252,6 +252,7 @@
   "filter.all": "すべて",
   "filter.groups": "グループ",
   "filter.direct": "個別",
+  "filter.archived": "アーカイブ済み",
   "filter.apply": "適用",
   "filter.clear_all": "すべてクリア",
   "nav.import": "インポート",

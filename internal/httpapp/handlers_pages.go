@@ -193,11 +193,20 @@ func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	rows := make([]groupRow, 0, len(groups))
+	// Split into the normal list and a normally-hidden "Archived" section.
+	// Per-group balances (nets) are still attached to archived rows so their
+	// unsettled debt shows when the section is expanded.
+	active := make([]groupRow, 0, len(groups))
+	var archived []groupRow
 	for _, g := range groups {
-		rows = append(rows, groupRow{Group: g, MemberCount: counts[g.ID], Balances: sortedNets(nets[g.ID])})
+		row := groupRow{Group: g, MemberCount: counts[g.ID], Balances: sortedNets(nets[g.ID])}
+		if g.IsArchived() {
+			archived = append(archived, row)
+		} else {
+			active = append(active, row)
+		}
 	}
-	s.render(w, r, "groups", "title.groups", map[string]any{"Groups": rows})
+	s.render(w, r, "groups", "title.groups", map[string]any{"Groups": active, "Archived": archived})
 }
 
 type settlementRow struct {
