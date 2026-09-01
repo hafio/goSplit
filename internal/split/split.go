@@ -68,6 +68,19 @@ var (
 	ErrNegativeBP       = errors.New("split: percentages must be non-negative")
 )
 
+// UserSelectable reports whether a method is one a user picks on the expense
+// form. The system methods (SETTLEMENT, CURRENCY_CONVERSION, ARCHIVE) build
+// their participant rows directly and never reach Compute, so they carry no
+// per-participant inputs to record or restore.
+func UserSelectable(m Method) bool {
+	switch m {
+	case EQUAL, PERCENTAGE, EXACT, SHARE, ADJUSTMENT:
+		return true
+	default:
+		return false
+	}
+}
+
 // DefaultSplitAllowed reports whether a method is permitted for friend/group
 // default splits (restricted to EQUAL, PERCENTAGE, SHARE — spec §5.1).
 func DefaultSplitAllowed(m Method) bool {
@@ -242,8 +255,13 @@ func distributeRemainder(shares []int64, total int64, date string) {
 }
 
 // seededOrder returns a deterministic permutation of participant indices. The
-// seed is derived from the sorted base shares plus the expense date, so the
-// order does not depend on the participants' input ordering.
+// seed is derived from the sorted base shares plus the expense date, so the same
+// participants and total always produce the same permutation.
+//
+// Note that the permutation indexes into lines, so which *person* receives a
+// leftover unit still follows the caller's ordering: callers that build lines
+// from an unordered source must sort them (handlers sort by user id) or an
+// unchanged re-save can move a minor unit between participants.
 func seededOrder(shares []int64, date string) []int {
 	sorted := make([]int64, len(shares))
 	copy(sorted, shares)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/hafio/gosplit/internal/split"
 	"github.com/hafio/gosplit/internal/store"
 )
 
@@ -27,7 +28,7 @@ func TestDeleteExpenseAuthorization(t *testing.T) {
 		_ = svc.Store.AddGroupMember(ctx, g.ID, id)
 	}
 
-	newExpense := func() string {
+	newExpense := func() *store.Expense {
 		e, err := svc.Store.CreateExpense(ctx, &store.Expense{
 			Name: "Dinner", Category: "general", Amount: 1000, SplitType: "EQUAL", ExpenseDate: "2026-01-10",
 			Currency: "USD", PaidBy: a.ID, AddedBy: a.ID, GroupID: nullInt(&g.ID),
@@ -35,7 +36,7 @@ func TestDeleteExpenseAuthorization(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create expense: %v", err)
 		}
-		return e.ID
+		return e
 	}
 	pairBalance := func() int64 {
 		var bal int64
@@ -48,19 +49,19 @@ func TestDeleteExpenseAuthorization(t *testing.T) {
 	// Non-editors are refused and nothing is deleted: a group member who is not a
 	// participant, and an outsider.
 	for _, actor := range []int64{c.ID, d.ID} {
-		id := newExpense()
-		if err := svc.DeleteExpense(ctx, id, actor); !errors.Is(err, ErrNotEditor) {
+		e := newExpense()
+		if err := svc.DeleteExpense(ctx, e.ID, actor, e.Version); !errors.Is(err, ErrNotEditor) {
 			t.Errorf("delete by non-editor %d: got %v, want ErrNotEditor", actor, err)
 		}
 		var deleted int
-		_ = svc.Store.DB.QueryRow(`SELECT count(*) FROM expenses WHERE id = ? AND deleted_at IS NOT NULL`, id).Scan(&deleted)
+		_ = svc.Store.DB.QueryRow(`SELECT count(*) FROM expenses WHERE id = ? AND deleted_at IS NOT NULL`, e.ID).Scan(&deleted)
 		if deleted != 0 {
-			t.Errorf("expense %s soft-deleted by non-editor %d", id, actor)
+			t.Errorf("expense %s soft-deleted by non-editor %d", e.ID, actor)
 		}
 	}
 
 	// A missing id reports not-found.
-	if err := svc.DeleteExpense(ctx, "no-such-id", a.ID); !errors.Is(err, ErrExpenseNotFound) {
+	if err := svc.DeleteExpense(ctx, "no-such-id", a.ID, store.InitialVersion); !errors.Is(err, ErrExpenseNotFound) {
 		t.Errorf("delete missing id: got %v, want ErrExpenseNotFound", err)
 	}
 
@@ -68,17 +69,55 @@ func TestDeleteExpenseAuthorization(t *testing.T) {
 	// the balance exactly (measured as a delta so earlier live rows don't matter).
 	for _, actor := range []int64{b.ID, a.ID} {
 		before := pairBalance()
-		id := newExpense()
-		if err := svc.DeleteExpense(ctx, id, actor); err != nil {
+		e := newExpense()
+		if err := svc.DeleteExpense(ctx, e.ID, actor, e.Version); err != nil {
 			t.Fatalf("delete by member %d: %v", actor, err)
 		}
 		var deletedAt sql.NullString
-		_ = svc.Store.DB.QueryRow(`SELECT deleted_at FROM expenses WHERE id = ?`, id).Scan(&deletedAt)
+		_ = svc.Store.DB.QueryRow(`SELECT deleted_at FROM expenses WHERE id = ?`, e.ID).Scan(&deletedAt)
 		if !deletedAt.Valid {
-			t.Errorf("expense %s not soft-deleted after a member delete", id)
+			t.Errorf("expense %s not soft-deleted after a member delete", e.ID)
 		}
 		if after := pairBalance(); after != before {
-			t.Errorf("balance not restored after deleting %s: before=%d after=%d", id, before, after)
+			t.Errorf("balance not restored after deleting %s: before=%d after=%d", e.ID, before, after)
 		}
+	}
+}
+
+// TestDeleteExpenseRejectsStaleVersion: the delete button carries the version the
+// detail page was rendered from, so a delete decided before someone else's edit
+// landed is refused instead of discarding that edit unseen.
+func TestDeleteExpenseRejectsStaleVersion(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	a := covUser(t, svc, "A", "a@x.com")
+	b := covUser(t, svc, "B", "b@x.com")
+
+	in := ExpenseInput{
+		Name: "Dinner", Total: 1000, Method: split.EQUAL, Currency: "USD",
+		ExpenseDate: "2026-01-10", PaidBy: a.ID, ActorID: a.ID,
+		Lines: []split.Line{{UserID: a.ID}, {UserID: b.ID}},
+	}
+	e, err := svc.AddExpense(ctx, in)
+	if err != nil {
+		t.Fatalf("AddExpense: %v", err)
+	}
+	// B opens the detail page (version e.Version); A edits it meanwhile.
+	edit := in
+	edit.Name = "Brunch"
+	edit.Version = e.Version
+	if _, err := svc.MoveExpense(ctx, e.ID, edit, false); err != nil {
+		t.Fatalf("competing edit: %v", err)
+	}
+	if err := svc.DeleteExpense(ctx, e.ID, b.ID, e.Version); !errors.Is(err, store.ErrStaleExpense) {
+		t.Fatalf("stale delete: err = %v, want ErrStaleExpense", err)
+	}
+	live, _ := svc.Store.GetExpense(ctx, e.ID)
+	if live.DeletedAt.Valid {
+		t.Error("a stale delete removed the expense anyway")
+	}
+	// Reloading the page hands back the current version, and the delete works.
+	if err := svc.DeleteExpense(ctx, e.ID, b.ID, live.Version); err != nil {
+		t.Fatalf("delete at the current version: %v", err)
 	}
 }

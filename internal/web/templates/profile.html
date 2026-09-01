@@ -54,7 +54,7 @@
     <p class="muted small" id="push-status"></p>
 
     <h2>{{.T "profile.account"}}</h2>
-    <a class="btn secondary" href="/profile/export">{{.T "profile.export"}}</a>
+    <a class="btn secondary" href="/profile/export" hx-boost="false">{{.T "profile.export"}}</a>
   </section>
 </div>
 <script src="{{asset "push.js"}}" defer></script>

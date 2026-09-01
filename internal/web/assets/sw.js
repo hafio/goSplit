@@ -6,7 +6,7 @@
  * offline or when the network hangs past the timeout (navigations fall back to the
  * /offline shell if the page was never cached). Bump CACHE on any change to this
  * file so old caches are purged on activate. */
-const CACHE = 'gosplit-v4';
+const CACHE = 'gosplit-v5';
 const NET_TIMEOUT = 10000;
 const SHELL = ['/offline', '/static/app.css', '/static/icon.svg', '/manifest.webmanifest'];
 
@@ -22,12 +22,20 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('push', (e) => {
   let data = { title: 'GoSplit', body: 'You have an update.' };
   try { data = e.data.json(); } catch (_) {}
-  e.waitUntil(self.registration.showNotification(data.title || 'GoSplit', {
-    body: data.body || '',
-    icon: '/static/icon.svg',
-    badge: '/static/icon.svg',
-    data: { url: data.url || '/' },
-  }));
+  e.waitUntil(Promise.all([
+    self.registration.showNotification(data.title || 'GoSplit', {
+      body: data.body || '',
+      icon: '/static/icon.svg',
+      badge: '/static/icon.svg',
+      data: { url: data.url || '/' },
+    }),
+    // The same delivery nudges any already-open tab to re-render, so a user
+    // looking at the app sees the change without touching the notification.
+    data.refresh === false ? Promise.resolve() :
+      clients.matchAll({ type: 'window' }).then((wins) => {
+        for (const w of wins) w.postMessage({ type: 'refresh' });
+      }).catch(() => {}),
+  ]));
 });
 
 self.addEventListener('notificationclick', (e) => {

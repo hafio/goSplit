@@ -83,6 +83,10 @@ type Expense struct {
 	CreatedAt      string
 	UpdatedAt      string
 	Note           string
+	// Version is the optimistic-concurrency token, bumped on every update. An
+	// update asserts the version it read so a second editor cannot silently
+	// overwrite the first (see Store.UpdateExpense).
+	Version int64
 }
 
 // ExpenseParticipant is one signed row of an expense (rows sum to zero).

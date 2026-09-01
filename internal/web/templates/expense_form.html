@@ -5,7 +5,7 @@
 <div class="flash warn">{{.T "form.group_changed_warning"}}</div>
 {{end}}
 
-<form method="post" action="{{.Data.Action}}" class="expense-form" id="expense-form">
+<form method="post" action="{{.Data.Action}}" class="expense-form" id="expense-form" hx-disabled-elt="find button[type=submit]">
   {{template "csrf" .CSRF}}
 
   {{if .Data.AllowRetarget}}
@@ -19,6 +19,11 @@
   {{else if not .Data.ShowTarget}}<input type="hidden" name="group_id" value="{{.Data.GroupIDStr}}">{{end}}
 
   <div class="amount-hero">
+    {{if .Data.IsSettlement}}
+    {{/* Fixed for the life of a settlement (see service.UpdateSettlement), so
+         it is shown, not offered -- and nothing posts it back. */}}
+    <span class="pill static cur-btn">{{.Data.Currency}}</span>
+    {{else}}
     <details class="picker" data-picker="currency">
       <summary class="pill cur-btn" aria-haspopup="true">{{.Data.Currency}}</summary>
       <div class="picker-panel" role="menu">
@@ -26,10 +31,22 @@
         {{range currencyCodes}}{{if ne . $.Data.Currency}}<label class="picker-opt"><input type="radio" name="currency" value="{{.}}"><b>{{.}}</b></label>{{end}}{{end}}
       </div>
     </details>
-    <input class="amt" type="text" inputmode="decimal" name="amount" value="{{.Data.AmountStr}}" required aria-label="{{.T "form.amount"}}">
+    {{end}}
+    {{/* Digits, thousands commas and one decimal point -- exactly what
+         money.Parse accepts. htmx runs HTML validation before a boosted submit,
+         so a mistyped amount is caught here with the browser's own localized
+         message instead of costing a round trip. */}}
+    <input class="amt" type="text" inputmode="decimal" name="amount" value="{{.Data.AmountStr}}" required pattern="\s*[+-]?[0-9,]*\.?[0-9]*\s*" aria-label="{{.T "form.amount"}}">
   </div>
+  {{with fieldErr .Data.FieldErrors "amount"}}<p class="field-err">{{.}}</p>{{end}}
+  {{if .Data.IsMove}}<input type="hidden" name="version" value="{{.Data.Version}}">{{end}}
 
   <div class="desc-row">
+    {{if .Data.IsSettlement}}
+    {{/* UpdateSettlement keeps the stored category, so a picker here would only
+         look editable. */}}
+    <span class="pill static"><span class="cat-emo">{{categoryEmoji .Data.Category}}</span><span class="cat-lbl">{{.Data.Category}}</span></span>
+    {{else}}
     <details class="picker" data-picker="category">
       <summary class="pill" aria-haspopup="true"><span class="cat-emo">{{categoryEmoji .Data.Category}}</span><span class="cat-lbl">{{.Data.Category}}</span></summary>
       <div class="picker-panel grid" role="menu">
@@ -37,9 +54,12 @@
         {{range categories}}{{if ne .Name $.Data.Category}}<label class="picker-opt picker-cat"><input type="radio" name="category" value="{{.Name}}"><em>{{.Emoji}}</em>{{.Name}}</label>{{end}}{{end}}
       </div>
     </details>
+    {{end}}
     <input class="desc" type="text" name="name" value="{{.Data.Name}}" required placeholder="{{.T "form.description"}}" aria-label="{{.T "form.description"}}">
   </div>
+  {{with fieldErr .Data.FieldErrors "name"}}<p class="field-err">{{.}}</p>{{end}}
 
+  {{if not .Data.IsSettlement}}
   <p class="paidby-line">{{.T "form.paid_by"}}
     <details class="picker" data-picker="paidby">
       <summary class="pill" aria-haspopup="true">{{range .Data.Candidates}}{{if eq .ID $.Data.PaidBy}}<span class="ava sm" style="--c:{{avatarColor .ID}}">{{initials .Name .Name}}</span> {{.Name}}{{end}}{{end}} <svg class="icon" style="width:13px;height:13px"><use href="{{asset "icons.svg"}}#chev-down"></use></svg></summary>
@@ -48,6 +68,8 @@
       </div>
     </details>
   </p>
+  {{with fieldErr .Data.FieldErrors "paid_by"}}<p class="field-err">{{.}}</p>{{end}}
+  {{end}}
 
   {{if .Data.ShowTarget}}
   <div class="field-lab">{{.T "form.target"}}</div>
@@ -57,10 +79,19 @@
   </select>
   {{end}}
 
+  {{if .Data.IsSettlement}}
+  <div class="field-lab">{{.T "form.with"}}</div>
+  <div class="card">
+    <div class="l-row"><div class="l-main"><div class="l-sub">{{.T "form.paid_by"}}</div></div><div class="l-end">{{.Data.SettlementFrom}}</div></div>
+    <div class="l-row"><div class="l-main"><div class="l-sub">{{.T "form.paid_to"}}</div></div><div class="l-end">{{.Data.SettlementTo}}</div></div>
+  </div>
+  <p class="hint" style="display:block">{{.T "form.hint_settlement"}}</p>
+  {{else}}
   <div class="field-lab">{{.T "form.split"}}</div>
   <div class="seg" role="group" aria-label="{{.T "form.split"}}">
     {{range .Data.Methods}}<label title="{{.}}"><input type="radio" name="method" value="{{.}}"{{if eq . $.Data.Method}} checked{{end}}>{{methodGlyph .}}</label>{{end}}
   </div>
+  {{with fieldErr .Data.FieldErrors "method"}}<p class="field-err">{{.}}</p>{{end}}
   <p class="hint hint-EQUAL">{{.T "form.hint_equal"}}</p>
   <p class="hint hint-EXACT">{{.T "form.hint_exact"}}</p>
   <p class="hint hint-PERCENTAGE">{{.T "form.hint_percentage"}}</p>
@@ -79,6 +110,12 @@
     </label>
     {{end}}
   </div>
+  {{range $.Data.Candidates}}{{with fieldErr $.Data.FieldErrors (printf "value_%d" .ID)}}<p class="field-err">{{.}}</p>{{end}}{{end}}
+  {{end}}
+  {{/* Outside the branch above: a settlement has no participant list, but a
+       refused move (ErrNotMember on the target group) still reports against
+       this pseudo-field and would otherwise render as a banner only. */}}
+  {{with fieldErr .Data.FieldErrors "participants"}}<p class="field-err">{{.}}</p>{{end}}
 
   <div class="field-lab">{{.T "form.date"}}</div>
   <div class="date-row">
@@ -95,7 +132,7 @@
   {{end}}
 
   {{if .Data.GroupChanged}}
-  <label class="ack"><input type="checkbox" name="ack" value="1" required> {{.T "form.ack"}}</label>
+  <label class="ack"><input type="checkbox" name="ack" value="1"{{if .Data.Acked}} checked{{end}} required> {{.T "form.ack"}}</label>
   {{end}}
 
   <div class="form-actions">

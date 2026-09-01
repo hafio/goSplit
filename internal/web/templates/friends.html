@@ -3,7 +3,7 @@
   <h1>{{.T "title.friends"}}</h1>
   <details class="add-inline">
     <summary class="a-btn sec sm"><svg class="icon"><use href="{{asset "icons.svg"}}#user-plus"></use></svg>{{.T "friends.add"}}</summary>
-    <form method="post" action="/friends/add" class="inline-form">
+    <form method="post" action="/friends/add" class="inline-form" hx-disabled-elt="find button[type=submit]">
       {{template "csrf" .CSRF}}
       <input type="email" name="email" placeholder="friend@example.com" required aria-label="{{.T "friends.add"}}">
       <button type="submit" class="a-btn sm">{{.T "friends.add"}}</button>

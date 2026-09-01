@@ -3,7 +3,7 @@
   <h1>{{.T "title.groups"}}</h1>
   <details class="add-inline">
     <summary class="a-btn sec sm"><svg class="icon"><use href="{{asset "icons.svg"}}#plus"></use></svg>{{.T "groups.create"}}</summary>
-    <form method="post" action="/groups/create" class="inline-form">
+    <form method="post" action="/groups/create" class="inline-form" hx-disabled-elt="find button[type=submit]">
       {{template "csrf" .CSRF}}
       <input type="text" name="name" placeholder="{{.T "groups.create"}}" required>
       <input type="text" name="currency" value="USD" size="4" aria-label="{{.T "profile.default_currency"}}">

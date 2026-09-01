@@ -483,8 +483,9 @@ func TestCovExpenseLifecycle(t *testing.T) {
 		t.Errorf("participants after update = %+v", np)
 	}
 
-	// SoftDeleteExpense marks the row (GetExpense still returns it).
-	if err := st.SoftDeleteExpense(ctx, e.ID, b.ID); err != nil {
+	// SoftDeleteExpense marks the row (GetExpense still returns it). It takes the
+	// version the caller read, which the update above bumped.
+	if err := st.SoftDeleteExpense(ctx, e.ID, b.ID, got.Version); err != nil {
 		t.Fatal(err)
 	}
 	del, _ := st.GetExpense(ctx, e.ID)
@@ -554,7 +555,7 @@ func TestCovExpenseListing(t *testing.T) {
 	mkGroup("Group B")
 
 	// ListGroupExpenses excludes soft-deleted rows.
-	if err := st.SoftDeleteExpense(ctx, g1.ID, a.ID); err != nil {
+	if err := st.SoftDeleteExpense(ctx, g1.ID, a.ID, g1.Version); err != nil {
 		t.Fatal(err)
 	}
 	ge, err := st.ListGroupExpenses(ctx, g.ID, ExpenseFilter{})

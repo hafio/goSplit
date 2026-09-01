@@ -1,7 +1,7 @@
 {{define "content"}}
 <h1>{{.T "recurring.title"}}</h1>
 
-<form method="post" action="/recurring" class="inline-form">
+<form method="post" action="/recurring" class="inline-form" hx-disabled-elt="find button[type=submit]">
   {{template "csrf" .CSRF}}
   <label>{{.T "recurring.template"}}
     <select name="template_id" required aria-label="{{.T "recurring.template"}}">
@@ -25,9 +25,9 @@
     <td><code>{{.Cron}}</code></td>
     <td class="date">{{.NextRun}}</td>
     <td class="actions">
-      <form method="post" action="/recurring/{{.ID}}/delete" class="inline" onsubmit="return confirm('{{$.T "recurring.delete_confirm"}}')">
+      <form method="post" action="/recurring/{{.ID}}/delete" class="inline" onsubmit="return confirm('{{$.T "recurring.delete_confirm"}}')" hx-disabled-elt="find button[type=submit]">
         {{template "csrf" $.CSRF}}
-        <button class="linkbtn danger">{{$.T "detail.delete"}}</button>
+        <button type="submit" class="linkbtn danger">{{$.T "detail.delete"}}</button>
       </form>
     </td>
   </tr>

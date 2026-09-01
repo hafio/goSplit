@@ -5,6 +5,7 @@ package httpapp
 
 import (
 	"context"
+	"encoding/base64"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -170,12 +171,57 @@ func (s *Server) vd(r *http.Request, title string, data any) web.ViewData {
 		Title: s.Renderer.T(lang, title),
 		User:  u,
 		CSRF:  auth.CSRFFrom(r.Context()),
-		Flash: s.Renderer.T(lang, r.URL.Query().Get("flash")),
 		Lang:  lang,
 		Theme: theme,
 		Nav:   navSlug(r.URL.Path),
 		Data:  data,
 	}
+}
+
+// vdPage is vd plus any pending one-shot flash, consumed here because the
+// layout is the only thing that renders one. Fragment responses deliberately
+// use vd instead, so a swap of one region can't silently eat a message the
+// user never saw.
+func (s *Server) vdPage(w http.ResponseWriter, r *http.Request, title string, data any) web.ViewData {
+	vd := s.vd(r, title, data)
+	vd.Flash = takeFlash(w, r)
+	return vd
+}
+
+// flashCookie carries a one-shot confirmation across the redirect that follows
+// a mutation. It replaces the older ?flash= query param, which stayed in the
+// pushed URL and so replayed the message on every refresh and back-navigation.
+const flashCookie = "gs_flash"
+
+// setFlash queues msg for the next full page render. The value is base64'd
+// because a display string may contain spaces, commas or quotes, none of which
+// are legal raw in a cookie value.
+func setFlash(w http.ResponseWriter, msg string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     flashCookie,
+		Value:    base64.RawURLEncoding.EncodeToString([]byte(msg)),
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// takeFlash reads the pending message and expires the cookie in the same
+// response, so the message is shown exactly once.
+func takeFlash(w http.ResponseWriter, r *http.Request) string {
+	c, err := r.Cookie(flashCookie)
+	if err != nil || c.Value == "" {
+		return ""
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: flashCookie, Value: "", Path: "/", HttpOnly: true,
+		SameSite: http.SameSiteLaxMode, MaxAge: -1,
+	})
+	b, err := base64.RawURLEncoding.DecodeString(c.Value)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // tr translates key for the request's resolved language (user preference,
@@ -208,11 +254,24 @@ func navSlug(path string) string {
 }
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request, page, title string, data any) {
-	s.Renderer.Render(w, http.StatusOK, page, s.vd(r, title, data))
+	s.Renderer.Render(w, http.StatusOK, page, s.vdPage(w, r, title, data))
+}
+
+// isFragmentRequest reports whether this htmx request is swapping the region
+// with the given id. htmx sets HX-Target to the id of the element it will swap,
+// so a handler can answer with that region's block instead of the whole page.
+// Plain navigation (including a boosted one, which targets the body) never
+// matches, so the full-page path stays the default and the no-JS fallback.
+func isFragmentRequest(r *http.Request, id string) bool {
+	return r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-Target") == id
+}
+
+func (s *Server) renderFragment(w http.ResponseWriter, r *http.Request, page, block, title string, data any) {
+	s.Renderer.RenderFragment(w, http.StatusOK, page, block, s.vd(r, title, data))
 }
 
 func (s *Server) renderErr(w http.ResponseWriter, r *http.Request, page, title string, data any, status int, errMsg string) {
-	vd := s.vd(r, title, data)
+	vd := s.vdPage(w, r, title, data)
 	vd.Error = errMsg
 	s.Renderer.Render(w, status, page, vd)
 }
@@ -264,7 +323,7 @@ func cacheControl(v string, next http.Handler) http.Handler {
 }
 
 func (s *Server) handleOffline(w http.ResponseWriter, r *http.Request) {
-	vd := s.vd(r, "msg.offline_title", s.tr(r, "msg.offline"))
+	vd := s.vdPage(w, r, "msg.offline_title", s.tr(r, "msg.offline"))
 	s.Renderer.Render(w, http.StatusOK, "message", vd)
 }
 

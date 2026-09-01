@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/hafio/gosplit/internal/split"
@@ -24,22 +26,70 @@ type ExpenseInput struct {
 	Note        string       // free-text note (edit form)
 	Lines       []split.Line // participants + method params
 	ActorID     int64        // who is performing the action
+	// Version is the expense version the edit form was rendered from. Ignored on
+	// add; on edit it must still match the stored row or the save is rejected as
+	// stale (see store.ErrStaleExpense).
+	Version int64
+}
+
+// SettlementInput is the editable surface of a settlement. The pair, the
+// direction and the currency are fixed when it is recorded -- changing one means
+// deleting it and recording it again -- so only the amount, the metadata and the
+// target group can change here. Currency is still carried so a resubmitted form
+// can be checked against the stored one rather than silently ignored.
+type SettlementInput struct {
+	Name        string
+	Amount      int64
+	Currency    string
+	ExpenseDate string
+	Note        string
+	GroupID     *int64
+	ActorID     int64
+	Version     int64
 }
 
 // Errors surfaced to expense handlers.
 var (
-	ErrNotMember       = errors.New("all participants must be members of the target group")
+	// ErrNotMember names the actor too, not just the participants: see assertMembers.
+	ErrNotMember       = errors.New("you and everyone involved must be members of the target group")
 	ErrNotMovable      = errors.New("this expense cannot be moved")
 	ErrMoveNoAck       = errors.New("you must acknowledge the recalculated split")
 	ErrNotEditor       = errors.New("you can't edit or delete this expense")
 	ErrExpenseNotFound = store.ErrNotFound
+	ErrNotSettlement   = errors.New("this transaction is not a settlement")
+	ErrIsSettlement    = errors.New("a settlement must be edited as a settlement")
+	ErrBadSettlement   = errors.New("this settlement's rows are malformed and cannot be edited")
+	// ErrSettlementAmount and ErrSettlementCurrency are sentinels rather than
+	// bare errors so the handler can render them against the field that caused
+	// them (see httpapp.fieldErrorsFor) instead of only as a banner.
+	ErrSettlementAmount   = errors.New("settlement amount must be positive")
+	ErrSettlementCurrency = errors.New("a settlement's currency is fixed; delete it and record it again in another currency")
 )
+
+// recordSplitInputs saves the raw per-participant inputs beside an expense so
+// the edit form can restore exactly what was entered. Best-effort by design: the
+// payload is reference data only, and when it is missing the form falls back to
+// reconstructing values from the stored amounts, so a failure here must never
+// fail the save the user already completed.
+func (s *Service) recordSplitInputs(ctx context.Context, expenseID string, in ExpenseInput) {
+	payload, err := split.EncodeInputs(in.Method, in.Lines)
+	if err != nil || payload == "" {
+		return
+	}
+	// Best-effort, but never silent: losing the payload downgrades the next edit
+	// form to reconstructing values from the amounts, and nothing else would say
+	// why.
+	if err := s.Store.PutSplitInputs(ctx, expenseID, payload); err != nil {
+		slog.Warn("split inputs not recorded; the edit form will fall back to derived values",
+			"expense", expenseID, "err", err)
+	}
+}
 
 // AddExpense computes the zero-sum participant rows via the split engine and
 // persists the expense.
 func (s *Service) AddExpense(ctx context.Context, in ExpenseInput) (*store.Expense, error) {
 	if in.GroupID != nil {
-		if err := s.assertMembers(ctx, *in.GroupID, in.Lines, in.PaidBy); err != nil {
+		if err := s.assertMembers(ctx, *in.GroupID, in.Lines, in.PaidBy, in.ActorID); err != nil {
 			return nil, err
 		}
 	}
@@ -52,6 +102,7 @@ func (s *Service) AddExpense(ctx context.Context, in ExpenseInput) (*store.Expen
 	if err != nil {
 		return nil, err
 	}
+	s.recordSplitInputs(ctx, created.ID, in)
 	// Ensure direct-expense counterparts become friends.
 	if in.GroupID == nil {
 		for _, p := range parts {
@@ -88,7 +139,7 @@ func (s *Service) CanEditExpense(ctx context.Context, actorID int64, e *store.Ex
 // expense driving balances toward zero.
 func (s *Service) Settle(ctx context.Context, sender, receiver int64, amount int64, currency string, groupID *int64, date string, actor int64) (*store.Expense, error) {
 	if amount <= 0 {
-		return nil, errors.New("settlement amount must be positive")
+		return nil, ErrSettlementAmount
 	}
 	e := &store.Expense{
 		ID:          store.NewUUID(),
@@ -116,13 +167,18 @@ func (s *Service) Settle(ctx context.Context, sender, receiver int64, amount int
 // required ONLY when the expense is relocated to a different group — a plain
 // in-place edit (same group, incl. direct→direct) needs no ack. Eligibility
 // (§5.2) and target membership are validated. The actor must be a member of the
-// transaction (payer/creator/participant). created_at/added_by are preserved;
-// the note comes from the form (in.Note) and the receipt (file_key) is carried
-// over since the form doesn't resubmit it.
+// transaction (payer/creator/participant) and, when a group is targeted, of that
+// group. created_at/added_by are preserved; the note comes from the form
+// (in.Note) and the receipt (file_key) is carried over since the form doesn't
+// resubmit it. A settlement is refused outright: its two rows are hand-built,
+// so re-splitting them here would rewrite split_type -- see UpdateSettlement.
 func (s *Service) MoveExpense(ctx context.Context, origID string, in ExpenseInput, acknowledged bool) (*store.Expense, error) {
 	orig, err := s.Store.GetExpense(ctx, origID)
 	if err != nil {
 		return nil, err
+	}
+	if orig.SplitType == string(split.SETTLEMENT) {
+		return nil, ErrIsSettlement
 	}
 	if !s.CanEditExpense(ctx, in.ActorID, orig) {
 		return nil, ErrNotEditor
@@ -134,7 +190,7 @@ func (s *Service) MoveExpense(ctx context.Context, origID string, in ExpenseInpu
 		return nil, ErrMoveNoAck
 	}
 	if in.GroupID != nil {
-		if err := s.assertMembers(ctx, *in.GroupID, in.Lines, in.PaidBy); err != nil {
+		if err := s.assertMembers(ctx, *in.GroupID, in.Lines, in.PaidBy, in.ActorID); err != nil {
 			return nil, err
 		}
 	}
@@ -143,19 +199,130 @@ func (s *Service) MoveExpense(ctx context.Context, origID string, in ExpenseInpu
 		return nil, err
 	}
 	e := s.newExpense(in)
-	e.ID = origID          // edit the original row in place
+	e.ID = origID            // edit the original row in place
 	e.FileKey = orig.FileKey // preserve the receipt (not resubmitted by the move form)
+	e.Version = in.Version   // reject the save if someone else edited it meanwhile
 	if err := s.Store.UpdateExpense(ctx, e, parts); err != nil {
 		return nil, err
 	}
+	s.recordSplitInputs(ctx, origID, in)
 	return s.Store.GetExpense(ctx, origID)
+}
+
+// UpdateSettlement edits a SETTLEMENT in place, preserving its split type and
+// its two zero-sum rows (payer +amount, counterparty -amount).
+//
+// Settlements get their own path deliberately: their rows are hand-built by
+// Settle and never pass through the split engine, so routing an edit through the
+// ordinary expense form would rewrite split_type and silently turn the record
+// into a normal expense -- breaking the balance UI and every settlement query.
+// The pair, the direction and the currency are fixed at creation; changing any
+// of those means deleting the settlement and recording it again. Relocating to
+// another group needs the same acknowledgment as any other move, because it
+// changes which balance the settlement clears.
+func (s *Service) UpdateSettlement(ctx context.Context, id string, in SettlementInput, acknowledged bool) (*store.Expense, error) {
+	orig, err := s.Store.GetExpense(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if orig.SplitType != string(split.SETTLEMENT) {
+		return nil, ErrNotSettlement
+	}
+	if !s.CanEditExpense(ctx, in.ActorID, orig) {
+		return nil, ErrNotEditor
+	}
+	if !movable(orig) {
+		return nil, ErrNotMovable
+	}
+	if in.Amount <= 0 {
+		return nil, ErrSettlementAmount
+	}
+	// A settlement's currency picks which per-currency balance it clears, so
+	// switching it would leave the original debt un-offset and invent a second
+	// one in the new currency. It is fixed for the life of the record; an empty
+	// value means the form carried none, which keeps the stored one.
+	currency := strings.ToUpper(orDefault(in.Currency, orig.Currency))
+	if currency != orig.Currency {
+		return nil, ErrSettlementCurrency
+	}
+	if !sameGroup(orig.GroupID, in.GroupID) && !acknowledged {
+		return nil, ErrMoveNoAck
+	}
+	payer, other, err := s.SettlementParties(ctx, orig)
+	if err != nil {
+		return nil, err
+	}
+	if in.GroupID != nil {
+		// The actor is checked alongside the pair, not just the pair: settling a
+		// whole group makes the acting member added_by on transfers between two
+		// other people, and CanEditExpense then lets them edit it -- without this
+		// they could file that settlement into a group they do not belong to.
+		if err := s.assertGroupMembers(ctx, *in.GroupID, payer, other, in.ActorID); err != nil {
+			return nil, err
+		}
+	}
+	e := &store.Expense{
+		ID:          orig.ID,
+		Name:        orDefault(in.Name, orig.Name),
+		Category:    orig.Category,
+		Amount:      in.Amount,
+		SplitType:   orig.SplitType,
+		ExpenseDate: orDefault(in.ExpenseDate, orig.ExpenseDate),
+		Currency:    currency,
+		PaidBy:      payer,
+		AddedBy:     orig.AddedBy,
+		UpdatedBy:   sql.NullInt64{Int64: in.ActorID, Valid: true},
+		GroupID:     nullInt(in.GroupID),
+		FileKey:     orig.FileKey,
+		Note:        in.Note,
+		Version:     in.Version,
+	}
+	parts := []store.ExpenseParticipant{
+		{UserID: payer, Amount: in.Amount},
+		{UserID: other, Amount: -in.Amount},
+	}
+	if err := s.Store.UpdateExpense(ctx, e, parts); err != nil {
+		return nil, err
+	}
+	return s.Store.GetExpense(ctx, id)
+}
+
+// SettlementParties resolves a settlement's payer and the person they paid from
+// its stored rows -- who owes whom is not recoverable from the expense row alone.
+// A settlement is exactly two rows by construction (see Settle); anything else is
+// a corrupt record, and editing it would have to guess at the direction, so it
+// fails loudly rather than silently picking one.
+func (s *Service) SettlementParties(ctx context.Context, e *store.Expense) (payer, other int64, err error) {
+	parts, err := s.Store.GetParticipants(ctx, e.ID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("%w (%d participant rows, want 2)", ErrBadSettlement, len(parts))
+	}
+	for _, p := range parts {
+		if p.UserID == e.PaidBy {
+			payer = p.UserID
+		} else {
+			other = p.UserID
+		}
+	}
+	if payer == 0 || other == 0 {
+		return 0, 0, fmt.Errorf("%w (payer %d is not among its rows)", ErrBadSettlement, e.PaidBy)
+	}
+	return payer, other, nil
 }
 
 // DeleteExpense soft-deletes an expense after confirming the actor is a member of
 // the transaction (payer/creator/participant). Deleting a settlement is the
 // supported way to reverse it: the row leaves balance_view (deleted_at IS NOT
 // NULL) and the balance is restored.
-func (s *Service) DeleteExpense(ctx context.Context, id string, actorID int64) error {
+//
+// version is the expense version the delete button was rendered from, and it is
+// asserted like any other write: a delete decided from a stale page -- one that
+// never showed the edit someone else has since saved -- is rejected with
+// store.ErrStaleExpense instead of discarding a split the deleter never saw.
+func (s *Service) DeleteExpense(ctx context.Context, id string, actorID, version int64) error {
 	e, err := s.Store.GetExpense(ctx, id)
 	if err != nil {
 		return err // ErrExpenseNotFound
@@ -163,7 +330,7 @@ func (s *Service) DeleteExpense(ctx context.Context, id string, actorID int64) e
 	if !s.CanEditExpense(ctx, actorID, e) {
 		return ErrNotEditor
 	}
-	return s.Store.SoftDeleteExpense(ctx, id, actorID)
+	return s.Store.SoftDeleteExpense(ctx, id, actorID, version)
 }
 
 // movable enforces §5.2 eligibility: currency-conversion pairs and recurrence
@@ -181,12 +348,28 @@ func movable(e *store.Expense) bool {
 	return !e.DeletedAt.Valid
 }
 
-func (s *Service) assertMembers(ctx context.Context, groupID int64, lines []split.Line, payer int64) error {
-	ids := map[int64]bool{payer: true}
+// assertMembers requires every user the save would touch -- the payer, each
+// participant, and the actor performing it -- to belong to the target group.
+// The actor is included because being a member of the transaction is not the
+// same as being a member of the destination: creator rights on a transfer
+// between two other people would otherwise let someone file it into a group
+// they have no part in, where it would move that group's balances.
+func (s *Service) assertMembers(ctx context.Context, groupID int64, lines []split.Line, payer, actor int64) error {
+	ids := map[int64]bool{payer: true, actor: true}
 	for _, l := range lines {
 		ids[l.UserID] = true
 	}
+	uniq := make([]int64, 0, len(ids))
 	for id := range ids {
+		uniq = append(uniq, id)
+	}
+	return s.assertGroupMembers(ctx, groupID, uniq...)
+}
+
+// assertGroupMembers fails closed with ErrNotMember unless every id belongs to
+// groupID; a lookup failure is reported as-is rather than treated as absence.
+func (s *Service) assertGroupMembers(ctx context.Context, groupID int64, ids ...int64) error {
+	for _, id := range ids {
 		ok, err := s.Store.IsGroupMember(ctx, groupID, id)
 		if err != nil {
 			return err

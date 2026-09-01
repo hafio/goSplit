@@ -1,5 +1,11 @@
 {{define "content"}}
 <h1>{{.T "title.activity"}}</h1>
-{{template "filterbar" (dict "Action" "/activity" "Filter" .Data.Filter "ShowScope" true "ShowArchived" true "Root" .)}}
-{{template "expense_table" (dict "Groups" .Data.Items "Root" . "ShowAllHref" .Data.ShowAllHref)}}
+{{template "frag_activity_feed" .}}
+{{end}}
+
+{{define "frag_activity_feed"}}
+<div id="activity-feed" class="frag" hx-target="#activity-feed" hx-swap="morph:outerHTML" hx-indicator="this">
+  {{template "filterbar" (dict "Action" "/activity" "Filter" .Data.Filter "ShowScope" true "ShowArchived" true "Root" .)}}
+  {{template "expense_table" (dict "Groups" .Data.Items "Root" . "ShowAllHref" .Data.ShowAllHref)}}
+</div>
 {{end}}

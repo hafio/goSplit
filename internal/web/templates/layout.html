@@ -8,13 +8,19 @@
   <meta http-equiv="Expires" content="0">
   <meta name="theme-color" content="{{themeHex .Theme false}}" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="{{themeHex .Theme true}}" media="(prefers-color-scheme: dark)">
+  <meta name="htmx-config" content='{"globalViewTransitions":true}'>
   <title>{{if .Title}}{{.Title}} · {{end}}GoSplit</title>
   <link rel="icon" type="image/svg+xml" href="{{asset "favicon.svg"}}" id="favicon">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="{{asset "app.css"}}">
   <script src="{{asset "htmx.min.js"}}" defer></script>
+  <script src="{{asset "idiomorph-ext.min.js"}}" defer></script>
 </head>
-<body hx-boost="true" hx-indicator="body">
+{{/* Boosted navigations morph the body instead of replacing it, so open menus,
+     focus and half-typed fields survive a swap. Page scripts still re-run:
+     htmx rewrites parsed <script> nodes into executable clones before the
+     swap, so a script new to the incoming page executes when morph inserts it. */}}
+<body hx-boost="true" hx-indicator="body" hx-ext="morph" hx-swap="morph:innerHTML">
 <header class="topbar">
   <a class="brand" href="/">GoSplit</a>
   {{if .User}}
@@ -87,6 +93,60 @@ if ('serviceWorker' in navigator) {
   } catch (e) { /* keep the static favicon */ }
 })();
 </script>
+{{if .User}}
+<script>
+// Bring a backgrounded tab back up to date without a full reload: re-request the
+// current page and morph it in. Runs when the tab is refocused after a while, on
+// bfcache restore, and when a Web Push delivery nudges us (see sw.js). Skipped
+// while a form holds unsaved input so nothing typed is thrown away.
+(function () {
+  "use strict";
+  if (window.__gsRefreshWired) return;
+  window.__gsRefreshWired = true;
+
+  var STALE_MS = 60000;
+  var hiddenAt = 0;
+
+  // Any control whose current value differs from the value the server rendered.
+  function dirty() {
+    var els = document.querySelectorAll("form input, form textarea, form select");
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (el.disabled || el.type === "hidden") continue;
+      if (el.type === "checkbox" || el.type === "radio") {
+        if (el.checked !== el.defaultChecked) return true;
+      } else if (el.tagName === "SELECT") {
+        for (var j = 0; j < el.options.length; j++) {
+          if (el.options[j].selected !== el.options[j].defaultSelected) return true;
+        }
+      } else if (el.value !== el.defaultValue) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function refresh() {
+    if (document.hidden || !window.htmx || dirty()) return;
+    htmx.ajax("GET", location.href, { target: "body", swap: "morph:innerHTML" });
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    if (hiddenAt && Date.now() - hiddenAt > STALE_MS) refresh();
+    hiddenAt = 0;
+  });
+
+  window.addEventListener("pageshow", function (e) { if (e.persisted) refresh(); });
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", function (e) {
+      if (e.data && e.data.type === "refresh") refresh();
+    });
+  }
+})();
+</script>
+{{end}}
 </body>
 </html>
 

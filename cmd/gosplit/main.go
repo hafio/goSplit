@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -24,7 +25,28 @@ import (
 	"github.com/hafio/gosplit/internal/web"
 )
 
+// version is the release tag, stamped at build time by the dev scripts and the
+// Dockerfile via -ldflags "-X main.version=...". An unstamped binary says "dev".
+var version = "dev"
+
+// wantsVersion reports whether the CLI args ask for the version banner.
+func wantsVersion(args []string) bool {
+	if len(args) < 2 {
+		return false
+	}
+	switch args[1] {
+	case "version", "-version", "--version":
+		return true
+	}
+	return false
+}
+
 func main() {
+	if wantsVersion(os.Args) {
+		fmt.Println(version)
+		return
+	}
+
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	if err := run(); err != nil {
@@ -54,6 +76,7 @@ func run() error {
 	}
 	// Re-configure the logger at the requested level now that config is loaded.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: parseLogLevel(cfg.LogLevel)})))
+	slog.Info("starting", "version", version)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 	defer stop()

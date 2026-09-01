@@ -12,11 +12,11 @@
   <details class="omenu">
     <summary class="a-btn ghost icon-only" aria-label="{{.T "action.options"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#dots"></use></svg></summary>
     <div class="omenu-panel">
-      <form method="post" action="/groups/{{.Data.Group.ID}}/simplify">
+      <form method="post" action="/groups/{{.Data.Group.ID}}/simplify" hx-disabled-elt="find button[type=submit]">
         {{template "csrf" .CSRF}}
         <button type="submit"><svg class="icon"><use href="{{asset "icons.svg"}}#shuffle"></use></svg>{{if .Data.Group.SimplifyDebts}}{{.T "group.simplify_off"}}{{else}}{{.T "group.simplify_on"}}{{end}}</button>
       </form>
-      <form method="post" action="/groups/{{.Data.Group.ID}}/archive">
+      <form method="post" action="/groups/{{.Data.Group.ID}}/archive" hx-disabled-elt="find button[type=submit]">
         {{template "csrf" .CSRF}}
         <button type="submit"><svg class="icon"><use href="{{asset "icons.svg"}}#archive"></use></svg>{{if .Data.Group.IsArchived}}{{.T "group.unarchive"}}{{else}}{{.T "group.archive"}}{{end}}</button>
       </form>
@@ -28,7 +28,7 @@
 <details class="add-inline group-invite">
   <summary class="a-btn sec sm"><svg class="icon"><use href="{{asset "icons.svg"}}#user-plus"></use></svg>{{.T "group.add_member"}}</summary>
   {{if .Data.AddableFriends}}
-  <form method="post" action="/groups/{{.Data.Group.ID}}/invite" class="inline-form">
+  <form method="post" action="/groups/{{.Data.Group.ID}}/invite" class="inline-form" hx-disabled-elt="find button[type=submit]">
     {{template "csrf" .CSRF}}
     <select name="friend_id" required aria-label="{{.T "group.add_member"}}">
       <option value="" disabled selected>{{.T "group.choose_friend"}}</option>
@@ -37,7 +37,7 @@
     <button type="submit" class="a-btn sm">{{.T "group.add"}}</button>
   </form>
   {{end}}
-  <form method="post" action="/groups/{{.Data.Group.ID}}/invite" class="inline-form">
+  <form method="post" action="/groups/{{.Data.Group.ID}}/invite" class="inline-form" hx-disabled-elt="find button[type=submit]">
     {{template "csrf" .CSRF}}
     <input type="email" name="email" placeholder="friend@example.com" required aria-label="{{.T "group.invite"}}">
     <button type="submit" class="a-btn sm">{{.T "group.invite"}}</button>
@@ -78,6 +78,15 @@
 <p class="muted small">{{.T "group.join_link"}}: <code>{{.Data.JoinURL}}</code></p>
 
 <h2>{{.T "group.expenses"}}</h2>
-{{template "filterbar" (dict "Action" (printf "/groups/%d" .Data.Group.ID) "Filter" .Data.Filter "ShowScope" false "Root" .)}}
-{{template "expense_table" (dict "Groups" .Data.Expenses "Root" . "ShowAllHref" .Data.ShowAllHref)}}
+{{template "frag_group_feed" .}}
+{{end}}
+
+{{/* Filtering and paging this feed swaps only this region: the enclosing
+    hx-target is inherited by the filter form and its chips, while an expense
+    row opts back out to a full page swap (see partials.html). */}}
+{{define "frag_group_feed"}}
+<div id="group-feed" class="frag" hx-target="#group-feed" hx-swap="morph:outerHTML" hx-indicator="this">
+  {{template "filterbar" (dict "Action" (printf "/groups/%d" .Data.Group.ID) "Filter" .Data.Filter "ShowScope" false "Root" .)}}
+  {{template "expense_table" (dict "Groups" .Data.Expenses "Root" . "ShowAllHref" .Data.ShowAllHref)}}
+</div>
 {{end}}

@@ -7,7 +7,7 @@
   </div>
 </div>
 
-<form method="post" action="/friends/{{.Data.FriendID}}/convert" class="convert-form" id="convert-form">
+<form method="post" action="/friends/{{.Data.FriendID}}/convert" class="convert-form" id="convert-form" hx-disabled-elt="find button[type=submit]">
   {{template "csrf" .CSRF}}
 
   {{if .Data.Balances}}
@@ -31,7 +31,7 @@
   <div class="cv-eq">
     <div class="cv-side">
       <span class="lbl">{{.T "convert.from_anchor"}}</span>
-      <input class="amt" type="text" inputmode="decimal" name="from_amount" id="cvFrom" value="{{.Data.FromAmount}}" required aria-label="{{.T "convert.from_anchor"}}">
+      <input class="amt" type="text" inputmode="decimal" name="from_amount" id="cvFrom" value="{{.Data.FromAmount}}" required pattern="\s*[+-]?[0-9,]*\.?[0-9]*\s*" aria-label="{{.T "convert.from_anchor"}}">
       <select class="cur" name="from_currency" id="cvFromCur" aria-label="{{.T "convert.from_anchor"}}">
         {{range currencyCodes}}<option value="{{.}}"{{if eq . $.Data.FromCurrency}} selected{{end}}>{{.}}</option>{{end}}
       </select>
@@ -39,7 +39,7 @@
     <div class="cv-arrow"><svg class="icon"><use href="{{asset "icons.svg"}}#arrow-right"></use></svg></div>
     <div class="cv-side">
       <span class="lbl">{{.T "convert.to"}}</span>
-      <input class="amt" type="text" inputmode="decimal" name="to_amount" id="cvTo" value="" required aria-label="{{.T "convert.to"}}">
+      <input class="amt" type="text" inputmode="decimal" name="to_amount" id="cvTo" value="" required pattern="\s*[+-]?[0-9,]*\.?[0-9]*\s*" aria-label="{{.T "convert.to"}}">
       <select class="cur" name="to_currency" id="cvToCur" aria-label="{{.T "convert.to"}}">
         {{range currencyCodes}}<option value="{{.}}"{{if eq . $.Data.ToCurrency}} selected{{end}}>{{.}}</option>{{end}}
       </select>

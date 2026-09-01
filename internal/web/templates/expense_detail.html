@@ -9,8 +9,9 @@
   {{if and (not .Deleted) .CanEdit}}
   <div class="m-actions">
     {{if .Movable}}<a class="a-btn ghost icon-only" href="/expenses/{{.ID}}/move" aria-label="{{$.T "detail.edit"}}" title="{{$.T "detail.edit"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#pencil"></use></svg></a>{{end}}
-    <form method="post" action="/expenses/{{.ID}}/delete" onsubmit="return confirm('{{$.T "detail.delete_confirm"}}')">
+    <form method="post" action="/expenses/{{.ID}}/delete" onsubmit="return confirm('{{$.T "detail.delete_confirm"}}')" hx-disabled-elt="find button[type=submit]">
       {{template "csrf" $.CSRF}}
+      <input type="hidden" name="version" value="{{.Version}}">
       <button type="submit" class="a-btn danger-ghost icon-only" aria-label="{{$.T "detail.delete"}}" title="{{$.T "detail.delete"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#trash"></use></svg></button>
     </form>
   </div>

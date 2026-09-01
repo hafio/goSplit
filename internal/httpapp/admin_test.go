@@ -25,7 +25,8 @@ func TestAdminUserManagement(t *testing.T) {
 		t.Errorf("admin page missing stat tiles")
 	}
 
-	// Edit bob (id 2): rename + promote. POST follows redirect to /admin?flash=…
+	// Edit bob (id 2): rename + promote. POST follows the redirect to /admin,
+	// which renders the confirmation carried in the one-shot flash cookie.
 	saved := body(t, h.post("/admin/users/2", url.Values{
 		"name": {"Bobby"}, "email": {"bob@example.com"},
 		"role": {"ADMIN"}, "currency": {"USD"}, "language": {"en"},

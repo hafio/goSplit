@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/hafio/gosplit/internal/split"
 	"github.com/hafio/gosplit/internal/store"
 	"github.com/robfig/cron/v3"
 )
@@ -79,8 +80,19 @@ func (s *Service) GenerateDueRecurrences(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-// generateOne creates a fresh expense from a recurrence's template, copying its
-// participant rows verbatim (they are already the zero-sum stored amounts).
+// generateOne creates a fresh expense from a recurrence's template.
+//
+// When the template records the raw split inputs, the generated expense is
+// re-split from them for its own date and carries the inputs forward, so it is
+// editable with the same fidelity as the template. Recomputing (rather than
+// copying the amounts) is what keeps the two consistent: the leftover minor
+// units are distributed from a seed that seeds on the expense date, so replayed
+// inputs and copied amounts could otherwise disagree by a unit and a no-op edit
+// would move a cent.
+//
+// Templates with no recorded inputs -- anything created before they were stored
+// -- keep the original behaviour and copy the participant rows verbatim (they
+// are already the zero-sum stored amounts).
 func (s *Service) generateOne(ctx context.Context, rec *store.ExpenseRecurrence) error {
 	tmpl, err := s.Store.GetExpense(ctx, rec.TemplateExpenseID)
 	if err != nil {
@@ -90,14 +102,44 @@ func (s *Service) generateOne(ctx context.Context, rec *store.ExpenseRecurrence)
 	if err != nil {
 		return err
 	}
+	date := todayISO()
+	method := split.Method(tmpl.SplitType)
+	payload, _ := s.Store.GetSplitInputs(ctx, tmpl.ID)
+	values, ok := split.DecodeInputs(payload, method)
+	if ok {
+		lines := make([]split.Line, 0, len(values))
+		for _, p := range parts {
+			if v, in := values[p.UserID]; in {
+				lines = append(lines, split.LineFromInput(method, p.UserID, v))
+			}
+		}
+		recomputed, cErr := split.Compute(method, tmpl.Amount, tmpl.PaidBy, date, lines)
+		if cErr != nil {
+			// The template's inputs no longer produce a valid split (a
+			// participant left, say). Fall back to copying its rows rather than
+			// skipping the occurrence entirely.
+			ok = false
+		} else {
+			parts = make([]store.ExpenseParticipant, len(recomputed))
+			for i, p := range recomputed {
+				parts[i] = store.ExpenseParticipant{UserID: p.UserID, Amount: p.Amount}
+			}
+		}
+	}
 	e := &store.Expense{
 		Name: tmpl.Name, Category: tmpl.Category, Amount: tmpl.Amount,
-		SplitType: tmpl.SplitType, ExpenseDate: todayISO(), Currency: tmpl.Currency,
+		SplitType: tmpl.SplitType, ExpenseDate: date, Currency: tmpl.Currency,
 		PaidBy: tmpl.PaidBy, AddedBy: rec.CreatedBy, GroupID: tmpl.GroupID,
 		RecurrenceID: sql.NullInt64{Int64: rec.ID, Valid: true},
 	}
-	_, err = s.Store.CreateExpense(ctx, e, parts)
-	return err
+	created, err := s.Store.CreateExpense(ctx, e, parts)
+	if err != nil {
+		return err
+	}
+	if ok {
+		_ = s.Store.PutSplitInputs(ctx, created.ID, payload)
+	}
+	return nil
 }
 
 func toISO(t time.Time) string { return t.UTC().Format("2006-01-02T15:04:05.000Z") }

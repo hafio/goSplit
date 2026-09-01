@@ -277,7 +277,7 @@ func TestCov2ClosedStoreErrors(t *testing.T) {
 	_, err = st.UserNetByExpense(ctx, 1, []string{"id"})
 	mustErr("UserNetByExpense", err)
 	mustErr("UpdateExpense", st.UpdateExpense(ctx, e, nil))
-	mustErr("SoftDeleteExpense", st.SoftDeleteExpense(ctx, "id", 1))
+	mustErr("SoftDeleteExpense", st.SoftDeleteExpense(ctx, "id", 1, 1))
 	_, _, err = st.CreateConversionPair(ctx, e, nil, e, nil)
 	mustErr("CreateConversionPair", err)
 	mustErr("CollapseToHistorical", st.CollapseToHistorical(ctx, []HistoricalBatch{{Expense: e}}))

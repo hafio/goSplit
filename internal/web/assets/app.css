@@ -144,6 +144,9 @@ button.secondary, .btn.secondary { background: transparent; color: var(--accent)
 .expense-form:has(input[value="PERCENTAGE"]:checked) .hint-PERCENTAGE,
 .expense-form:has(input[value="SHARE"]:checked) .hint-SHARE,
 .expense-form:has(input[value="ADJUSTMENT"]:checked) .hint-ADJUSTMENT { display: block; }
+/* Validation messages render next to the field that caused them, so a rejected
+   submit points at the fix instead of only banner-ing at the top. */
+.expense-form .field-err { color: var(--danger, #b3261e); font-size: 13px; margin: 4px 0 0; text-align: center; }
 /* value inputs are irrelevant for an equal split; previews only show for it */
 .expense-form:has(input[value="EQUAL"]:checked) .p-val input { display: none; }
 .expense-form:not(:has(input[value="EQUAL"]:checked)) .p-preview { display: none; }
@@ -233,6 +236,8 @@ a.l-row:hover { background: color-mix(in srgb, var(--accent) 5%, var(--panel)); 
 .pill { display: inline-flex; align-items: center; gap: .35rem; font: inherit; font-size: .86rem;
   font-weight: 600; background: var(--accent-soft); color: var(--accent); border: none;
   border-radius: 999px; padding: .3rem .75rem; cursor: pointer; }
+/* same shape, nothing to open: a value the form shows but does not let you change */
+.pill.static { cursor: default; }
 
 /* segmented control (radio group) */
 .seg { display: flex; background: color-mix(in srgb, var(--muted) 12%, var(--panel));
@@ -445,4 +450,17 @@ body.htmx-request::before {
 @keyframes pageload {
   from { transform: scaleX(0); transform-origin: left; }
   to   { transform: scaleX(1); transform-origin: left; }
+}
+
+/* hx-disabled-elt marks the in-flight submit button; keep it visibly inert so a
+   second tap reads as rejected rather than ignored. */
+button[disabled], .a-btn[disabled] { opacity: .55; cursor: default; filter: none; }
+
+/* A fragment refreshing itself (filters, paging) dims in place instead of
+   raising the page-wide top bar -- the rest of the page never left. */
+.frag.htmx-request { opacity: .55; transition: opacity .12s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  body.htmx-request::before { animation: none; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }

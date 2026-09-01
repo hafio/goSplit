@@ -36,6 +36,8 @@
   "form.hint_percentage": "Enter percentages — they must total 100%.",
   "form.hint_share": "Enter share weights — e.g. 2 counts double.",
   "form.hint_adjustment": "Enter per-person adjustments — the remainder is split equally.",
+  "form.hint_settlement": "A settlement moves a fixed amount between two people. To change who paid whom, delete it and record it again.",
+  "form.paid_to": "Paid to",
   "title.balances": "Balances",
   "title.friends": "Friends",
   "title.groups": "Groups",
@@ -271,5 +273,7 @@
   "filter.apply": "Apply",
   "filter.clear_all": "Clear all",
   "nav.import": "Import",
-  "nav.bank": "Bank"
+  "nav.bank": "Bank",
+  "err.expense_conflict": "Someone else changed this expense while you were editing. Your changes are below - review them and save again.",
+  "err.delete_conflict": "Someone else changed this transaction after this page was opened. Open it again to see the current version, then delete it if you still want to."
 }

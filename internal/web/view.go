@@ -1,6 +1,9 @@
 // Package web renders server-side HTML using stdlib html/template. Templates
 // and static assets are embedded with go:embed so the app ships as one binary.
-// The thin client (htmx + a little Alpine) swaps server-rendered fragments.
+// The thin client is htmx: navigation is boosted and morphed into the existing
+// body (Render), while requests that name a region via HX-Target get just that
+// region's block (RenderFragment). Both paths execute the same templates, so a
+// fragment can never drift from the full page it came from.
 package web
 
 import (
@@ -128,6 +131,7 @@ var funcs = template.FuncMap{
 	"currencyCodes": currencyCodes,
 	"queryWithout":  queryWithout,
 	"csvRows":       csvRows,
+	"fieldErr":      fieldErr,
 	"themes":        Themes,
 	"themeHex":      themeHex,
 	"asset":         assetURL,
@@ -212,13 +216,9 @@ func (v ViewData) T(key string) string {
 	return v.bundle.T(v.Lang, key)
 }
 
-// Render writes a full page (executing the layout).
-func (r *Renderer) Render(w http.ResponseWriter, status int, page string, vd ViewData) {
-	t, ok := r.pages[page]
-	if !ok {
-		http.Error(w, "unknown page: "+page, http.StatusInternalServerError)
-		return
-	}
+// begin resolves ambient defaults and writes the headers every HTML response
+// shares, then commits the status. Callers must not write before it returns.
+func (r *Renderer) begin(w http.ResponseWriter, status int, vd *ViewData) {
 	vd.bundle = r.bundle
 	if vd.Lang == "" {
 		vd.Lang = i18n.DefaultLang
@@ -234,8 +234,38 @@ func (r *Renderer) Render(w http.ResponseWriter, status int, page string, vd Vie
 	h.Set("Pragma", "no-cache")
 	h.Set("Expires", "0")
 	w.WriteHeader(status)
+}
+
+// Render writes a full page (executing the layout).
+func (r *Renderer) Render(w http.ResponseWriter, status int, page string, vd ViewData) {
+	t, ok := r.pages[page]
+	if !ok {
+		http.Error(w, "unknown page: "+page, http.StatusInternalServerError)
+		return
+	}
+	r.begin(w, status, &vd)
 	if err := t.ExecuteTemplate(w, "layout.html", vd); err != nil {
 		// Header already written; log-and-continue is the best we can do.
+		fmt.Fprintf(io.Discard, "render error: %v", err)
+	}
+}
+
+// RenderFragment writes one named block of a page instead of the whole layout,
+// for an htmx request that targets a single region. block must be defined in
+// that page's template set; an unknown page or block is a programming error and
+// fails loudly rather than silently returning an empty body.
+func (r *Renderer) RenderFragment(w http.ResponseWriter, status int, page, block string, vd ViewData) {
+	t, ok := r.pages[page]
+	if !ok {
+		http.Error(w, "unknown page: "+page, http.StatusInternalServerError)
+		return
+	}
+	if t.Lookup(block) == nil {
+		http.Error(w, "unknown fragment: "+page+"/"+block, http.StatusInternalServerError)
+		return
+	}
+	r.begin(w, status, &vd)
+	if err := t.ExecuteTemplate(w, block, vd); err != nil {
 		fmt.Fprintf(io.Discard, "render error: %v", err)
 	}
 }

@@ -35,7 +35,7 @@ func TestMoveKeepsRecord(t *testing.T) {
 	mv := h.post(path+"/move", url.Values{
 		"target_group": {"1"}, "name": {"Dinner"}, "amount": {"40.00"}, "currency": {"USD"},
 		"date": {"2026-01-02"}, "method": {"EQUAL"}, "paid_by": {"1"},
-		"include_1": {"1"}, "include_2": {"1"}, "ack": {"1"},
+		"include_1": {"1"}, "include_2": {"1"}, "ack": {"1"}, "version": {"1"},
 	})
 	b := body(t, mv)
 	if mv.StatusCode != http.StatusOK {
@@ -140,7 +140,7 @@ func TestEditSameGroupNoAckHTTP(t *testing.T) {
 	})
 	ed := h.post(path+"/move", url.Values{
 		"target_group": {"none"}, "name": {"Brunch"}, "amount": {"40.00"}, "currency": {"USD"},
-		"date": {"2026-01-02"}, "method": {"EQUAL"}, "paid_by": {"1"},
+		"date": {"2026-01-02"}, "method": {"EQUAL"}, "paid_by": {"1"}, "version": {"1"},
 		"include_1": {"1"}, "include_2": {"1"},
 	})
 	b := body(t, ed)

@@ -73,7 +73,9 @@
 <div class="month-h">{{.Label}}</div>
 <div class="card">
   {{range .Rows}}
-  <a class="l-row{{if .Deleted}} dim{{end}}" href="/expenses/{{.ID}}">
+  {{/* A row is navigation, not a feed refresh: opt back out of the enclosing
+       fragment's hx-target so it swaps the page like any other boosted link. */}}
+  <a class="l-row{{if .Deleted}} dim{{end}}" href="/expenses/{{.ID}}" hx-target="body" hx-swap="morph:innerHTML" hx-indicator="body">
     <span class="dateblk"><b>{{.DateMonthAbbr}}</b><span>{{.DateDay}}</span></span>
     <span class="cat">{{if eq .SplitType "SETTLEMENT"}}💸{{else if eq .SplitType "ARCHIVE"}}🗂️{{else}}{{categoryEmoji .Category}}{{end}}</span>
     <div class="l-main">

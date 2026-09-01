@@ -1,0 +1,6 @@
+# Paths graphify should not extract: its own output, build artifacts, task
+# logs, and editor backups.
+graphify-out/
+dist/
+scripts/logs/
+nppBackup/

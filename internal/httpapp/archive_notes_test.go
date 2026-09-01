@@ -27,7 +27,7 @@ func TestExpenseNoteAndCollapse(t *testing.T) {
 	// Note round-trip via the edit form (same group, so no ack needed).
 	h.post(path+"/move", url.Values{
 		"target_group": {"none"}, "name": {"Dinner"}, "amount": {"20.00"}, "currency": {"USD"},
-		"date": {"2026-01-10"}, "method": {"EQUAL"}, "paid_by": {"1"},
+		"date": {"2026-01-10"}, "method": {"EQUAL"}, "paid_by": {"1"}, "version": {"1"},
 		"include_1": {"1"}, "include_2": {"1"}, "note": {"Split the tasting menu"},
 	})
 	if !strings.Contains(body(t, h.get(path)), "Split the tasting menu") {

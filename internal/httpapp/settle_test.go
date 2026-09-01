@@ -390,7 +390,7 @@ func TestSettlementReversedByDelete(t *testing.T) {
 	).Scan(&id); err != nil {
 		t.Fatalf("look up settlement id: %v", err)
 	}
-	_ = body(t, h.post("/expenses/"+id+"/delete", url.Values{}))
+	_ = body(t, h.post("/expenses/"+id+"/delete", url.Values{"version": {"1"}}))
 
 	if b := body(t, h.get("/groups/1")); !strings.Contains(b, "/groups/1/settle/2") {
 		t.Error("group debt not restored after deleting the settlement")

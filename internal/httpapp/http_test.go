@@ -74,6 +74,24 @@ func (h *harness) get(path string) *http.Response {
 	return resp
 }
 
+// getHX issues a GET that looks like an htmx swap of the region named by
+// target, which is what makes a handler take its fragment branch. target "body"
+// is what an ordinary boosted navigation sends.
+func (h *harness) getHX(path, target string) *http.Response {
+	h.t.Helper()
+	req, err := http.NewRequest(http.MethodGet, h.srv.URL+path, nil)
+	if err != nil {
+		h.t.Fatalf("build request %s: %v", path, err)
+	}
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", target)
+	resp, err := h.client.Do(req)
+	if err != nil {
+		h.t.Fatalf("GET %s: %v", path, err)
+	}
+	return resp
+}
+
 func (h *harness) post(path string, form url.Values) *http.Response {
 	h.t.Helper()
 	form.Set("csrf_token", h.csrf())

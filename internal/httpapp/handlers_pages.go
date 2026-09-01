@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"sort"
 	"strings"
 
@@ -13,8 +12,6 @@ import (
 	"github.com/hafio/gosplit/internal/store"
 	"github.com/hafio/gosplit/internal/web"
 )
-
-func urlQueryEscape(s string) string { return url.QueryEscape(s) }
 
 // --- balances -------------------------------------------------------------
 
@@ -130,11 +127,16 @@ func (s *Server) handleFriendDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	nc := s.newNameCache()
-	s.render(w, r, "friend", friend.Name, map[string]any{
+	data := map[string]any{
 		"Friend": friend, "Balances": bals, "Hidden": hidden,
 		"Expenses": groupByMonth(s.buildRows(ctx, nc, u.ID, expenses)), "Filter": view,
 		"ShowAllHref": href,
-	})
+	}
+	if isFragmentRequest(r, "friend-feed") {
+		s.renderFragment(w, r, "friend", "frag_friend_feed", friend.Name, data)
+		return
+	}
+	s.render(w, r, "friend", friend.Name, data)
 }
 
 func (s *Server) handleFriendAdd(w http.ResponseWriter, r *http.Request) {
@@ -266,13 +268,18 @@ func (s *Server) handleGroupDetail(w http.ResponseWriter, r *http.Request) {
 		perCur[b.Currency] += b.Amount
 	}
 
-	s.render(w, r, "group", g.Name, map[string]any{
+	data := map[string]any{
 		"Group": g, "Members": members, "AddableFriends": addable,
 		"JoinURL":    fmt.Sprintf("%s/g/%s", s.Cfg.BaseURL, g.PublicID),
 		"Simplified": simplified, "Position": sortedNets(perCur),
 		"Expenses": groupByMonth(s.buildRows(ctx, nc, u.ID, expenses)), "Filter": view,
 		"ShowAllHref": href,
-	})
+	}
+	if isFragmentRequest(r, "group-feed") {
+		s.renderFragment(w, r, "group", "frag_group_feed", g.Name, data)
+		return
+	}
+	s.render(w, r, "group", g.Name, data)
 }
 
 // computeGroupSettlements turns the group's balances into the payment rows shown
@@ -432,7 +439,7 @@ func (s *Server) handleGroupJoinPage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	vd := s.vd(r, s.tr(r, "title.join")+" "+g.Name, fmt.Sprintf(s.tr(r, "msg.group_invite"), g.Name))
+	vd := s.vdPage(w, r, s.tr(r, "title.join")+" "+g.Name, fmt.Sprintf(s.tr(r, "msg.group_invite"), g.Name))
 	s.Renderer.Render(w, http.StatusOK, "message", vd)
 }
 
@@ -469,10 +476,15 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	href := showAllHref(r, showAll, &expenses)
 	nc := s.newNameCache()
-	s.render(w, r, "activity", "title.activity", map[string]any{
+	data := map[string]any{
 		"Items": groupByMonth(s.buildRows(ctx, nc, u.ID, expenses)), "Filter": view,
 		"ShowAllHref": href,
-	})
+	}
+	if isFragmentRequest(r, "activity-feed") {
+		s.renderFragment(w, r, "activity", "frag_activity_feed", "title.activity", data)
+		return
+	}
+	s.render(w, r, "activity", "title.activity", data)
 }
 
 // --- profile & admin ------------------------------------------------------
@@ -524,7 +536,7 @@ func (s *Server) handlePasswordChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Auth.ClearSession(w, r)
-	http.Redirect(w, r, "/login?flash=flash.password_updated", http.StatusSeeOther)
+	s.redirectFlash(w, r, "/login", "flash.password_updated")
 }
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
@@ -564,7 +576,7 @@ func (s *Server) renderAdmin(w http.ResponseWriter, r *http.Request, status int,
 			active++
 		}
 	}
-	vd := s.vd(r, "title.admin", map[string]any{
+	vd := s.vdPage(w, r, "title.admin", map[string]any{
 		"Users":       users,
 		"Languages":   s.Renderer.Languages(),
 		"MagicLink":   magicLink,
@@ -675,10 +687,13 @@ func (s *Server) handleAdminMagic(w http.ResponseWriter, r *http.Request) {
 	s.renderAdmin(w, r, http.StatusOK, link, uid, "")
 }
 
-// redirectFlash redirects to path with a flash message query param.
+// redirectFlash redirects to path carrying a one-shot confirmation message.
+// msg is either an i18n key or an already-formatted string; it is resolved here
+// so the stored message is display-ready and translated exactly once, never
+// re-run through the bundle on the way out.
 func (s *Server) redirectFlash(w http.ResponseWriter, r *http.Request, path, msg string) {
 	if msg != "" {
-		path += "?flash=" + urlQueryEscape(msg)
+		setFlash(w, s.tr(r, msg))
 	}
 	http.Redirect(w, r, path, http.StatusSeeOther)
 }

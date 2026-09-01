@@ -7,16 +7,30 @@ import (
 	"strings"
 )
 
+// ErrStaleExpense is returned when an update's expected version no longer
+// matches the stored row: someone else edited (or deleted) the expense since it
+// was read. Callers must re-present the change rather than retry blindly -- the
+// participant set they computed is based on a state that no longer exists.
+var ErrStaleExpense = errors.New("store: expense was modified by someone else")
+
+// InitialVersion is the version every newly inserted expense carries. It is 1,
+// not 0, because a form that carries no version token posts 0 (see
+// httpapp.formVersion): starting at 0 would have let a hand-built or stale form
+// match every never-edited row, which is exactly the fail-open the version
+// column exists to prevent.
+const InitialVersion = 1
+
 const expenseCols = `id, name, category, amount, split_type, expense_date, currency,
 	paid_by, added_by, updated_by, group_id, file_key, transaction_id, recurrence_id,
-	conversion_to_id, moved_from_id, deleted_at, deleted_by, created_at, updated_at, note`
+	conversion_to_id, moved_from_id, deleted_at, deleted_by, created_at, updated_at, note,
+	version`
 
 func scanExpense(row interface{ Scan(...any) error }) (*Expense, error) {
 	var e Expense
 	err := row.Scan(&e.ID, &e.Name, &e.Category, &e.Amount, &e.SplitType, &e.ExpenseDate,
 		&e.Currency, &e.PaidBy, &e.AddedBy, &e.UpdatedBy, &e.GroupID, &e.FileKey,
 		&e.TransactionID, &e.RecurrenceID, &e.ConversionToID, &e.MovedFromID,
-		&e.DeletedAt, &e.DeletedBy, &e.CreatedAt, &e.UpdatedAt, &e.Note)
+		&e.DeletedAt, &e.DeletedBy, &e.CreatedAt, &e.UpdatedAt, &e.Note, &e.Version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -149,14 +163,17 @@ func (s *Store) insertExpenseTx(ctx context.Context, tx *sql.Tx, e *Expense, par
 	if e.Category == "" {
 		e.Category = "general"
 	}
+	// version is written explicitly rather than left to the column default: the
+	// optimistic-concurrency guard only fails closed while no live row carries
+	// the 0 a version-less form posts (see InitialVersion).
 	_, err := tx.ExecContext(ctx, s.rebind(
 		`INSERT INTO expenses (id, name, category, amount, split_type, expense_date, currency,
 			paid_by, added_by, updated_by, group_id, file_key, transaction_id, recurrence_id,
-			conversion_to_id, moved_from_id, note)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+			conversion_to_id, moved_from_id, note, version)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		e.ID, e.Name, e.Category, e.Amount, e.SplitType, e.ExpenseDate, e.Currency,
 		e.PaidBy, e.AddedBy, e.UpdatedBy, e.GroupID, e.FileKey, e.TransactionID,
-		e.RecurrenceID, e.ConversionToID, e.MovedFromID, e.Note)
+		e.RecurrenceID, e.ConversionToID, e.MovedFromID, e.Note, InitialVersion)
 	if err != nil {
 		return err
 	}
@@ -192,6 +209,35 @@ func (s *Store) GetParticipants(ctx context.Context, expenseID string) ([]Expens
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// PutSplitInputs records the raw per-participant split inputs for an expense,
+// replacing any existing payload. This is reference data used only to restore
+// the edit form; nothing reads it to compute balances, so a failure here costs
+// fidelity (the form falls back to reconstructing values from the amounts) and
+// never correctness.
+func (s *Store) PutSplitInputs(ctx context.Context, expenseID, payload string) error {
+	_, err := s.DB.ExecContext(ctx, s.rebind(
+		`INSERT INTO expense_split_inputs (expense_id, inputs) VALUES (?, ?)
+		 ON CONFLICT(expense_id) DO UPDATE SET inputs = excluded.inputs`),
+		expenseID, payload)
+	return err
+}
+
+// GetSplitInputs returns the stored split-input payload for an expense, or ""
+// when none was recorded -- a pre-0006 row, or a system split that never ran
+// through the split engine.
+func (s *Store) GetSplitInputs(ctx context.Context, expenseID string) (string, error) {
+	var payload string
+	err := s.DB.QueryRowContext(ctx, s.rebind(
+		`SELECT inputs FROM expense_split_inputs WHERE expense_id = ?`), expenseID).Scan(&payload)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return payload, nil
 }
 
 // UserNetByExpense returns the viewer's signed participant amount for each of
@@ -230,27 +276,68 @@ func (s *Store) UserNetByExpense(ctx context.Context, userID int64, ids []string
 
 // SoftDeleteExpense marks an expense deleted by a user (balances recompute
 // automatically because the view excludes deleted rows).
-func (s *Store) SoftDeleteExpense(ctx context.Context, id string, byUser int64) error {
-	_, err := s.DB.ExecContext(ctx, s.rebind(
-		`UPDATE expenses SET deleted_at = ?, deleted_by = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`),
-		nowISO(), byUser, nowISO(), id)
-	return err
+//
+// expectedVersion is the version the delete page was rendered from, asserted the
+// same way UpdateExpense asserts it: an edit (or another delete) landing in the
+// meantime yields ErrStaleExpense rather than discarding a split the deleter
+// never saw. Bumping version on success invalidates any edit form still open on
+// this expense, so a concurrent save is rejected instead of resurrecting the
+// deleted row.
+func (s *Store) SoftDeleteExpense(ctx context.Context, id string, byUser, expectedVersion int64) error {
+	res, err := s.DB.ExecContext(ctx, s.rebind(
+		`UPDATE expenses SET deleted_at = ?, deleted_by = ?, updated_at = ?, version = version + 1
+		 WHERE id = ? AND deleted_at IS NULL AND version = ?`),
+		nowISO(), byUser, nowISO(), id, expectedVersion)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrStaleExpense
+	}
+	return nil
 }
 
 // UpdateExpense replaces an expense's editable fields (including the free-text
 // note), and its participant set, in one tx (edit flow). The participant set
 // must remain zero-sum. created_at/added_by are left untouched.
+//
+// e.Version is the version the caller read; the update applies only if the
+// stored row still carries it, and bumps it on success. A mismatch means another
+// member saved (or deleted) the expense in the meantime, and yields
+// ErrStaleExpense before any participant row is touched -- so a losing writer
+// rolls back having changed nothing rather than erasing the winner's split.
+//
+// Any recorded split inputs are dropped here too: they describe the split being
+// replaced, and a stale restore is worse than none (the edit form falls back to
+// reconstructing values from the amounts when no inputs are recorded). The
+// caller writes the new payload after this commit succeeds.
 func (s *Store) UpdateExpense(ctx context.Context, e *Expense, parts []ExpenseParticipant) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, s.rebind(
+	res, err := tx.ExecContext(ctx, s.rebind(
 		`UPDATE expenses SET name=?, category=?, amount=?, split_type=?, expense_date=?, currency=?,
-			paid_by=?, updated_by=?, group_id=?, file_key=?, note=?, updated_at=? WHERE id=?`),
+			paid_by=?, updated_by=?, group_id=?, file_key=?, note=?, updated_at=?, version=version+1
+		 WHERE id=? AND version=?`),
 		e.Name, e.Category, e.Amount, e.SplitType, e.ExpenseDate, e.Currency, e.PaidBy,
-		e.UpdatedBy, e.GroupID, e.FileKey, e.Note, nowISO(), e.ID); err != nil {
+		e.UpdatedBy, e.GroupID, e.FileKey, e.Note, nowISO(), e.ID, e.Version)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrStaleExpense
+	}
+	if _, err := tx.ExecContext(ctx, s.rebind(`DELETE FROM expense_split_inputs WHERE expense_id = ?`), e.ID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, s.rebind(`DELETE FROM expense_participants WHERE expense_id = ?`), e.ID); err != nil {

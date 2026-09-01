@@ -3,7 +3,7 @@
   <h1>{{.T "admin.users_title"}}</h1>
   <details class="add-inline"{{if .Error}} open{{end}}>
     <summary class="a-btn sec sm"><svg class="icon"><use href="{{asset "icons.svg"}}#user-plus"></use></svg> {{.T "admin.add_user"}}</summary>
-    <form method="post" action="/admin/users/create" class="adm-editor">
+    <form method="post" action="/admin/users/create" class="adm-editor" hx-disabled-elt="find button[type=submit]">
       {{template "csrf" .CSRF}}
       <div class="adm-grid">
         <label>{{.T "form.name"}}<input type="text" name="name"></label>

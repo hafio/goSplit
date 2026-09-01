@@ -110,6 +110,19 @@ func categoryEmoji(cat string) string {
 // categories returns the canonical category list (for the picker).
 func categories() []Category { return categoryList }
 
+// fieldErr looks up a per-field validation message. Pages that never set the
+// map at all pass an untyped nil here, so it tolerates that rather than forcing
+// every render path to remember an empty map -- a missing message must degrade
+// to "no message", never to a template error on a page that is already
+// reporting a problem.
+func fieldErr(m any, key string) string {
+	errs, ok := m.(map[string]string)
+	if !ok {
+		return ""
+	}
+	return errs[key]
+}
+
 // methodGlyph maps a split-method code to the compact glyph shown in the
 // segmented control.
 func methodGlyph(m string) string {

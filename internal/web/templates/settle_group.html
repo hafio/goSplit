@@ -16,7 +16,7 @@
   </div>
   {{end}}
 </div>
-<form method="post" action="/groups/{{.Data.Group.ID}}/settle" class="stack" onsubmit="return confirm('{{.T "settle.confirm"}}')">
+<form method="post" action="/groups/{{.Data.Group.ID}}/settle" class="stack" onsubmit="return confirm('{{.T "settle.confirm"}}')" hx-disabled-elt="find button[type=submit]">
   {{template "csrf" .CSRF}}
   <label>{{.T "form.date"}}
     <input type="date" name="date" value="{{.Data.Date}}" required>

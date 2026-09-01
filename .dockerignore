@@ -1,0 +1,27 @@
+# Keep the build context small -- but NOT .git: the build stage derives the
+# version from `git describe` when no VERSION build-arg is passed (tag.yml is
+# copied verbatim into every repo and cannot pass one).
+
+.github/
+docs/
+nppBackup/
+graphify-out/
+scripts/logs/
+dist/
+
+# Local build outputs
+/gosplit
+/out/
+*.exe
+
+# Local data and secrets
+/data/
+*.db
+*.db-shm
+*.db-wal
+.env
+
+# Coverage artifacts
+coverage.out
+coverage.html
+$prof

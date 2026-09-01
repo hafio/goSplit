@@ -31,6 +31,7 @@ func TestMoveExpenseEditsInPlace(t *testing.T) {
 		Name: "Dinner", Category: "general", Total: 1000, Method: split.EQUAL, Currency: "USD",
 		ExpenseDate: "2026-01-10", PaidBy: a.ID, GroupID: &gB.ID,
 		Lines: []split.Line{{UserID: a.ID}, {UserID: b.ID}}, ActorID: a.ID,
+		Version: orig.Version,
 	}
 
 	// Acknowledgment is required.
@@ -99,6 +100,7 @@ func TestEditSameGroupNoAck(t *testing.T) {
 		Name: "Lunch", Category: "general", Total: 2000, Method: split.EQUAL, Currency: "USD",
 		ExpenseDate: "2026-01-11", PaidBy: a.ID, GroupID: &g.ID, Note: "brunch spot",
 		Lines: []split.Line{{UserID: a.ID}, {UserID: b.ID}}, ActorID: a.ID,
+		Version: orig.Version,
 	}
 	got, err := svc.MoveExpense(ctx, orig.ID, in, false)
 	if err != nil {
@@ -174,7 +176,7 @@ func TestMoveExpenseNotMovableWhenDeleted(t *testing.T) {
 		Name: "X", Category: "general", Amount: 1000, SplitType: "EQUAL", ExpenseDate: "2026-01-10",
 		Currency: "USD", PaidBy: a.ID, AddedBy: a.ID,
 	}, []store.ExpenseParticipant{{UserID: a.ID, Amount: 500}, {UserID: b.ID, Amount: -500}})
-	_ = svc.Store.SoftDeleteExpense(ctx, orig.ID, a.ID)
+	_ = svc.Store.SoftDeleteExpense(ctx, orig.ID, a.ID, orig.Version)
 
 	in := ExpenseInput{
 		Name: "X", Total: 1000, Method: split.EQUAL, Currency: "USD", ExpenseDate: "2026-01-10",

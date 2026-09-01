@@ -12,11 +12,11 @@
     <div class="omenu-panel">
       <a href="/friends/{{.Data.Friend.ID}}/convert"><svg class="icon"><use href="{{asset "icons.svg"}}#repeat"></use></svg>{{.T "expense.convert"}}</a>
       <a href="/friends/{{.Data.Friend.ID}}/collapse"><svg class="icon"><use href="{{asset "icons.svg"}}#archive"></use></svg>{{.T "archive.title"}}</a>
-      <form method="post" action="/friends/{{.Data.Friend.ID}}/hide">
+      <form method="post" action="/friends/{{.Data.Friend.ID}}/hide" hx-disabled-elt="find button[type=submit]">
         {{template "csrf" .CSRF}}
         <button type="submit"><svg class="icon"><use href="{{asset "icons.svg"}}#x"></use></svg>{{if .Data.Hidden}}{{.T "friend.unhide"}}{{else}}{{.T "friend.hide"}}{{end}}</button>
       </form>
-      <form method="post" action="/friends/{{.Data.Friend.ID}}/delete" onsubmit="return confirm('{{.T "friend.delete_confirm"}}')">
+      <form method="post" action="/friends/{{.Data.Friend.ID}}/delete" onsubmit="return confirm('{{.T "friend.delete_confirm"}}')" hx-disabled-elt="find button[type=submit]">
         {{template "csrf" .CSRF}}
         <button type="submit" class="danger"><svg class="icon"><use href="{{asset "icons.svg"}}#trash"></use></svg>{{.T "friend.delete"}}</button>
       </form>
@@ -29,6 +29,12 @@
   <a class="a-btn sec" href="/friends/{{.Data.Friend.ID}}/settle"><svg class="icon"><use href="{{asset "icons.svg"}}#banknote"></use></svg> {{.T "expense.settle"}}</a>
 </div>
 
-{{template "filterbar" (dict "Action" (printf "/friends/%d" .Data.Friend.ID) "Filter" .Data.Filter "ShowScope" false "Root" .)}}
-{{template "expense_table" (dict "Groups" .Data.Expenses "Root" . "ShowAllHref" .Data.ShowAllHref)}}
+{{template "frag_friend_feed" .}}
+{{end}}
+
+{{define "frag_friend_feed"}}
+<div id="friend-feed" class="frag" hx-target="#friend-feed" hx-swap="morph:outerHTML" hx-indicator="this">
+  {{template "filterbar" (dict "Action" (printf "/friends/%d" .Data.Friend.ID) "Filter" .Data.Filter "ShowScope" false "Root" .)}}
+  {{template "expense_table" (dict "Groups" .Data.Expenses "Root" . "ShowAllHref" .Data.ShowAllHref)}}
+</div>
 {{end}}

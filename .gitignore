@@ -3,6 +3,9 @@
 /out/
 *.exe
 
+# Release build output (dev.sh/dev.ps1 `build` writes dist/gosplit-<os>-<arch>)
+/dist/
+
 # Local data (SQLite file, WAL, uploads)
 /data/
 *.db

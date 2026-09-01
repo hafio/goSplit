@@ -22,8 +22,46 @@ expenses between groups**.
 > compact CSS in place of the Tailwind CLI (swap in `web/assets/app.css`).
 > `web/assets/htmx.min.js` vendors htmx 2.0.10 with `hx-boost` enabled on
 > `<body>` — navigation swaps the page body over AJAX instead of a full reload.
-> Forms that change identity or theme (login, register, logout, profile) opt
-> out with `hx-boost="false"`. All core flows still work without JavaScript.
+> Forms that change identity or theme (login, register, logout, profile) and the
+> data export link opt out with `hx-boost="false"`. All core flows still work
+> without JavaScript.
+
+### Client behaviour
+
+Everything below is progressive enhancement layered on the same server-rendered
+HTML; with JavaScript off, every flow falls back to plain navigation and
+POST-redirect-GET.
+
+- **Morphing swaps.** `web/assets/idiomorph-ext.min.js` vendors idiomorph 0.7.4
+  (pinned; the file header records the npm tarball and file hashes). `<body>`
+  carries `hx-ext="morph" hx-swap="morph:innerHTML"`, so a boosted navigation
+  morphs the existing DOM instead of replacing it — open menus, focus and
+  half-typed fields survive. Page scripts still re-run: htmx rewrites parsed
+  `<script>` nodes into executable clones before the swap.
+- **View transitions.** The `htmx-config` meta enables `globalViewTransitions`;
+  `prefers-reduced-motion` disables the animation in `app.css`.
+- **Fragment rendering.** `Renderer.RenderFragment` executes one named block of a
+  page instead of the layout. A request whose `HX-Target` names a region (see
+  `isFragmentRequest`) gets just that region, so filtering or paging a feed
+  re-renders the feed, not the whole page. The feed wrappers are
+  `#activity-feed`, `#friend-feed` and `#group-feed`; an expense row inside them
+  opts back out to a full page swap. Anything else — including a boosted
+  navigation, which targets the body — takes the full-page path.
+- **Double-submit guard.** Mutating forms carry
+  `hx-disabled-elt="find button[type=submit]"`, so a fast double-tap cannot fire
+  the same POST twice.
+- **Client-side amount check.** The amount inputs carry a `pattern` matching what
+  `money.Parse` accepts. htmx runs HTML validation before a boosted submit, so a
+  typo is caught with the browser's own localized message instead of a round
+  trip. The server remains the source of truth.
+- **One-shot flash.** Confirmations ride a short-lived `gs_flash` cookie
+  (`setFlash`/`takeFlash`) rather than a `?flash=` query param, so the message is
+  shown exactly once and never becomes part of a bookmarkable URL.
+- **Staying current.** A backgrounded tab re-requests and morphs the current page
+  when it is refocused after a minute, on bfcache restore, and when a Web Push
+  delivery nudges open tabs (`sw.js` posts a `refresh` message). The refresh is
+  skipped while a form holds unsaved input. Live server push (SSE) was evaluated
+  and deliberately deferred — see `docs/ux-responsiveness-plan.md`.
 
 ## Quick start
 
@@ -78,6 +116,19 @@ portable): it canonicalizes each debtor↔payer pair, sums signed shares per
 `(pair, group, currency)`, and `UNION ALL`s both directions. `amount > 0` in
 row `(user, friend)` means **friend owes user**. Balances stay **per currency**.
 
+The raw per-participant split inputs a user typed (percentages, share weights,
+exact amounts, adjustments) are kept alongside, in `expense_split_inputs`, purely
+so the edit form can restore them. Nothing reads that table to compute money, so
+it cannot affect a balance; an expense with no row there -- one saved before the
+table existed, or a settlement/conversion/archive that never runs through the
+split engine -- falls back to reconstructing the form from the stored amounts.
+Every expense update *and* delete is guarded by a `version` column: the edit form
+and the delete button both post the version their page was rendered from, and a
+save or delete that no longer matches the stored row is refused with a conflict
+instead of silently overwriting -- or discarding -- someone else's edit. Rows
+start at version 1, so a request carrying no version token matches nothing and
+fails closed.
+
 ## Features
 
 Auth (magic-link + password, register/login/change/forgot/reset, admin
@@ -90,7 +141,12 @@ into a collapsed Archived section that still shows its own unsettled debt, with 
 expenses viewable via Activity's off-by-default Archived filter; a debt-simplification
 toggle that switches between the minimal transfer set and raw pairwise balances,
 detailed balances, **move expenses** between/into/out of groups via a guided
-re-split), expenses (all five split methods + **scoped settlements** — both ways (settle what
+re-split; editing restores the original method and the values as entered rather
+than reconstructing them from the amounts, and a settlement edits as a settlement
+-- amount, date, note, group -- with its pair, direction and currency fixed;
+re-denominating one would leave the debt it cleared outstanding, so that means
+deleting it and recording it again), expenses (all
+five split methods + **scoped settlements** -- both ways (settle what
 you owe or record what you're owed, direction derived server-side from the balance),
 per pair or whole-group (one action records the minimum set of transfers that nets
 every member), reversed by deleting the settlement; settling from a group clears that
@@ -162,33 +218,64 @@ committed regression fixture. To run the Postgres data-layer tests, set
 
 ## Development & CI
 
-Mirrored task runners live in [`scripts/`](scripts/) — `dev.sh` (bash) and
-`dev.ps1` (PowerShell), behaviorally identical. Each task tees combined output
-to `scripts/logs/<task>.log`.
+Mirrored task runners live in [`scripts/`](scripts/) -- `dev.sh` (bash) and
+`dev.ps1` (PowerShell), behaviorally identical. They are the only place that
+knows how to build, test, lint or scan this repo; CI calls task names only.
+Each task truncates `scripts/logs/<task>.log`, tees combined output to it, and
+closes with a footer line (`<ISO-8601> | <task> | <secs>s | OK|FAILED`).
 
 ```sh
-./scripts/dev.sh build vet test cov   # fast post-change loop
-./scripts/dev.sh vuln                 # govulncheck (report-only)
-./scripts/dev.sh image                # build the distroless image (needs Docker)
-./scripts/dev.sh trivy                # scan the built image for CVEs (report-only)
-./scripts/dev.sh scan                 # vuln + image + trivy
-./scripts/dev.sh full                 # all + scan
+./scripts/dev.sh build   # -> dist/gosplit-<os>-<arch>, version stamped in
+./scripts/dev.sh vet
+./scripts/dev.sh test
+./scripts/dev.sh cov     # profile -> logs/coverage.html, prints the total
+./scripts/dev.sh image   # build the distroless image (needs Docker)
+./scripts/dev.sh scan    # govulncheck + Trivy on a freshly built image
+./scripts/dev.sh up      # docker compose up -d   (down to stop)
+./scripts/dev.sh full    # pre-tag sweep: build vet test cov image scan graphify
 ```
 
-Override the image tag with `IMAGE_NAME` (default `gosplit:dev`). `trivy` runs
-as a container (`aquasec/trivy`, override with `TRIVY_IMAGE`) — only Docker is
-required, no local Trivy install.
+Two aggregates, and only two: `all` = `build vet test` (the fast inner loop,
+and what CI runs as `all scan`), `full` = the pre-tag sweep above.
 
-GitHub Actions mirror these gates:
+`build`, `vet`, `test` and `scan` are **fatal**. `scan` fails on any CVE
+govulncheck reports, and on any fixable CVE Trivy reports; an unfixable one
+Trivy finds warns and passes, since there is nothing to act on. It
+runs `go tool govulncheck` (a pinned `tool` directive in `go.mod`, never
+`go run pkg@version`, which would ignore the toolchain pin) and then Trivy as a
+container against a freshly built image -- no local Trivy install needed. The
+image half warns and skips where the Docker daemon is absent or not running
+linux containers, so the Windows leg checks dependencies only.
 
-- **`.github/workflows/ci.yml`** — on push/PR: `build vet test cov` (fatal) +
-  `govulncheck` (report-only), uploading the coverage profile.
-- **`.github/workflows/release.yml`** — on a published release (and `v*` tags for
-  a dry run): the same gates, then build the image, Trivy-scan it, and push
-  `:<tag>` + `:latest` to GHCR.
+`graphify` is local-only and skips when `CI` is set. Overrides: `VERSION`,
+`IMAGE_NAME`, `TRIVY_IMAGE`, `TARGET_OS`/`TARGET_ARCH` (cross-compilation).
 
-Correctness gates (build/vet/test) are fatal; CVE/image scans are report-only —
-raise Trivy's `exit-code` or the `vuln` handling if you want them blocking.
+### Versioning and release
+
+The git tag is the single source of version truth -- no VERSION file, no
+hardcoded const. `vMAJOR.MINOR.PATCH` reaches the binary through
+`-ldflags "-X main.version=..."`, and the image takes the tag with the `v`
+stripped (`ghcr.io/hafio/gosplit:1.0.0`). A dev build reports
+`git describe --tags --always --dirty`.
+
+```sh
+gosplit --version        # or: gosplit version
+```
+
+GitHub Actions:
+
+- **[`.github/workflows/ci.yml`](.github/workflows/ci.yml)** -- `all scan` on
+  `ubuntu-24.04` and `windows-2025`, uploading `scripts/logs/`. No automatic
+  trigger except PRs that touch the workflows or the dev scripts (which is what
+  gates Dependabot's action bumps); otherwise manual or called by `tag.yml`.
+- **[`.github/workflows/tag.yml`](.github/workflows/tag.yml)** -- the only
+  automatic pipeline. Push a `v*` tag: gates -> multi-arch image to GHCR -> Trivy
+  gate on the pushed digest -> GitHub Release, created last. A failure anywhere
+  leaves no release.
+
+Nothing runs on an ordinary push, so run `./scripts/dev.sh full` on a clean
+checkout before tagging -- it is the only check that catches a file you never
+committed.
 
 ## License
 

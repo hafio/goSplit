@@ -32,7 +32,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRegisterPage(w http.ResponseWriter, r *http.Request) {
 	if s.Cfg.DisableEmailSignup {
-		vd := s.vd(r, "msg.signup_disabled_title", s.tr(r, "msg.signup_disabled"))
+		vd := s.vdPage(w, r, "msg.signup_disabled_title", s.tr(r, "msg.signup_disabled"))
 		s.Renderer.Render(w, http.StatusForbidden, "message", vd)
 		return
 	}
@@ -62,7 +62,7 @@ func (s *Server) handleForgot(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := ctxTimeout(r)
 	defer cancel()
 	_ = s.Svc.ForgotPassword(ctx, r.FormValue("email"))
-	vd := s.vd(r, "msg.check_email_title", s.tr(r, "msg.reset_sent"))
+	vd := s.vdPage(w, r, "msg.check_email_title", s.tr(r, "msg.reset_sent"))
 	s.Renderer.Render(w, http.StatusOK, "message", vd)
 }
 
@@ -83,7 +83,7 @@ func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 		s.renderErr(w, r, "reset", "title.reset_password", map[string]any{"Token": token}, http.StatusBadRequest, err.Error())
 		return
 	}
-	vd := s.vd(r, "msg.password_updated_title", s.tr(r, "msg.password_updated"))
+	vd := s.vdPage(w, r, "msg.password_updated_title", s.tr(r, "msg.password_updated"))
 	s.Renderer.Render(w, http.StatusOK, "message", vd)
 }
 
@@ -94,7 +94,7 @@ func (s *Server) handleMagicRequest(w http.ResponseWriter, r *http.Request) {
 		s.renderErr(w, r, "login", "title.sign_in", nil, http.StatusBadRequest, err.Error())
 		return
 	}
-	vd := s.vd(r, "msg.check_email_title", s.tr(r, "msg.magic_sent"))
+	vd := s.vdPage(w, r, "msg.check_email_title", s.tr(r, "msg.magic_sent"))
 	s.Renderer.Render(w, http.StatusOK, "message", vd)
 }
 
@@ -103,7 +103,7 @@ func (s *Server) handleMagicConsume(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	u, err := s.Svc.ConsumeMagicLink(ctx, r.URL.Query().Get("token"))
 	if err != nil {
-		vd := s.vd(r, "msg.signin_failed_title", err.Error())
+		vd := s.vdPage(w, r, "msg.signin_failed_title", err.Error())
 		s.Renderer.Render(w, http.StatusBadRequest, "message", vd)
 		return
 	}
