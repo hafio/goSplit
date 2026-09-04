@@ -160,6 +160,12 @@ button.secondary, .btn.secondary { background: transparent; color: var(--accent)
 .site-footer a { color: var(--muted); }
 .site-footer .ver { margin-left: .6rem; opacity: .7; font-variant-numeric: tabular-nums; }
 
+/* Backup page: archive list rows and the copyable CLI block. */
+.l-list { display: flex; flex-direction: column; gap: .1rem; }
+.l-list .l-row { padding: .5rem 0; border-bottom: 1px solid var(--line); }
+.l-list .l-row:last-child { border-bottom: 0; }
+pre.cli { overflow-x: auto; padding: .7rem .8rem; border-radius: var(--radius); background: var(--line); font-size: .78rem; line-height: 1.6; }
+
 .bottom-nav { display: none; }
 @media (max-width: 640px) {
   .nav { display: none; }

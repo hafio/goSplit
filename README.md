@@ -199,6 +199,60 @@ embedded in the binary.
   interface (enabled when `PLAID_CLIENT_ID`/`PLAID_SECRET` are set): connect via
   Plaid Link, sync transactions, and convert one into a prefilled expense.
 
+### Backup and restore
+
+One sealed `.gsbak` archive holds **every table** plus the upload tree, and
+restores as an atomic, id-preserving wipe-and-replace. It is portable between
+SQLite and PostgreSQL in both directions.
+
+```sh
+gosplit backup [-o DIR]                        # write an archive
+gosplit inspect ARCHIVE                        # read its header; no secret or DB needed
+gosplit restore --file ARCHIVE                 # validate and summarize; changes NOTHING
+gosplit restore --file ARCHIVE --force         # replace all data
+```
+
+In the container, where there is no shell:
+
+```sh
+docker exec <ctr> /app/gosplit backup -o /data/backups
+```
+
+There are four ways in: the CLI above, an admin page at `/admin/backup`
+(generate, download, upload-and-restore behind a typed confirmation), a
+schedule (`BACKUP_CRON` plus `BACKUP_RETENTION_COUNT`), and a startup
+auto-restore (`AUTO_RESTORE_DIR`).
+
+**Archives are secrets.** One contains every password hash, every live session
+token, and any bank data. It is always encrypted with a key derived from
+`SESSION_SECRET` -- so rotating or losing that secret makes every existing
+archive permanently unrestorable, and there is deliberately no override key.
+Restore before you rotate.
+
+A restore always writes a pre-restore archive of the current data first, and
+aborts if that fails: it is the only way back. On SQLite the restore holds the
+database's single connection for its duration, so the admin panel refuses
+mutating requests with a 503 while it runs, and a CLI-triggered restore should
+be treated as a maintenance window. On PostgreSQL an `ACCESS EXCLUSIVE` table
+lock covers both triggers.
+
+An archive only restores into a database whose applied migration set matches it
+exactly. That is what stops a data migration such as
+`0005_simplify_debts_default.sql` from re-firing against restored rows on a
+later boot. Migration *identity* is compared, never `applied_at`, so restoring
+into a freshly provisioned database works -- which is the point.
+
+`AUTO_RESTORE_DIR` is checked at every start: one `.gsbak` present and the
+marker file `.gosplit-restored` absent means restore, then write the marker.
+**Any failure there is fatal and aborts the boot**, a schema mismatch included,
+so an archive that cannot be restored will fail every restart until it is
+removed. Each such message names the one-step fix. It must not be the same
+directory as `BACKUP_DIR`, or the instance would restore its own last
+scheduled backup; the config refuses that outright.
+
+`/profile/export` is unrelated -- a per-user JSON takeout, not a backup, and
+not restorable.
+
 ## Configuration
 
 See [.env.example](.env.example) for the full, authoritative env table.
@@ -213,8 +267,13 @@ go test -cover ./internal/...       # coverage
 
 100% coverage is targeted on the split engine, balance view, debt
 simplification, and money math; the Golden Scenario (`internal/store`) is a
-committed regression fixture. To run the Postgres data-layer tests, set
-`TEST_POSTGRES_URL`.
+committed regression fixture.
+
+Every test runs against SQLite. There is no live-Postgres test harness, by
+choice: the engine-specific parts of backup and restore -- sequence resets,
+boolean binding, `LOCK TABLE` -- are covered by unit tests asserting the exact
+SQL and bound values produced, and cross-engine restore is verified by hand
+(see below).
 
 ## Development & CI
 
@@ -261,6 +320,10 @@ stripped (`ghcr.io/hafio/gosplit:1.0.0`). A dev build reports
 ```sh
 gosplit --version        # or: gosplit version
 ```
+
+The tag also reaches the page footer, the `/healthz` body
+(`{"status":"ok","version":"..."}`) and every backup manifest, so it is
+possible to tell which build a running container is serving.
 
 GitHub Actions:
 

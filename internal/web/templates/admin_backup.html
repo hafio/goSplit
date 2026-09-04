@@ -1,0 +1,133 @@
+{{define "content"}}
+{{if .Data.Restoring}}
+{{/* The waiting page for a running restore. Reached by token, not by session:
+     the restore deletes the acting admin's own session row. */}}
+<div class="m-head"><h1>{{.T "backup.restoring_title"}}</h1></div>
+<div class="card">
+  <p>{{.T "backup.restoring_body"}}</p>
+  <div id="restore-status" class="flash ok">{{.T "backup.restoring_wait"}}</div>
+</div>
+<script>
+  // Poll the token-gated status endpoint. Plain fetch rather than htmx: the
+  // response is JSON, and on completion we need a full reload so the layout
+  // re-renders with whatever session state the restore left behind.
+  (function () {
+    var box = document.getElementById("restore-status");
+    var token = {{.Data.JobToken}};
+    function poll() {
+      fetch("/admin/backup/restore/status/" + encodeURIComponent(token), { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j.state === "done") {
+            box.className = "flash ok";
+            box.textContent = {{.T "backup.restoring_done"}};
+            setTimeout(function () { location.href = "/admin/backup"; }, 1200);
+            return;
+          }
+          if (j.state === "error") {
+            box.className = "flash err";
+            box.textContent = j.error || "restore failed";
+            return;
+          }
+          setTimeout(poll, 2000);
+        })
+        .catch(function () { setTimeout(poll, 4000); });
+    }
+    poll();
+  })();
+</script>
+{{else}}
+<div class="m-head">
+  <h1>{{.T "backup.title"}}</h1>
+  <form method="post" action="/admin/backup/generate" hx-disabled-elt="find button[type=submit]">
+    {{template "csrf" .CSRF}}
+    <button type="submit" class="a-btn sm"><svg class="icon"><use href="{{asset "icons.svg"}}#download"></use></svg> {{.T "backup.generate"}}</button>
+  </form>
+</div>
+
+{{if .Data.Insecure}}
+<div class="flash err">{{.T "backup.insecure_warning"}}</div>
+{{end}}
+
+<div class="tiles">
+  <div class="tile"><span class="lbl">{{.T "backup.archives"}}</span><div class="val">{{len .Data.Archives}}</div></div>
+  <div class="tile"><span class="lbl">{{.T "backup.schedule"}}</span><div class="val">{{if .Data.ScheduleCron}}{{.Data.ScheduleCron}}{{else}}{{.T "backup.schedule_off"}}{{end}}</div></div>
+  <div class="tile"><span class="lbl">{{.T "backup.retention"}}</span><div class="val">{{.Data.Retention}}</div></div>
+</div>
+
+<div class="card">
+  <h2>{{.T "backup.archives"}}</h2>
+  <p class="l-sub">{{.T "backup.secret_warning"}}</p>
+  {{if .Data.Archives}}
+  <div class="l-list">
+    {{range .Data.Archives}}
+    <div class="l-row">
+      <div class="l-main">
+        <div class="l-title">{{.Name}}{{if .IsSafety}} <span class="tag">{{$.T "backup.safety_tag"}}</span>{{end}}</div>
+        <div class="l-sub">{{.Modified}} UTC</div>
+      </div>
+      {{/* hx-boost="false" is required: a boosted anchor swallows
+           Content-Disposition and the browser swaps in the body instead of
+           saving the file. Same reason /profile/export carries it. */}}
+      <a class="a-btn sec sm" href="/admin/backup/download/{{.Name}}" hx-boost="false" download>
+        <svg class="icon"><use href="{{asset "icons.svg"}}#download"></use></svg> {{$.T "backup.download"}}
+      </a>
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  {{template "empty_state" (dict "Icon" "download" "Text" (.T "backup.no_archives"))}}
+  {{end}}
+</div>
+
+<div class="card">
+  <h2>{{.T "backup.restore_title"}}</h2>
+  <div class="flash err">{{.T "backup.restore_warning"}}</div>
+
+  {{if .Data.Pending}}
+  {{/* Step two: the archive validated, so show what it holds and require the
+       phrase before anything is touched. */}}
+  <div class="l-list">
+    <div class="l-row"><div class="l-main">
+      <div class="l-title">{{.T "backup.preview_title"}}</div>
+      <div class="l-sub">{{.T "backup.preview_created"}} {{.Data.Pending.CreatedAt}} ({{.Data.Pending.SourceEngine}}, gosplit {{.Data.Pending.GosplitVersion}})</div>
+      <div class="l-sub">{{.Data.PendingRows}} {{.T "backup.preview_rows"}}, {{.Data.Pending.UploadFileCount}} {{.T "backup.preview_uploads"}}</div>
+    </div></div>
+  </div>
+  <form method="post" action="/admin/backup/restore/confirm" class="adm-editor" hx-boost="false">
+    {{template "csrf" .CSRF}}
+    <input type="hidden" name="token" value="{{.Data.PendingToken}}">
+    <label>{{.T "backup.confirm_label"}} <code>{{.Data.ConfirmPhrase}}</code>
+      <input type="text" name="confirm" autocomplete="off" required placeholder="{{.Data.ConfirmPhrase}}">
+    </label>
+    <div class="adm-actions">
+      <button type="submit" class="a-btn danger sm">{{.T "backup.confirm_button"}}</button>
+      <a class="a-btn ghost sm" href="/admin/backup">{{.T "action.cancel"}}</a>
+    </div>
+  </form>
+  {{else}}
+  {{/* Step one: upload. enctype and hx-boost="false" match the profile form,
+       which is the other multipart form in the app. */}}
+  <form method="post" action="/admin/backup/restore/upload" enctype="multipart/form-data" hx-boost="false" class="adm-editor">
+    {{template "csrf" .CSRF}}
+    <label>{{.T "backup.restore_file"}}
+      <input type="file" name="archive" accept=".gsbak" required>
+    </label>
+    <div class="adm-actions">
+      <button type="submit" class="a-btn sec sm">{{.T "backup.restore_validate"}}</button>
+      <span class="l-sub">{{.T "backup.restore_max"}} {{.Data.MaxUploadMB}} MB</span>
+    </div>
+  </form>
+  {{end}}
+</div>
+
+<div class="card">
+  <h2>{{.T "backup.cli_title"}}</h2>
+  <p class="l-sub">{{.T "backup.cli_body"}}</p>
+  <pre class="cli"><code>docker exec &lt;container&gt; /app/gosplit backup -o {{.Data.BackupDir}}
+docker exec &lt;container&gt; /app/gosplit inspect {{.Data.BackupDir}}/&lt;file&gt;.gsbak
+docker exec &lt;container&gt; /app/gosplit restore --file {{.Data.BackupDir}}/&lt;file&gt;.gsbak --force</code></pre>
+  {{if .Data.AutoRestoreOn}}<p class="l-sub">{{.T "backup.autorestore_on"}}</p>{{end}}
+</div>
+{{end}}
+{{end}}

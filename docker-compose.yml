@@ -11,6 +11,14 @@ services:
     volumes:
       - gosplit-data:/data
     restart: unless-stopped
+    # environment:
+    #   # Scheduled backups. BACKUP_DIR must differ from AUTO_RESTORE_DIR.
+    #   BACKUP_DIR: /data/backups
+    #   BACKUP_CRON: "0 4 * * *"
+    #   BACKUP_RETENTION_COUNT: "7"
+    #   # Drop an archive here and restart to restore it. Any failure aborts
+    #   # the boot, so remove the file once .gosplit-restored appears.
+    #   AUTO_RESTORE_DIR: /data/restore
     # depends_on:
     #   - db
 

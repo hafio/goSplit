@@ -155,6 +155,7 @@ var pageFiles = map[string]string{
 	"activity":       "activity.html",
 	"profile":        "profile.html",
 	"admin":          "admin.html",
+	"admin_backup":   "admin_backup.html",
 	"recurring":      "recurring.html",
 	"convert":        "convert.html",
 	"import":         "import.html",

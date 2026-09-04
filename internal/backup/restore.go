@@ -196,7 +196,7 @@ func (r *Runner) Apply(ctx context.Context, v *Validated, opts ApplyOptions) (Re
 		if dir == "" {
 			dir = r.Cfg.BackupDir
 		}
-		path, _, err := r.DumpToDir(ctx, dir, "gosplit-pre-restore")
+		path, _, err := r.DumpToDir(ctx, dir, SafetyDumpPrefix)
 		if err != nil {
 			return Report{}, fmt.Errorf("backup: pre-restore safety dump failed, so the restore was not attempted: %w", err)
 		}
@@ -428,6 +428,6 @@ func (r *Runner) liveMigrationVersions(ctx context.Context) ([]string, error) {
 // SafetyDump writes a dump of the current data into the configured backup
 // directory.
 func (r *Runner) SafetyDump(ctx context.Context) (string, error) {
-	path, _, err := r.DumpToDir(ctx, r.Cfg.BackupDir, "gosplit-pre-restore")
+	path, _, err := r.DumpToDir(ctx, r.Cfg.BackupDir, SafetyDumpPrefix)
 	return path, err
 }

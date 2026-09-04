@@ -40,11 +40,6 @@ const (
 	// autoRestoreLockTTL is renewed while the restore runs, so a slow restore
 	// cannot let the lock lapse and a second replica start its own.
 	autoRestoreLockTTL = 2 * time.Minute
-
-	// safetyDumpPrefix marks archives this feature wrote itself. They are
-	// skipped when scanning for something to restore, so a safety dump landing
-	// in the watched directory can never be mistaken for an operator's input.
-	safetyDumpPrefix = "gosplit-pre-restore"
 )
 
 // CheckAutoRestore performs the startup auto-restore if one is configured and
@@ -146,7 +141,7 @@ func findAutoRestoreArchive(dir string) (string, error) {
 		name := e.Name()
 		// .partial is a dump still being written; the safety-dump prefix marks
 		// archives this feature wrote itself.
-		if !strings.HasSuffix(name, ArchiveExt) || strings.HasPrefix(name, safetyDumpPrefix) {
+		if !strings.HasSuffix(name, ArchiveExt) || strings.HasPrefix(name, SafetyDumpPrefix) {
 			continue
 		}
 		found = append(found, name)

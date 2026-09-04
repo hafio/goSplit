@@ -24,15 +24,30 @@ type harness struct {
 	srv    *httptest.Server
 	client *http.Client
 	st     *store.Store
+	cfg    *config.Config
+	app    *Server
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "http.db")
+	dataDir := filepath.Dir(dbPath)
 	cfg := &config.Config{
 		BaseURL: "http://test.local", DatabaseURL: "file:" + dbPath, Engine: config.EngineSQLite,
 		EnableSendingInvites: true, DefaultHomepage: "/balances",
 		AdminEmails: []string{"admin@example.com"},
+		// Backup and restore need a secret to seal with, somewhere to write,
+		// and non-zero caps -- a zero upload cap would reject every request.
+		SessionSecret:            "test-session-secret-0123456789abcdef",
+		AppVersion:               "v0.0.0-test",
+		UploadDir:                filepath.Join(dataDir, "uploads"),
+		BackupDir:                filepath.Join(dataDir, "backups"),
+		UploadMaxFileSizeMB:      5,
+		RestoreMaxUploadMB:       64,
+		RestoreMaxArchiveBytes:   1 << 30,
+		RestoreMaxEntries:        10000,
+		RestoreMaxTableFileBytes: 64 << 20,
+		RestoreMaxJSONLLineBytes: 1 << 20,
 	}
 	st, err := store.Open(context.Background(), cfg)
 	if err != nil {
@@ -52,7 +67,7 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(srv.Close)
 
 	jar, _ := cookiejar.New(nil)
-	return &harness{t: t, srv: srv, client: &http.Client{Jar: jar}, st: st}
+	return &harness{t: t, srv: srv, client: &http.Client{Jar: jar}, st: st, cfg: cfg, app: app}
 }
 
 func (h *harness) csrf() string {

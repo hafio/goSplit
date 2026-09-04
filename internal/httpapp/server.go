@@ -11,12 +11,14 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/hafio/gosplit/internal/auth"
+	"github.com/hafio/gosplit/internal/backup"
 	"github.com/hafio/gosplit/internal/config"
 	"github.com/hafio/gosplit/internal/service"
 	"github.com/hafio/gosplit/internal/store"
@@ -30,11 +32,19 @@ type Server struct {
 	Svc      *service.Service
 	Auth     *auth.Manager
 	Renderer *web.Renderer
+
+	// Jobs tracks background backup and restore work, which outlives the
+	// request that started it. Per-Server rather than a package global.
+	Jobs *backup.JobTracker
+
+	// restoreInProgress refuses mutating requests while a restore applies.
+	// See middleware_maintenance.go.
+	restoreInProgress atomic.Bool
 }
 
 // New builds a Server.
 func New(cfg *config.Config, st *store.Store, svc *service.Service, am *auth.Manager, r *web.Renderer) *Server {
-	return &Server{Cfg: cfg, Store: st, Svc: svc, Auth: am, Renderer: r}
+	return &Server{Cfg: cfg, Store: st, Svc: svc, Auth: am, Renderer: r, Jobs: backup.NewJobTracker()}
 }
 
 // Router assembles the full route tree.
@@ -45,6 +55,9 @@ func (s *Server) Router() http.Handler {
 	r.Use(requestLogger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
+	// Refuse mutating requests while a restore is applying, rather than let
+	// them queue behind it and time out with nothing to explain why.
+	r.Use(s.maintenanceGate)
 
 	// Public assets + health: no session lookup, no CSRF, cacheable.
 	r.Handle("/static/*", s.Renderer.AssetsHandler())
@@ -60,6 +73,14 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.Auth.VerifyCSRF)
 
 		r.Get("/offline", s.handleOffline)
+
+		// A restore replaces the users table, and sessions cascade-delete
+		// with users, so by the time it finishes the caller's own session
+		// row is gone. These two are gated by the unguessable job token
+		// instead, and the status handler re-establishes the session when
+		// the acting admin survived in the restored data.
+		r.Get("/admin/backup/restoring/{token}", s.handleRestoreProgress)
+		r.Get("/admin/backup/restore/status/{token}", s.handleRestoreStatus)
 
 		// Auth (public).
 		r.Get("/login", s.handleLoginPage)
@@ -152,7 +173,21 @@ func (s *Server) Router() http.Handler {
 			r.Post("/admin/users/{id}/password", s.handleAdminSetPassword)
 			r.Post("/admin/users/{id}/toggle", s.handleAdminToggle)
 			r.Post("/admin/users/{id}/magic", s.handleAdminMagic)
+
+			r.Get("/admin/backup", s.handleBackupPage)
+			r.Post("/admin/backup/generate", s.handleBackupGenerate)
+			r.Get("/admin/backup/status/{token}", s.handleBackupJobStatus)
+			r.Get("/admin/backup/download/{name}", s.handleBackupDownload)
+			r.Post("/admin/backup/restore/confirm", s.handleRestoreConfirm)
 		})
+
+		// The restore upload needs its own middleware order: MaxBytesReader
+		// must wrap the body BEFORE VerifyCSRF runs, because that middleware
+		// falls back to r.FormValue, which parses the whole multipart body.
+		// On the shared chain it would buffer an unbounded upload before the
+		// handler's own cap could apply.
+		r.With(maxUploadBytes(s.Cfg.RestoreMaxUploadMB), s.Auth.RequireUser, s.Auth.RequireAdmin, s.Auth.VerifyCSRF).
+			Post("/admin/backup/restore/upload", s.handleRestoreUpload)
 	})
 
 	return r

@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"strings"
 	"testing"
 )
 
@@ -343,8 +342,15 @@ func TestWriteAfterCloseFails(t *testing.T) {
 	if _, err := w.Write([]byte("more")); err == nil {
 		t.Error("writing after close succeeded")
 	}
-	if !strings.Contains(errString(w.Close()), "") {
-		t.Error("a second close should be a no-op")
+	// A second Close is a no-op, so a deferred Close alongside an explicit one
+	// does not emit a second final frame.
+	if err := w.Close(); err != nil {
+		t.Errorf("second Close returned %v, want nil", err)
+	}
+	before := buf.Len()
+	_ = w.Close()
+	if buf.Len() != before {
+		t.Error("a repeated Close wrote more frames")
 	}
 }
 
@@ -394,11 +400,4 @@ func frameAt(t *testing.T, sealed []byte, off int) (byte, uint32) {
 		t.Fatalf("no frame header at offset %d", off)
 	}
 	return sealed[off], binary.BigEndian.Uint32(sealed[off+1 : off+5])
-}
-
-func errString(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
 }

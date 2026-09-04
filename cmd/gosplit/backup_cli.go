@@ -106,7 +106,7 @@ func runBackupCLI(args []string) error {
 	}
 
 	r := backup.New(st, cfg)
-	path, man, err := r.DumpToDir(ctx, dir, "gosplit-backup")
+	path, man, err := r.DumpToDir(ctx, dir, backup.ArchivePrefix)
 	if err != nil {
 		return err
 	}
@@ -135,6 +135,13 @@ func runRestoreCLI(args []string) error {
 
 	cfg, err := loadCLIConfig()
 	if err != nil {
+		return err
+	}
+
+	// An upload swap interrupted by a crash leaves a recognizable state on
+	// disk. Repair it here as well as on server boot: a CLI restore killed
+	// mid-swap would otherwise stay broken until someone started the server.
+	if err := backup.RecoverIncompleteSwap(cfg); err != nil {
 		return err
 	}
 
