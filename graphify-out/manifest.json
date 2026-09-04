@@ -1140,5 +1140,41 @@
     "seen": 1788480194.5055895,
     "ast_hash": "766be8041906f195b01750576daf7ff7",
     "semantic_hash": ""
+  },
+  "internal/backup/codec_test.go": {
+    "mtime": 1788480852.071612,
+    "seen": 1788488034.8731601,
+    "ast_hash": "000327f6d34765256c2682ecb9844abe",
+    "semantic_hash": ""
+  },
+  "internal/backup/crypto_test.go": {
+    "mtime": 1788480914.3240898,
+    "seen": 1788488034.8736622,
+    "ast_hash": "a6b274713e30eb436d8e08a394cfde42",
+    "semantic_hash": ""
+  },
+  "internal/backup/helper_test.go": {
+    "mtime": 1788487552.435402,
+    "seen": 1788488034.8739185,
+    "ast_hash": "92b2aa329fcf76d3f04b33582d3ea155",
+    "semantic_hash": ""
+  },
+  "internal/backup/index_test.go": {
+    "mtime": 1788487615.8971882,
+    "seen": 1788488034.8742206,
+    "ast_hash": "0389d04ad1afd10c3d33176085945866",
+    "semantic_hash": ""
+  },
+  "internal/backup/roundtrip_test.go": {
+    "mtime": 1788487604.1506345,
+    "seen": 1788488034.8747864,
+    "ast_hash": "1d256efb9c822a6de23720ffe43a0bff",
+    "semantic_hash": ""
+  },
+  "internal/backup/schema_test.go": {
+    "mtime": 1788481098.766193,
+    "seen": 1788488034.8750367,
+    "ast_hash": "7365f29aa3c495985e5cf2452f51df03",
+    "semantic_hash": ""
   }
 }

@@ -100,6 +100,78 @@ func TestFullRoundTrip(t *testing.T) {
 	}
 }
 
+// TestRestoreIntoFreshDatabase is the real disaster-recovery case, and the one
+// the round-trip tests above only approximate: dump from one instance and
+// restore into a SEPARATE, freshly provisioned one.
+//
+// It matters because a fresh database has every migration applied at boot with
+// its own applied_at timestamps. Comparing migration identity rather than
+// those timestamps is what makes this work -- including applied_at in the
+// schema gate would reject exactly the restore an operator needs most.
+func TestRestoreIntoFreshDatabase(t *testing.T) {
+	source, srcStore, srcCfg := newTestRunner(t)
+	seedEverything(t, srcStore)
+	seedUploads(t, srcCfg)
+	before := snapshotTables(t, srcStore)
+
+	archive, man, err := source.DumpToDir(context.Background(), srcCfg.BackupDir, "gosplit-backup")
+	if err != nil {
+		t.Fatalf("dump: %v", err)
+	}
+
+	// A second instance: its own database file, its own upload directory, its
+	// own migration timestamps. Empty apart from the schema.
+	target, tgtStore, tgtCfg := newTestRunnerIn(t, t.TempDir())
+	if got := countRows(t, tgtStore, "users"); got != 0 {
+		t.Fatalf("the fresh database is not empty (%d users)", got)
+	}
+
+	v, err := target.Validate(context.Background(), archive)
+	if err != nil {
+		t.Fatalf("validate against a fresh database: %v", err)
+	}
+	rep, err := target.Apply(context.Background(), v, ApplyOptions{Confirmed: true, SkipSafetyDump: true})
+	if err != nil {
+		t.Fatalf("apply to a fresh database: %v", err)
+	}
+	if rep.UploadsRestored != man.UploadFileCount {
+		t.Errorf("restored %d uploads, want %d", rep.UploadsRestored, man.UploadFileCount)
+	}
+
+	after := snapshotTables(t, tgtStore)
+	for _, tbl := range InsertOrder() {
+		b, a := before[tbl.Name], after[tbl.Name]
+		if len(b) != len(a) {
+			t.Errorf("%s: source has %d rows, restored instance has %d", tbl.Name, len(b), len(a))
+			continue
+		}
+		for i := range b {
+			if b[i] != a[i] {
+				t.Errorf("%s row %d differs:\n source: %s\n target: %s", tbl.Name, i, b[i], a[i])
+			}
+		}
+	}
+
+	// Uploads land in the target's own directory, not the source's.
+	got, err := os.ReadFile(filepath.Join(tgtCfg.UploadDir, "a.png"))
+	if err != nil {
+		t.Fatalf("read restored upload: %v", err)
+	}
+	if string(got) != "fake-png-bytes" {
+		t.Errorf("restored upload = %q", got)
+	}
+
+	// Ids were preserved, so a row can still be addressed by its original key.
+	var email string
+	if err := tgtStore.DB.QueryRowContext(context.Background(),
+		tgtStore.Rebind(`SELECT email FROM users WHERE id = ?`), 1).Scan(&email); err != nil {
+		t.Fatalf("read user 1 from the restored instance: %v", err)
+	}
+	if email != "alice@example.com" {
+		t.Errorf("user 1 email = %q, want alice@example.com", email)
+	}
+}
+
 // TestRoundTripPreservesLargeInt64 pins the single most damaging encoding bug
 // this design guards against. bigAmount is above 2^53, so if money ever passes
 // through encoding/json's default float64 number handling it comes back wrong.

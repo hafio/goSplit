@@ -22,7 +22,14 @@ const testSecret = "test-session-secret-0123456789abcdef"
 // handle on the same path, which only a real file supports.
 func newTestRunner(t *testing.T) (*Runner, *store.Store, *config.Config) {
 	t.Helper()
-	dir := t.TempDir()
+	return newTestRunnerIn(t, t.TempDir())
+}
+
+// newTestRunnerIn is newTestRunner over a caller-chosen directory, so a test
+// can stand up a SECOND, independent instance -- which is what restoring into
+// a fresh database actually looks like.
+func newTestRunnerIn(t *testing.T, dir string) (*Runner, *store.Store, *config.Config) {
+	t.Helper()
 	cfg := &config.Config{
 		DatabaseURL:              "file:" + filepath.Join(dir, "test.db"),
 		Engine:                   config.EngineSQLite,
@@ -251,10 +258,23 @@ func snapshotTables(t *testing.T, st *store.Store) map[string][]string {
 	return out
 }
 
-// wipeAll empties every registry table, standing in for a lost database.
+// wipeAll empties every registry table EXCEPT schema_migrations, standing in
+// for a database whose data is gone.
+//
+// schema_migrations is deliberately left alone. It is in the backup registry
+// (R2 is every table verbatim), but clearing it here would model a state that
+// cannot occur in practice: a database carrying the full schema while claiming
+// no migrations have been applied. A genuinely lost database is a fresh volume,
+// and store.Open re-applies every migration at boot before a restore is ever
+// attempted -- so the live set is always populated. Wiping it made Validate's
+// exact-match schema gate fire, which was the gate doing its job on an
+// impossible input. TestRestoreIntoFreshDatabase covers the real case.
 func wipeAll(t *testing.T, st *store.Store) {
 	t.Helper()
 	for _, tbl := range DeleteOrder() {
+		if tbl.Name == "schema_migrations" {
+			continue
+		}
 		exec(t, st, "DELETE FROM "+quoteIdent(tbl.Name))
 	}
 }

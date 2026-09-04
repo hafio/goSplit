@@ -250,7 +250,10 @@ func TestScanRejectsPathTraversal(t *testing.T) {
 		uploadsPrefix + "a//b",
 		uploadsPrefix + ".",
 		uploadsPrefix + "..",
-		uploadsPrefix,
+		// uploadsPrefix on its own is covered by
+		// TestSafeUploadRelRejectsUnencodablePaths: archive/tar refuses to
+		// encode a regular-file header with a trailing slash, so that input
+		// cannot reach the parser through a crafted tar at all.
 	}
 	for _, name := range hostile {
 		t.Run(name, func(t *testing.T) {
@@ -672,6 +675,29 @@ func TestSafeUploadRelAcceptsOrdinaryPaths(t *testing.T) {
 		}
 		if got != rel {
 			t.Errorf("safeUploadRel(%q) = %q", rel, got)
+		}
+	}
+}
+
+// TestSafeUploadRelRejectsUnencodablePaths covers the path guard directly, for
+// inputs archive/tar will not let a test express as a crafted entry. The guard
+// still has to hold: a hand-rolled or non-Go tar writer is under no such
+// constraint.
+func TestSafeUploadRelRejectsUnencodablePaths(t *testing.T) {
+	hostile := []string{
+		uploadsPrefix,            // trailing slash, so an empty relative path
+		uploadsPrefix + "a/",     // directory-shaped
+		uploadsPrefix + "a//",    // empty trailing segment
+		uploadsPrefix + `\`,      // a bare backslash
+		uploadsPrefix + `a\b`,    // Windows separator
+		uploadsPrefix + `..\a`,   // Windows-style traversal
+		uploadsPrefix + "c:/x",   // drive letter
+		uploadsPrefix + `C:\x`,   // drive letter with separator
+		uploadsPrefix + "a/../b", // non-canonical
+	}
+	for _, name := range hostile {
+		if _, err := safeUploadRel(name); err == nil {
+			t.Errorf("safeUploadRel(%q) accepted a path it must reject", name)
 		}
 	}
 }
