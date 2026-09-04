@@ -158,6 +158,7 @@ button.secondary, .btn.secondary { background: transparent; color: var(--accent)
 
 .site-footer { text-align: center; padding: 1.2rem 1rem; font-size: .8rem; color: var(--muted); }
 .site-footer a { color: var(--muted); }
+.site-footer .ver { margin-left: .6rem; opacity: .7; font-variant-numeric: tabular-nums; }
 
 .bottom-nav { display: none; }
 @media (max-width: 640px) {

@@ -14,9 +14,26 @@ ARG VERSION=""
 ARG TARGETARCH
 RUN apk add --no-cache git
 
-# Cache modules first.
+# Both Go caches live in BuildKit cache mounts rather than in image layers.
+# modernc.org/sqlite is SQLite transpiled to Go (~235MB of source, plus libc),
+# so baking the module cache into one layer and the ~1.5GB of build-cache
+# artifacts into the next meant every source edit snapshotted both again --
+# 500-odd cache entries and tens of GB of reclaimable cache. The mounts keep
+# them out of the layers, so BuildKit manages one reusable cache it can
+# garbage-collect as a unit, and a warm cache skips recompiling SQLite, which
+# dominates build time.
+#
+# GOMODCACHE and GOCACHE are set explicitly so the mount targets do not depend
+# on the base image's GOPATH/HOME defaults. sharing=locked serializes the two
+# legs of a multi-arch build through the module download; the build cache is
+# keyed per TARGETARCH instead, since object code is not portable between them.
+ENV GOMODCACHE=/gomodcache
+ENV GOCACHE=/gocache
+
+# Resolve modules first, so a dependency problem fails before the source copy.
 COPY go.mod go.sum* ./
-RUN go mod download
+RUN --mount=type=cache,target=/gomodcache,sharing=locked \
+    go mod download
 
 COPY . .
 # CGO-free build (modernc.org/sqlite is pure Go) -> a static binary.
@@ -26,7 +43,9 @@ COPY . .
 # assignment itself non-zero, which would abort with a bare exit code instead of
 # the message below. An undeterminable version is fatal -- shipping a release
 # image whose binary disagrees with its tag is worse than failing here.
-RUN git config --global --add safe.directory /src; \
+RUN --mount=type=cache,target=/gomodcache,sharing=locked \
+    --mount=type=cache,target=/gocache,id=gocache-$TARGETARCH \
+    git config --global --add safe.directory /src; \
     VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null)}"; \
     if [ -z "$VERSION" ]; then \
       echo "cannot determine version: pass --build-arg VERSION=<tag>, or build with .git in the context" >&2; \

@@ -1,13 +1,13 @@
 {
   "cmd/gosplit/main.go": {
-    "mtime": 1788416017.658947,
-    "seen": 1788480194.5037963,
-    "ast_hash": "f207ee93e3af52e9494cb74d4924a7ca",
+    "mtime": 1788089953.4054542,
+    "seen": 1788091416.597176,
+    "ast_hash": "b49307c5c629283a3bad4f40f8b6ac9b",
     "semantic_hash": ""
   },
   "go.mod": {
-    "mtime": 1788257295.8508744,
-    "seen": 1788480194.5041854,
+    "mtime": 1788256958.7294295,
+    "seen": 1788257252.7599652,
     "ast_hash": "a3e7d660617c73bb6ed1a018938ff11a",
     "semantic_hash": ""
   },
@@ -48,9 +48,9 @@
     "semantic_hash": ""
   },
   "internal/config/config.go": {
-    "mtime": 1788414916.864751,
-    "seen": 1788480194.5068438,
-    "ast_hash": "16828bbf25efa9d930f7b4ea2b31f112",
+    "mtime": 1783878194.7417257,
+    "seen": 1788091416.5971913,
+    "ast_hash": "f3566d189bfc2c5065ce2b7965633ed8",
     "semantic_hash": ""
   },
   "internal/currency/convert.go": {
@@ -162,9 +162,9 @@
     "semantic_hash": ""
   },
   "internal/httpapp/server.go": {
-    "mtime": 1788416036.692711,
-    "seen": 1788480194.5163698,
-    "ast_hash": "ddf331afffd3efd06ea40882a19c13ea",
+    "mtime": 1788226625.627265,
+    "seen": 1788257252.766621,
+    "ast_hash": "cb67257280a42efbd5697d82acba6fc3",
     "semantic_hash": ""
   },
   "internal/httpapp/theme_test.go": {
@@ -432,9 +432,9 @@
     "semantic_hash": "6fec5edceea70622309d1432762d99b2"
   },
   "internal/store/store.go": {
-    "mtime": 1788415917.4280546,
-    "seen": 1788480194.5448196,
-    "ast_hash": "c9e854879d494b66143e751b1ad69158",
+    "mtime": 1783807598.2234344,
+    "seen": 1788091416.597286,
+    "ast_hash": "1ce92e3a02f08454b8d4a14601462cb4",
     "semantic_hash": ""
   },
   "internal/store/theme_color_test.go": {
@@ -516,9 +516,9 @@
     "semantic_hash": "4d00f6f66a7890860c7c78c26bf146f0"
   },
   "internal/web/view.go": {
-    "mtime": 1788416017.8880332,
-    "seen": 1788480194.5502274,
-    "ast_hash": "52238c6bd09441e5c272db02cc917d67",
+    "mtime": 1788226358.4243853,
+    "seen": 1788257252.782634,
+    "ast_hash": "f18cbad59a27c7858343e38a3f6d4708",
     "semantic_hash": ""
   },
   "scripts/dev.ps1": {
@@ -630,9 +630,9 @@
     "semantic_hash": ""
   },
   "internal/web/templates/layout.html": {
-    "mtime": 1788416036.692711,
-    "seen": 1788480194.557072,
-    "ast_hash": "c7451753ee31ef5d402434d8f91dc426",
+    "mtime": 1788226258.3071218,
+    "seen": 1788257252.7857454,
+    "ast_hash": "9ecbf149551732a24e8ba59924a6a4a1",
     "semantic_hash": ""
   },
   "internal/web/templates/login.html": {
@@ -1079,66 +1079,6 @@
     "mtime": 1788227125.0090337,
     "seen": 1788257252.7851622,
     "ast_hash": "296a69c73128bc4b4434460d736ee18e",
-    "semantic_hash": ""
-  },
-  "cmd/gosplit/backup_cli.go": {
-    "mtime": 1788415917.4340549,
-    "seen": 1788480194.5037918,
-    "ast_hash": "f2b874643fbc2a9a1b4979eb721abf97",
-    "semantic_hash": ""
-  },
-  "internal/backup/autorestore.go": {
-    "mtime": 1788415975.0352273,
-    "seen": 1788480194.5055785,
-    "ast_hash": "c6d2335ee679e8a92de1309384c46891",
-    "semantic_hash": ""
-  },
-  "internal/backup/codec.go": {
-    "mtime": 1788415158.040007,
-    "seen": 1788480194.5055804,
-    "ast_hash": "fa1f36c80959ccb2d36b2c4551b4b609",
-    "semantic_hash": ""
-  },
-  "internal/backup/container.go": {
-    "mtime": 1788415380.0747416,
-    "seen": 1788480194.5055823,
-    "ast_hash": "226f436432ed3353fa80db2347e733ca",
-    "semantic_hash": ""
-  },
-  "internal/backup/crypto.go": {
-    "mtime": 1788415259.8990374,
-    "seen": 1788480194.5055835,
-    "ast_hash": "75cef22b44c601cf89e09e464f24c4bc",
-    "semantic_hash": ""
-  },
-  "internal/backup/dump.go": {
-    "mtime": 1788415682.7987223,
-    "seen": 1788480194.5055847,
-    "ast_hash": "e9e8dc66c039725a735dcbfdc164f4c8",
-    "semantic_hash": ""
-  },
-  "internal/backup/index.go": {
-    "mtime": 1788415542.4655511,
-    "seen": 1788480194.505586,
-    "ast_hash": "28a444676283297fea28e145e4bde0cb",
-    "semantic_hash": ""
-  },
-  "internal/backup/recovery.go": {
-    "mtime": 1788415841.336887,
-    "seen": 1788480194.505587,
-    "ast_hash": "2137914530b032a8a6a83a196ba935c2",
-    "semantic_hash": ""
-  },
-  "internal/backup/restore.go": {
-    "mtime": 1788415917.4310575,
-    "seen": 1788480194.5055883,
-    "ast_hash": "22ca682534af0f176aff921885e87902",
-    "semantic_hash": ""
-  },
-  "internal/backup/schema.go": {
-    "mtime": 1788415696.8798275,
-    "seen": 1788480194.5055895,
-    "ast_hash": "766be8041906f195b01750576daf7ff7",
     "semantic_hash": ""
   }
 }

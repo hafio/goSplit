@@ -6,6 +6,7 @@ package httpapp
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -168,13 +169,14 @@ func (s *Server) vd(r *http.Request, title string, data any) web.ViewData {
 	}
 	lang := s.Renderer.DetectLang(pref, r.Header.Get("Accept-Language"))
 	return web.ViewData{
-		Title: s.Renderer.T(lang, title),
-		User:  u,
-		CSRF:  auth.CSRFFrom(r.Context()),
-		Lang:  lang,
-		Theme: theme,
-		Nav:   navSlug(r.URL.Path),
-		Data:  data,
+		Title:   s.Renderer.T(lang, title),
+		User:    u,
+		CSRF:    auth.CSRFFrom(r.Context()),
+		Lang:    lang,
+		Theme:   theme,
+		Nav:     navSlug(r.URL.Path),
+		Version: s.Cfg.AppVersion,
+		Data:    data,
 	}
 }
 
@@ -286,7 +288,14 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write([]byte(`{"status":"ok"}`))
+	// Built with encoding/json rather than a literal so the version cannot
+	// break the response if it ever contains a quote.
+	body, err := json.Marshal(map[string]string{"status": "ok", "version": s.Cfg.AppVersion})
+	if err != nil {
+		http.Error(w, "unhealthy", http.StatusInternalServerError)
+		return
+	}
+	_, _ = w.Write(body)
 }
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {

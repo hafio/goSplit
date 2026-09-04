@@ -196,16 +196,19 @@ func (r *Renderer) T(lang, key string) string { return r.bundle.T(lang, key) }
 
 // ViewData wraps page-specific data with the ambient user/CSRF/flash context.
 type ViewData struct {
-	Title  string
-	User   *store.User
-	CSRF   string
-	Flash  string
-	Error  string
-	Lang   string
-	Theme  string // accent theme slug; defaults to DefaultTheme
-	Nav    string // active primary-nav slug (balances/friends/groups/activity)
-	Data   any
-	bundle *i18n.Bundle
+	Title string
+	User  *store.User
+	CSRF  string
+	Flash string
+	Error string
+	Lang  string
+	Theme string // accent theme slug; defaults to DefaultTheme
+	Nav   string // active primary-nav slug (balances/friends/groups/activity)
+	// Version is the build tag stamped into the binary, shown in the footer so
+	// it is possible to tell which build a running container is serving.
+	Version string
+	Data    any
+	bundle  *i18n.Bundle
 }
 
 // T translates a key in the view's language (falls back to the key itself).

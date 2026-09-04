@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hafio/gosplit/internal/auth"
+	"github.com/hafio/gosplit/internal/backup"
 	"github.com/hafio/gosplit/internal/config"
 	"github.com/hafio/gosplit/internal/httpapp"
 	"github.com/hafio/gosplit/internal/mail"
@@ -49,6 +50,16 @@ func main() {
 
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
+	// Backup subcommands run instead of the server. A bare `gosplit` with no
+	// subcommand still starts it, exactly as before.
+	if cmd, ok := wantsBackup(os.Args); ok {
+		if err := runBackupCommand(cmd, os.Args[2:]); err != nil {
+			slog.Error(cmd+" failed", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := run(); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
@@ -74,9 +85,19 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// The link-time stamp is the only source of the version, so config carries
+	// it from here rather than reading an env var. It reaches the footer, the
+	// health endpoint and every backup manifest.
+	cfg.AppVersion = version
 	// Re-configure the logger at the requested level now that config is loaded.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: parseLogLevel(cfg.LogLevel)})))
 	slog.Info("starting", "version", version)
+
+	// An upload swap interrupted by a crash leaves a recognizable state on
+	// disk. Repair it before touching the database.
+	if err := backup.RecoverIncompleteSwap(cfg); err != nil {
+		return err
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -87,6 +108,14 @@ func run() error {
 	}
 	defer func() { _ = st.Close() }()
 	slog.Info("database ready", "engine", cfg.Engine)
+
+	// Migrations have run, so the live schema matches this binary, and neither
+	// the listener nor the scheduler exists yet -- the only window in which a
+	// whole-database restore cannot race a writer. Any failure is fatal by
+	// decision; see backup.CheckAutoRestore.
+	if err := backup.CheckAutoRestore(ctx, st, cfg); err != nil {
+		return err
+	}
 
 	mailer := mail.New(cfg)
 	svc := service.New(st, mailer, cfg)
