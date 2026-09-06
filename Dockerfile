@@ -7,9 +7,12 @@
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 WORKDIR /src
 
-# tag.yml passes no --build-arg (it is copied verbatim into every repo), so the
-# version is derived from the .git directory the fetch-depth:0 checkout leaves
-# in the build context. `dev.sh image` passes VERSION directly and skips that.
+# Both tag.yml and `dev.sh image` pass VERSION directly, so the `git describe`
+# fallback below is only for a hand-run `docker build`. It must stay, but it
+# cannot be relied on: .dockerignore drops tracked directories to keep the
+# context small, so git inside the build container sees them as deleted and
+# appends -dirty. Passing VERSION is what keeps a released image's tag and its
+# binary in agreement.
 ARG VERSION=""
 ARG TARGETARCH
 RUN apk add --no-cache git

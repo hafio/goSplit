@@ -69,10 +69,12 @@ BIN_NAME="gosplit-$T_OS-$T_ARCH"
 [ "$T_OS" = "windows" ] && BIN_NAME="$BIN_NAME.exe"
 
 # --- version ----------------------------------------------------------------
-# The git tag is the single source of version truth. tag.yml exports VERSION
-# from the tag ref, so CI never depends on `git describe` seeing history
-# through a shallow checkout. Images take the tag with the leading v stripped
-# (registry convention) -- the only place the v drops.
+# The git tag is the single source of version truth. tag.yml passes VERSION to
+# the image build from the tag ref, and this script passes it from `git
+# describe`, so neither depends on `git describe` running inside the build
+# container -- where .dockerignore's exclusions would make it report -dirty.
+# Images take the tag with the leading v stripped (registry convention) -- the
+# only place the v drops.
 VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
 IMAGE_TAG="${VERSION#v}"
 # Local image name/tag (override with IMAGE_NAME). The published multi-arch

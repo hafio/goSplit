@@ -467,6 +467,10 @@ button[disabled], .a-btn[disabled] { opacity: .55; cursor: default; filter: none
    raising the page-wide top bar -- the rest of the page never left. */
 .frag.htmx-request { opacity: .55; transition: opacity .12s ease-out; }
 
+/* The freshness poller is its own hx-indicator so a background refresh every
+   10s shows nothing at all. It renders no box either way; keep it explicit. */
+.poller { display: none; }
+
 @media (prefers-reduced-motion: reduce) {
   body.htmx-request::before { animation: none; }
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }

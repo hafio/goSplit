@@ -41,12 +41,29 @@ POST-redirect-GET.
 - **View transitions.** The `htmx-config` meta enables `globalViewTransitions`;
   `prefers-reduced-motion` disables the animation in `app.css`.
 - **Fragment rendering.** `Renderer.RenderFragment` executes one named block of a
-  page instead of the layout. A request whose `HX-Target` names a region (see
-  `isFragmentRequest`) gets just that region, so filtering or paging a feed
-  re-renders the feed, not the whole page. The feed wrappers are
-  `#activity-feed`, `#friend-feed` and `#group-feed`; an expense row inside them
-  opts back out to a full page swap. Anything else — including a boosted
-  navigation, which targets the body — takes the full-page path.
+  page instead of the layout. A page declares its swappable regions in the
+  `fragments` registry in `internal/web/view.go` (`page -> HX-Target id ->
+  block`), validated at startup so a typo fails the process rather than 500-ing
+  on the first swap; `Server.render` consults it, so handlers carry no
+  fragment branches. Every page has a `content` region, and the feeds add
+  `#activity-feed`, `#friend-feed` and `#group-feed` for filtering and paging.
+  An expense row inside a feed opts back out to a full page swap. Anything else
+  — including a boosted navigation, which targets the body — takes the
+  full-page path, which is also the no-JavaScript fallback.
+- **Freshness.** What you are looking at is never more than ~10s stale. On list
+  and detail pages the layout emits a poller that re-requests the page's
+  `content` block every 10s, but only while the tab is visible *and* you are not
+  busy in it — no focused control, no open menu or filter panel. The server
+  fingerprints the rendered block, returns it with `X-Fragment-Version`, and
+  answers **204 No Content** when the echoed `?v=` matches, so a quiet poll costs
+  a header exchange rather than a page. Fingerprinting the rendered output
+  (rather than a stored `updated_at`) is correct by construction for anything the
+  template shows, with no schema to keep in step. Form pages are never polled —
+  re-rendering a form under you would discard what you had typed. Live server
+  push (SSE) was evaluated and deferred; it would trigger the same regions, so
+  it stays a drop-in upgrade. See `docs/ux-responsiveness-plan.md`.
+- **Measurement.** HTML responses carry `Server-Timing: render;dur=<ms>`, so
+  every page load is a profiling sample. Credential pages are excluded.
 - **Double-submit guard.** Mutating forms carry
   `hx-disabled-elt="find button[type=submit]"`, so a fast double-tap cannot fire
   the same POST twice.
@@ -57,11 +74,12 @@ POST-redirect-GET.
 - **One-shot flash.** Confirmations ride a short-lived `gs_flash` cookie
   (`setFlash`/`takeFlash`) rather than a `?flash=` query param, so the message is
   shown exactly once and never becomes part of a bookmarkable URL.
-- **Staying current.** A backgrounded tab re-requests and morphs the current page
-  when it is refocused after a minute, on bfcache restore, and when a Web Push
-  delivery nudges open tabs (`sw.js` posts a `refresh` message). The refresh is
-  skipped while a form holds unsaved input. Live server push (SSE) was evaluated
-  and deliberately deferred — see `docs/ux-responsiveness-plan.md`.
+- **Staying current across backgrounding.** A backgrounded tab re-requests and
+  morphs the current page when it is refocused after a minute, on bfcache
+  restore, and when a Web Push delivery nudges open tabs (`sw.js` posts a
+  `refresh` message). The refresh is skipped while a form holds unsaved input.
+  These background renders send `X-Background`, so the server does not let them
+  consume a one-shot flash meant for a real navigation.
 
 ## Quick start
 

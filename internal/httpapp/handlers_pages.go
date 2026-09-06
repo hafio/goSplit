@@ -132,10 +132,6 @@ func (s *Server) handleFriendDetail(w http.ResponseWriter, r *http.Request) {
 		"Expenses": groupByMonth(s.buildRows(ctx, nc, u.ID, expenses)), "Filter": view,
 		"ShowAllHref": href,
 	}
-	if isFragmentRequest(r, "friend-feed") {
-		s.renderFragment(w, r, "friend", "frag_friend_feed", friend.Name, data)
-		return
-	}
 	s.render(w, r, "friend", friend.Name, data)
 }
 
@@ -274,10 +270,6 @@ func (s *Server) handleGroupDetail(w http.ResponseWriter, r *http.Request) {
 		"Simplified": simplified, "Position": sortedNets(perCur),
 		"Expenses": groupByMonth(s.buildRows(ctx, nc, u.ID, expenses)), "Filter": view,
 		"ShowAllHref": href,
-	}
-	if isFragmentRequest(r, "group-feed") {
-		s.renderFragment(w, r, "group", "frag_group_feed", g.Name, data)
-		return
 	}
 	s.render(w, r, "group", g.Name, data)
 }
@@ -480,17 +472,20 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 		"Items": groupByMonth(s.buildRows(ctx, nc, u.ID, expenses)), "Filter": view,
 		"ShowAllHref": href,
 	}
-	if isFragmentRequest(r, "activity-feed") {
-		s.renderFragment(w, r, "activity", "frag_activity_feed", "title.activity", data)
-		return
-	}
 	s.render(w, r, "activity", "title.activity", data)
 }
 
 // --- profile & admin ------------------------------------------------------
 
+// profileData is the context profile.html needs to render. Every path that
+// renders that page -- including the validation-failure ones -- has to pass it,
+// or the template cannot resolve .Data.Languages.
+func (s *Server) profileData() map[string]any {
+	return map[string]any{"Languages": s.Renderer.Languages()}
+}
+
 func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, "profile", "title.profile", map[string]any{"Languages": s.Renderer.Languages()})
+	s.render(w, r, "profile", "title.profile", s.profileData())
 }
 
 func (s *Server) handleProfileUpdate(w http.ResponseWriter, r *http.Request) {
@@ -509,15 +504,14 @@ func (s *Server) handleProfileUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	if t := r.FormValue("theme"); t != "" {
 		if !web.ValidTheme(t) {
-			s.renderErr(w, r, "profile", "title.profile",
-				map[string]any{"Languages": s.Renderer.Languages()},
+			s.renderErr(w, r, "profile", "title.profile", s.profileData(),
 				http.StatusBadRequest, s.tr(r, "err.unknown_theme"))
 			return
 		}
 		u.ThemeColor = t
 	}
 	if err := s.Svc.UpdateAvatar(ctx, u, r); err != nil {
-		s.renderErr(w, r, "profile", "title.profile", nil, http.StatusBadRequest, err.Error())
+		s.renderErr(w, r, "profile", "title.profile", s.profileData(), http.StatusBadRequest, err.Error())
 		return
 	}
 	if err := s.Store.UpdateProfile(ctx, u); err != nil {
@@ -532,7 +526,7 @@ func (s *Server) handlePasswordChange(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	u := s.currentUser(r)
 	if err := s.Svc.ChangePassword(ctx, u.ID, r.FormValue("current"), r.FormValue("password")); err != nil {
-		s.renderErr(w, r, "profile", "title.profile", nil, http.StatusBadRequest, err.Error())
+		s.renderErr(w, r, "profile", "title.profile", s.profileData(), http.StatusBadRequest, err.Error())
 		return
 	}
 	s.Auth.ClearSession(w, r)
@@ -693,7 +687,7 @@ func (s *Server) handleAdminMagic(w http.ResponseWriter, r *http.Request) {
 // re-run through the bundle on the way out.
 func (s *Server) redirectFlash(w http.ResponseWriter, r *http.Request, path, msg string) {
 	if msg != "" {
-		setFlash(w, s.tr(r, msg))
+		s.setFlash(w, s.tr(r, msg))
 	}
 	http.Redirect(w, r, path, http.StatusSeeOther)
 }

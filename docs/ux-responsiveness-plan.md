@@ -192,3 +192,55 @@ Dependency pins (verified via npm registry 2026-08-31):
   page jump; refresh after a flash -- flash does not reappear; background the tab >60s while
   another user adds an expense, refocus -- feed refreshes; offline mode still serves /offline.
 - `graphify update .` afterward.
+
+---
+
+# Round 2 -- guaranteed freshness + design cleanup
+
+Executed 2026-09-06. Driven by a new hard requirement: **what a user is looking at must be
+<=10s stale while the page is visible**, and any caching must come with a mechanism that
+guarantees it. A second review (3 reviewers + judge, every claim re-verified against source)
+also surfaced four defects in the Round 1 code.
+
+## Round 2 Ledger
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Flash cookie missing `Secure` | done | `setFlash`/`takeFlash` are now `*Server` methods carrying `s.Auth.Secure`, matching the session/CSRF cookies. It was the only cookie in the app without it. |
+| 2 | Background render eats the flash | done | Refresh and poll send `X-Background`; `vdPage` skips `takeFlash` when present, so a background GET can no longer swallow a confirmation meant for a redirect target. |
+| 3 | convert.js permanently "dirty" | done | Derived writes go through `setValue`, which moves `defaultValue` too. Chip clicks deliberately do not -- those are real edits. |
+| 4 | Page scripts never re-wire | done | All four scripts gained `wire()` + `htmx:load` + a `WeakSet` guard. Worse than the plan assumed: `bank.js`/`push.js` bound on `DOMContentLoaded`, which never fires again after a boosted swap, so their buttons were dead on *any* navigation -- a pre-existing bug. A `WeakSet` rather than a `data-wired` attribute, because a morph would strip the attribute and cause double-binding. |
+| 5 | Fragment registry | done | `fragments` map in `view.go`, validated in `NewRenderer` (fail-loud). The three copy-pasted `isFragmentRequest` branches are gone from `handlers_pages.go`; `Server.render` dispatches. |
+| 6 | Content fragment for every page | done | `ViewData.Page`/`Path` added; `pollable` template func. |
+| 7 | Content-hash 204 polling | done | `RenderFragment` buffers, fingerprints (sha256/8 bytes), always sets `X-Fragment-Version`, answers 204 when `?v=` matches. Layout emits the poller on pollable pages only. |
+| 8 | `Server-Timing` | done | `render;dur=<ms>` on HTML responses, omitted on credential pages. |
+| -- | Tests | done | Renderer: version/204/stale, fingerprint tracks content, registry validity, `pollable` coverage. httpapp: poller presence per page, end-to-end 204, fingerprint changes when a friend is added, `Server-Timing`, `Secure` flag, `X-Background` leaves the flash. |
+| -- | Docs | done | README "Client behaviour" rewritten for the registry, freshness and measurement. |
+
+## Design decisions worth keeping
+
+- **Poll, not SSE.** The requirement is a bar (<=10s), not a latency race. On a single-container,
+  SQLite, small-user deployment SSE's ops cost (proxy buffering, the 60s `WriteTimeout` carve-out,
+  reconnect storms) buys nothing a poll does not already deliver. The poller and SSE would trigger
+  the *same* regions off the *same* registry, so SSE stays a drop-in upgrade rather than a rewrite.
+- **Hash the rendered block, not an `updated_at`.** Correct by construction for anything the
+  template shows -- a renamed friend, a changed member list -- with no schema to keep in step and
+  no new columns. Costs one render per poll, which is microseconds against SQLite. Assumes the
+  block has no per-request noise; the double-submit CSRF token is per-session, so forms inside a
+  polled page do not defeat it.
+- **Pause on interaction, not just on hidden.** The trigger filter also requires no focused
+  control and no open `details` inside `#content`, so a poll can never snap a filter panel shut or
+  rewrite a search box mid-type. htmx re-schedules after a filtered-out tick, so polling resumes
+  by itself.
+- **Both render paths now buffer.** `Render` was committing a status before it could fail, so a
+  template error emitted a half-written page and was swallowed to `io.Discard`. Buffering fixes
+  that, makes errors actionable, and is what allows the fingerprint and timing headers at all.
+
+## Still deferred
+
+- **DB tuning**: `SetMaxOpenConns(1)` is a deliberate single-writer choice; `PRAGMA
+  synchronous=NORMAL` is absent; `handleGroupDetail` makes two `balance_view` passes; `nameCache`
+  misses are per-row. Revisit only with `Server-Timing` numbers, and re-run the gates.
+- **`hx-target="main"` navigation** (persist header/nav, halve nav payloads, subsume Round 1's
+  skipped step 11). Its prerequisite -- a universal `content` fragment -- now exists.
+- **SSE**, as above.

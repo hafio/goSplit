@@ -7,6 +7,7 @@
 package web
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"embed"
 	"encoding/csv"
@@ -18,6 +19,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/hafio/gosplit/internal/i18n"
 	"github.com/hafio/gosplit/internal/money"
@@ -135,6 +137,7 @@ var funcs = template.FuncMap{
 	"themes":        Themes,
 	"themeHex":      themeHex,
 	"asset":         assetURL,
+	"pollable":      pollable,
 }
 
 // pageFiles maps a logical page name to its content template file. Each page is
@@ -164,6 +167,43 @@ var pageFiles = map[string]string{
 	"settle_group":   "settle_group.html",
 }
 
+// Fragment names a block of a page that htmx may swap on its own, keyed by the
+// DOM id it lives in. Poll marks a region safe to refresh on a timer.
+type Fragment struct {
+	Block string
+	Poll  bool
+}
+
+// contentFragment is every page's whole content block. It is what the freshness
+// poller re-requests, so a page becomes pollable by adding one entry here -- no
+// per-page fragment markup required.
+var contentFragment = Fragment{Block: "content", Poll: true}
+
+// fragments maps page -> HX-Target id -> the block that answers it. Only list
+// and detail pages are pollable: re-rendering a form under someone would throw
+// away what they had typed, so expense_form, convert, settle_group, collapse,
+// profile, admin, import, bank and the auth pages are deliberately absent.
+var fragments = map[string]map[string]Fragment{
+	"balances":       {"content": contentFragment},
+	"friends":        {"content": contentFragment},
+	"friend":         {"content": contentFragment, "friend-feed": {Block: "frag_friend_feed"}},
+	"groups":         {"content": contentFragment},
+	"group":          {"content": contentFragment, "group-feed": {Block: "frag_group_feed"}},
+	"activity":       {"content": contentFragment, "activity-feed": {Block: "frag_activity_feed"}},
+	"expense_detail": {"content": contentFragment},
+	"recurring":      {"content": contentFragment},
+}
+
+// FragmentFor returns the block registered for a page's swap target.
+func FragmentFor(page, target string) (Fragment, bool) {
+	f, ok := fragments[page][target]
+	return f, ok
+}
+
+// pollable reports whether a page's content may be refreshed on a timer; the
+// layout uses it to decide whether to emit the poller at all.
+func pollable(page string) bool { return fragments[page]["content"].Poll }
+
 // NewRenderer parses all page templates once at startup and loads i18n.
 func NewRenderer() (*Renderer, error) {
 	bundle, err := i18n.Load()
@@ -179,7 +219,30 @@ func NewRenderer() (*Renderer, error) {
 		}
 		r.pages[name] = t
 	}
+	// A registry entry naming a page or block that does not exist is a wiring
+	// mistake that would otherwise surface as a 500 the first time a user
+	// happened to trigger that swap. Fail at startup instead.
+	if err := validateFragments(r.pages, fragments); err != nil {
+		return nil, err
+	}
 	return r, nil
+}
+
+// validateFragments takes the registry rather than reading the package one, so
+// the failure paths are testable without mutating shared state.
+func validateFragments(pages map[string]*template.Template, reg map[string]map[string]Fragment) error {
+	for page, byTarget := range reg {
+		t, ok := pages[page]
+		if !ok {
+			return fmt.Errorf("web: fragment registry names unknown page %q", page)
+		}
+		for target, f := range byTarget {
+			if t.Lookup(f.Block) == nil {
+				return fmt.Errorf("web: page %q target %q names unknown block %q", page, target, f.Block)
+			}
+		}
+	}
+	return nil
 }
 
 // DetectLang resolves the best locale for a request (user preference, then
@@ -208,8 +271,14 @@ type ViewData struct {
 	// Version is the build tag stamped into the binary, shown in the footer so
 	// it is possible to tell which build a running container is serving.
 	Version string
-	Data    any
-	bundle  *i18n.Bundle
+	// Page is the logical page name, so the layout can ask whether this page's
+	// content may be refreshed on a timer. Path is the URL the poller re-asks
+	// for.
+	Page string
+	Path string
+	Data any
+
+	bundle *i18n.Bundle
 }
 
 // T translates a key in the view's language (falls back to the key itself).
@@ -220,9 +289,8 @@ func (v ViewData) T(key string) string {
 	return v.bundle.T(v.Lang, key)
 }
 
-// begin resolves ambient defaults and writes the headers every HTML response
-// shares, then commits the status. Callers must not write before it returns.
-func (r *Renderer) begin(w http.ResponseWriter, status int, vd *ViewData) {
+// resolve fills in the ambient defaults a template expects.
+func (r *Renderer) resolve(vd *ViewData) {
 	vd.bundle = r.bundle
 	if vd.Lang == "" {
 		vd.Lang = i18n.DefaultLang
@@ -230,6 +298,10 @@ func (r *Renderer) begin(w http.ResponseWriter, status int, vd *ViewData) {
 	if vd.Theme == "" || !ValidTheme(vd.Theme) {
 		vd.Theme = DefaultTheme
 	}
+}
+
+// htmlHeaders sets the headers every HTML response shares.
+func htmlHeaders(w http.ResponseWriter) {
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
 	// Pages are always served fresh from the server; never cached client-side
@@ -237,7 +309,31 @@ func (r *Renderer) begin(w http.ResponseWriter, status int, vd *ViewData) {
 	h.Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 	h.Set("Pragma", "no-cache")
 	h.Set("Expires", "0")
-	w.WriteHeader(status)
+}
+
+// untimedPages get no Server-Timing header: how long a credential check took is
+// not something to publish.
+var untimedPages = map[string]bool{
+	"login": true, "register": true, "forgot": true, "reset": true, "message": true,
+}
+
+// setServerTiming publishes render cost so a page load doubles as a profiling
+// sample, which is what tells us whether query work is worth tuning at all.
+func setServerTiming(w http.ResponseWriter, page string, d time.Duration) {
+	if untimedPages[page] {
+		return
+	}
+	w.Header().Set("Server-Timing", fmt.Sprintf("render;dur=%.1f", float64(d.Microseconds())/1000))
+}
+
+// execute renders a block into memory and reports how long it took. Building
+// the response before committing a status is what lets both render paths report
+// a template failure instead of emitting a half-written page.
+func (r *Renderer) execute(t *template.Template, block string, vd ViewData) ([]byte, time.Duration, error) {
+	start := time.Now()
+	var buf bytes.Buffer
+	err := t.ExecuteTemplate(&buf, block, vd)
+	return buf.Bytes(), time.Since(start), err
 }
 
 // Render writes a full page (executing the layout).
@@ -247,18 +343,38 @@ func (r *Renderer) Render(w http.ResponseWriter, status int, page string, vd Vie
 		http.Error(w, "unknown page: "+page, http.StatusInternalServerError)
 		return
 	}
-	r.begin(w, status, &vd)
-	if err := t.ExecuteTemplate(w, "layout.html", vd); err != nil {
-		// Header already written; log-and-continue is the best we can do.
-		fmt.Fprintf(io.Discard, "render error: %v", err)
+	r.resolve(&vd)
+	out, dur, err := r.execute(t, "layout.html", vd)
+	if err != nil {
+		http.Error(w, "render error: "+page, http.StatusInternalServerError)
+		return
+	}
+	htmlHeaders(w)
+	setServerTiming(w, page, dur)
+	w.WriteHeader(status)
+	if _, err := w.Write(out); err != nil {
+		fmt.Fprintf(io.Discard, "page write error: %v", err)
 	}
 }
+
+// FragmentVersionHeader carries the fingerprint of the block just rendered. The
+// client echoes it back as ?v= on its next poll.
+const FragmentVersionHeader = "X-Fragment-Version"
 
 // RenderFragment writes one named block of a page instead of the whole layout,
 // for an htmx request that targets a single region. block must be defined in
 // that page's template set; an unknown page or block is a programming error and
 // fails loudly rather than silently returning an empty body.
-func (r *Renderer) RenderFragment(w http.ResponseWriter, status int, page, block string, vd ViewData) {
+//
+// The block is rendered into a buffer and fingerprinted so an unchanged region
+// can be answered with 204 and no body: that is what lets the freshness poller
+// run every few seconds without re-sending a page that has not moved. Hashing
+// the rendered output rather than a stored updated_at is deliberate -- it is
+// correct by construction for anything the template shows (a renamed friend, a
+// changed member list), with no schema to keep in step. It does assume the
+// block has no per-request noise in it; the double-submit CSRF token is
+// per-session, so a form inside a polled page does not defeat it.
+func (r *Renderer) RenderFragment(w http.ResponseWriter, req *http.Request, status int, page, block string, vd ViewData) {
 	t, ok := r.pages[page]
 	if !ok {
 		http.Error(w, "unknown page: "+page, http.StatusInternalServerError)
@@ -268,9 +384,25 @@ func (r *Renderer) RenderFragment(w http.ResponseWriter, status int, page, block
 		http.Error(w, "unknown fragment: "+page+"/"+block, http.StatusInternalServerError)
 		return
 	}
-	r.begin(w, status, &vd)
-	if err := t.ExecuteTemplate(w, block, vd); err != nil {
-		fmt.Fprintf(io.Discard, "render error: %v", err)
+	r.resolve(&vd)
+	out, dur, err := r.execute(t, block, vd)
+	if err != nil {
+		http.Error(w, "fragment render error: "+page+"/"+block, http.StatusInternalServerError)
+		return
+	}
+	sum := sha256.Sum256(out)
+	version := hex.EncodeToString(sum[:8])
+
+	htmlHeaders(w)
+	setServerTiming(w, page, dur)
+	w.Header().Set(FragmentVersionHeader, version)
+	if req != nil && req.URL.Query().Get("v") == version {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.WriteHeader(status)
+	if _, err := w.Write(out); err != nil {
+		fmt.Fprintf(io.Discard, "fragment write error: %v", err)
 	}
 }
 

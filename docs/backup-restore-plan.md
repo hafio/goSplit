@@ -68,6 +68,7 @@ from anywhere, every layer treats the archive as hostile input.
 | 12. Scheduled backup + retention | done | `prune.go`, own renewed lock, runs off-tick |
 | 13. Admin panel | done | async jobs, token-gated status, 39 i18n keys across 9 locales |
 | 14. Maintenance-mode write gate | done | 503 + `Retry-After` on mutating requests |
+| 14b. Job/upload janitor | done | added after the fact: `Prune` existed but nothing called it, so abandoned uploads leaked |
 | 15. Version in footer and `/healthz` | done | |
 | 16. Tests | done | 125 new test functions |
 | 17. Docs | done | README, `.env.example`, `docker-compose.yml`, this file |
@@ -94,6 +95,13 @@ from anywhere, every layer treats the archive as hostile input.
   very top of `main()` as the plan said: it needs `cfg.UploadDir`. It is also
   called from the CLI restore, which the plan overlooked -- otherwise a CLI
   restore interrupted mid-swap stayed broken until someone started the server.
+- **A janitor goroutine sweeps expired jobs and abandoned uploads**
+  (`httpapp/janitor.go`), which the plan did not describe. The plan assumed the
+  scheduled-backup prune would serve as the backstop; it would not, on two
+  counts. The job tracker is per-process memory, so a leader-gated sweep would
+  leave every replica but one leaking, and the scheduler's prune only runs when
+  `BACKUP_CRON` is set, while uploads happen through the panel regardless. The
+  `.partial` sweep moved there too, so it has a single owner.
 - **Chunked AEAD instead of a single `Seal`.** The winning design sealed the whole `gzip(tar)`
   blob in one `Seal` call, which needs the entire archive resident in memory. With uploads
   included that ceiling is unbounded. This plan frames the payload into 1 MiB sealed chunks
@@ -715,7 +723,7 @@ level.
 | Plaintext pre-encryption blob (password hashes, session tokens, bank data) left on disk on an error path | Medium | Created `0600`; removal deferred immediately after the handle is obtained, covering every return path | `archive.go: WriteArchive` |
 | Async job errors leak a Postgres DSN password or a constraint `DETAIL` echoing a live row value | Medium | A shared `sanitizeErr` strips DSN credentials and generalizes constraint detail before anything reaches `JobStatus.Err` or the log | `jobs.go` |
 | `.old` uploads directory never cleaned up -- disk exhaustion over repeated restores | Medium | `os.RemoveAll` immediately after a successful swap | `restore.go` step 4 |
-| Abandoned restore-upload temp files accumulate on `/data` | Medium | Deleted on any `ValidateArchive` failure and on job-TTL expiry; `PruneOldArchives` sweeps as a backstop | `restore.go`, `prune.go`, `jobs.go` |
+| Abandoned restore-upload temp files accumulate on `/data` | Medium | Deleted on any `ValidateArchive` failure, and on job-TTL expiry by a per-process janitor goroutine. NOT leader-gated and not tied to `BACKUP_CRON`: the job tracker is per-process memory, so every instance must sweep its own | `restore.go`, `jobs.go`, `httpapp/janitor.go` |
 | Scheduled backup inline in `tick()` blocks cleanup and risks its lock lapsing | Medium | Runs on its own goroutine with its own renewed lock; `tick()` never blocks on it | `scheduler.go` |
 | Reading a half-written archive | Medium | Write `.partial` and rename; scans skip `.partial` | `dump.go`, `autorestore.go` |
 | Multiple archives in the watch directory | Medium | Fail loud rather than guess | `autorestore.go` |

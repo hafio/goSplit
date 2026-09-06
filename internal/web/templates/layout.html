@@ -50,9 +50,30 @@
 </header>
 
 <main class="container">
+  {{/* Flash and error sit outside #content so a freshness poll, which swaps
+       only #content, can never wipe a message the user has not read. */}}
   {{if .Flash}}<div class="flash ok">{{.Flash}}</div>{{end}}
   {{if .Error}}<div class="flash err">{{.Error}}</div>{{end}}
-  {{template "content" .}}
+  <div id="content" data-v="">{{template "content" .}}</div>
+  {{if and .User (pollable .Page)}}
+  {{/* Freshness poller: re-asks for this page's content block every 10s, but
+       only while the tab is visible and the user is not busy in it -- no
+       focused control, no open menu or filter panel. The server fingerprints
+       the rendered block and answers 204 when nothing changed, so a quiet poll
+       costs a header exchange rather than a page. List and detail pages only
+       (see the fragment registry in internal/web/view.go); forms are never
+       polled, because morphing one under the user would discard their input. */}}
+  <span class="poller" aria-hidden="true"
+        hx-get="{{.Path}}"
+        hx-trigger="every 10s [document.visibilityState === 'visible' && !document.getElementById('content').contains(document.activeElement) && !document.querySelector('#content details[open]')]"
+        hx-target="#content"
+        hx-swap="morph:{morphStyle:'innerHTML',ignoreActiveValue:true}"
+        hx-indicator="this"
+        hx-headers='{"X-Background": "1"}'
+        hx-vals='js:{v: document.getElementById("content").dataset.v || ""}'
+        hx-on::config-request="event.detail.path = location.pathname + location.search"
+        hx-on::after-request="var v = event.detail.xhr.getResponseHeader('X-Fragment-Version'); if (v) document.getElementById('content').dataset.v = v"></span>
+  {{end}}
 </main>
 
 <footer class="site-footer">
@@ -129,7 +150,13 @@ if ('serviceWorker' in navigator) {
 
   function refresh() {
     if (document.hidden || !window.htmx || dirty()) return;
-    htmx.ajax("GET", location.href, { target: "body", swap: "morph:innerHTML" });
+    // X-Background tells the server nobody is looking at this render yet, so it
+    // must not consume a pending one-shot flash meant for a real navigation.
+    htmx.ajax("GET", location.href, {
+      target: "body",
+      swap: "morph:innerHTML",
+      headers: { "X-Background": "1" },
+    });
   }
 
   document.addEventListener("visibilitychange", function () {

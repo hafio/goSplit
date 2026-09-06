@@ -127,6 +127,10 @@ func run() error {
 	}
 
 	app := httpapp.New(cfg, st, svc, am, renderer)
+	// Sweeps this process's expired background jobs and abandoned restore
+	// uploads. Per-process state, so it is not leader-gated and does not
+	// depend on the scheduler being enabled.
+	app.StartJanitor(ctx)
 
 	if cfg.Scheduler {
 		host, _ := os.Hostname()

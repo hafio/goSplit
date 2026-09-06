@@ -88,10 +88,12 @@ $BinName = "gosplit-{0}-{1}" -f $TOs, $TArch
 if ($TOs -eq 'windows') { $BinName = "$BinName.exe" }
 
 # --- version ----------------------------------------------------------------
-# The git tag is the single source of version truth. tag.yml exports VERSION
-# from the tag ref, so CI never depends on `git describe` seeing history
-# through a shallow checkout. Images take the tag with the leading v stripped
-# (registry convention) -- the only place the v drops.
+# The git tag is the single source of version truth. tag.yml passes VERSION to
+# the image build from the tag ref, and this script passes it from `git
+# describe`, so neither depends on `git describe` running inside the build
+# container -- where .dockerignore's exclusions would make it report -dirty.
+# Images take the tag with the leading v stripped (registry convention) -- the
+# only place the v drops.
 $Version = if ($env:VERSION) { $env:VERSION }
            else {
              $d = (git describe --tags --always --dirty 2>$null)

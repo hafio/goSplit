@@ -179,9 +179,9 @@ func TestCovRenderUnknownPage(t *testing.T) {
 
 func TestCovRenderKnownPage(t *testing.T) {
 	r := covRenderer(t)
-	// Empty Lang and an invalid Theme exercise the defaulting branches. The
-	// status/header are written before template execution, so this asserts the
-	// contract regardless of template body.
+	// Empty Lang and an invalid Theme exercise the defaulting branches. The page
+	// is rendered into a buffer first, so a template failure would surface as a
+	// 500 here rather than a half-written 200.
 	rec := httptest.NewRecorder()
 	r.Render(rec, http.StatusOK, "login", ViewData{Lang: "", Theme: "not-a-real-theme"})
 	if rec.Code != http.StatusOK {

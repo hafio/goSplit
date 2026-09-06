@@ -204,7 +204,4 @@ func (s *Scheduler) runBackup(ctx context.Context) {
 	if _, err := backup.PruneOldArchives(cfg.BackupDir, backup.SafetyDumpPrefix, cfg.BackupRetentionCount); err != nil {
 		slog.Warn("scheduler: pruning old safety dumps", "err", err)
 	}
-	if n := backup.SweepStalePartials(cfg.BackupDir, time.Now()); n > 0 {
-		slog.Info("scheduler: swept stale partial archives", "removed", n)
-	}
 }

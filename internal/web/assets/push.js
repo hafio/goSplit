@@ -49,11 +49,29 @@
       : (msg.msgTestFailed || 'Could not send test (is push configured?).');
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
-    var enableBtn = document.getElementById('push-enable');
-    var testBtn = document.getElementById('push-test');
+  // Wire on htmx:load as well as at parse time. A boosted navigation never
+  // fires DOMContentLoaded again, and a morphed swap can replace these buttons
+  // with listener-less copies, so binding once at load would leave them dead.
+  // The WeakSet keeps that idempotent without marking up the DOM, which a morph
+  // would strip back off anyway.
+  var wired = new WeakSet();
+  function wireOnce(el, fn) {
+    if (!el || wired.has(el)) return;
+    wired.add(el);
+    fn(el);
+  }
+
+  function wire() {
     var status = document.getElementById('push-status');
-    if (enableBtn) enableBtn.addEventListener('click', function () { enable(status, enableBtn); });
-    if (testBtn) testBtn.addEventListener('click', function () { test(status, testBtn); });
-  });
+    if (!status) return;
+    wireOnce(document.getElementById('push-enable'), function (btn) {
+      btn.addEventListener('click', function () { enable(status, btn); });
+    });
+    wireOnce(document.getElementById('push-test'), function (btn) {
+      btn.addEventListener('click', function () { test(status, btn); });
+    });
+  }
+
+  wire();
+  document.addEventListener('htmx:load', wire);
 })();

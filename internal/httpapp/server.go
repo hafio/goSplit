@@ -211,6 +211,7 @@ func (s *Server) vd(r *http.Request, title string, data any) web.ViewData {
 		Theme:   theme,
 		Nav:     navSlug(r.URL.Path),
 		Version: s.Cfg.AppVersion,
+		Path:    r.URL.RequestURI(),
 		Data:    data,
 	}
 }
@@ -218,12 +219,23 @@ func (s *Server) vd(r *http.Request, title string, data any) web.ViewData {
 // vdPage is vd plus any pending one-shot flash, consumed here because the
 // layout is the only thing that renders one. Fragment responses deliberately
 // use vd instead, so a swap of one region can't silently eat a message the
-// user never saw.
+// user never saw -- and neither may a background refresh or a freshness poll,
+// which render a page nobody is looking at yet and would otherwise race a
+// POST-redirect-GET for the same single-value cookie.
 func (s *Server) vdPage(w http.ResponseWriter, r *http.Request, title string, data any) web.ViewData {
 	vd := s.vd(r, title, data)
-	vd.Flash = takeFlash(w, r)
+	if !isBackgroundRequest(r) {
+		vd.Flash = s.takeFlash(w, r)
+	}
 	return vd
 }
+
+// backgroundHeader marks a request the user did not initiate: the refresh-on-
+// focus refetch and the freshness poller both set it, so the server can tell a
+// page nobody has looked at yet from one being rendered for a person.
+const backgroundHeader = "X-Background"
+
+func isBackgroundRequest(r *http.Request) bool { return r.Header.Get(backgroundHeader) != "" }
 
 // flashCookie carries a one-shot confirmation across the redirect that follows
 // a mutation. It replaces the older ?flash= query param, which stayed in the
@@ -232,27 +244,30 @@ const flashCookie = "gs_flash"
 
 // setFlash queues msg for the next full page render. The value is base64'd
 // because a display string may contain spaces, commas or quotes, none of which
-// are legal raw in a cookie value.
-func setFlash(w http.ResponseWriter, msg string) {
+// are legal raw in a cookie value. Secure tracks the session and CSRF cookies
+// (see auth.Manager) so the flash is never the one cookie that leaks to plain
+// HTTP on an HTTPS deployment.
+func (s *Server) setFlash(w http.ResponseWriter, msg string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     flashCookie,
 		Value:    base64.RawURLEncoding.EncodeToString([]byte(msg)),
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   s.Auth.Secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
 // takeFlash reads the pending message and expires the cookie in the same
 // response, so the message is shown exactly once.
-func takeFlash(w http.ResponseWriter, r *http.Request) string {
+func (s *Server) takeFlash(w http.ResponseWriter, r *http.Request) string {
 	c, err := r.Cookie(flashCookie)
 	if err != nil || c.Value == "" {
 		return ""
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: flashCookie, Value: "", Path: "/", HttpOnly: true,
-		SameSite: http.SameSiteLaxMode, MaxAge: -1,
+		Secure: s.Auth.Secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
 	})
 	b, err := base64.RawURLEncoding.DecodeString(c.Value)
 	if err != nil {
@@ -290,25 +305,36 @@ func navSlug(path string) string {
 	return ""
 }
 
+// render answers with the whole page, or -- when htmx names a region this page
+// registers as swappable -- with just that region's block. Every handler goes
+// through here, so adding a fragment is a registry entry in internal/web, never
+// a branch in a handler.
 func (s *Server) render(w http.ResponseWriter, r *http.Request, page, title string, data any) {
-	s.Renderer.Render(w, http.StatusOK, page, s.vdPage(w, r, title, data))
+	if frag, ok := web.FragmentFor(page, fragmentTarget(r)); ok {
+		vd := s.vd(r, title, data)
+		vd.Page = page
+		s.Renderer.RenderFragment(w, r, http.StatusOK, page, frag.Block, vd)
+		return
+	}
+	vd := s.vdPage(w, r, title, data)
+	vd.Page = page
+	s.Renderer.Render(w, http.StatusOK, page, vd)
 }
 
-// isFragmentRequest reports whether this htmx request is swapping the region
-// with the given id. htmx sets HX-Target to the id of the element it will swap,
-// so a handler can answer with that region's block instead of the whole page.
-// Plain navigation (including a boosted one, which targets the body) never
-// matches, so the full-page path stays the default and the no-JS fallback.
-func isFragmentRequest(r *http.Request, id string) bool {
-	return r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-Target") == id
-}
-
-func (s *Server) renderFragment(w http.ResponseWriter, r *http.Request, page, block, title string, data any) {
-	s.Renderer.RenderFragment(w, http.StatusOK, page, block, s.vd(r, title, data))
+// fragmentTarget is the DOM id htmx says it will swap, or "" for an ordinary
+// navigation. A boosted navigation targets the body and so never names a
+// registered region, which keeps the full-page path the default and the
+// no-JavaScript fallback.
+func fragmentTarget(r *http.Request) string {
+	if r.Header.Get("HX-Request") != "true" {
+		return ""
+	}
+	return r.Header.Get("HX-Target")
 }
 
 func (s *Server) renderErr(w http.ResponseWriter, r *http.Request, page, title string, data any, status int, errMsg string) {
 	vd := s.vdPage(w, r, title, data)
+	vd.Page = page
 	vd.Error = errMsg
 	s.Renderer.Render(w, status, page, vd)
 }

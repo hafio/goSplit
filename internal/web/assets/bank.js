@@ -30,9 +30,19 @@
     handler.open();
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
+  // Wire on htmx:load as well as at parse time: a boosted navigation never
+  // fires DOMContentLoaded again, and a morphed swap can hand back a
+  // listener-less button. The WeakSet keeps re-wiring idempotent.
+  var wired = new WeakSet();
+
+  function wire() {
     var btn = document.getElementById('bank-connect');
     var status = document.getElementById('bank-status');
-    if (btn) btn.addEventListener('click', function () { connect(status, btn); });
-  });
+    if (!btn || !status || wired.has(btn)) return;
+    wired.add(btn);
+    btn.addEventListener('click', function () { connect(status, btn); });
+  }
+
+  wire();
+  document.addEventListener('htmx:load', wire);
 })();

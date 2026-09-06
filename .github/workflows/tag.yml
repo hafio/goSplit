@@ -142,6 +142,16 @@ jobs:
           context: .
           file: ${{ env.DOCKERFILE }}
           platforms: ${{ env.PLATFORMS }}
+          # The tag is the source of version truth, so hand it over rather than
+          # let the Dockerfile fall back to `git describe` inside the build
+          # container. That fallback reports -dirty here: .dockerignore drops
+          # .github/, docs/ and graphify-out/ to keep the context small, all of
+          # which are tracked, so git sees them as deleted and calls the tree
+          # dirty. A released image would then be tagged 1.0.0 while its binary
+          # reported v1.0.0-dirty. github.ref_name is repo-agnostic, so this
+          # stays safe to copy verbatim into another repo.
+          build-args: |
+            VERSION=${{ github.ref_name }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

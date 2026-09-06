@@ -4,30 +4,7 @@
 // date quick-chips.
 (function () {
   "use strict";
-  var form = document.getElementById("expense-form");
-  if (!form) return;
-
-  // Switching the target group/direct reloads the form so the participant list
-  // matches the new context (group members vs. friends).
-  var retarget = form.querySelector("select[data-retarget]");
-  if (retarget) {
-    retarget.addEventListener("change", function () {
-      window.location.href = retarget.value
-        ? "/expenses/new?group=" + encodeURIComponent(retarget.value)
-        : "/expenses/new";
-    });
-  }
-
-  // Editing: changing the target group reloads the edit page for that group so
-  // the participant list, the move warning, and the ack checkbox match it. The
-  // server re-renders and enforces the ack on a real group change.
-  var moveTarget = form.querySelector("select[data-move-target]");
-  if (moveTarget) {
-    moveTarget.addEventListener("change", function () {
-      window.location.href = window.location.pathname +
-        "?target=" + encodeURIComponent(moveTarget.value);
-    });
-  }
+  var form = null;
 
   var ZERO_DECIMAL = { JPY: 1, KRW: 1, VND: 1, CLP: 1, ISK: 1 };
   function decimals() {
@@ -56,6 +33,7 @@
 
   // Live equal-split preview: floor + remainder, matching internal/split.
   function renderPreview() {
+    if (!form) return;
     var equal = currentMethod() === "EQUAL";
     var rows = form.querySelectorAll(".p-row");
     var included = [];
@@ -80,56 +58,103 @@
   // Reflect a chosen radio in its picker summary, then close the popover.
   function wirePicker(kind, render) {
     var picker = form.querySelector('[data-picker="' + kind + '"]');
-    if (!picker) return;
-    picker.addEventListener("change", function () {
-      render(picker);
-      picker.open = false;
+    wireOnce(picker, function (el) {
+      el.addEventListener("change", function () {
+        render(el);
+        el.open = false;
+      });
     });
   }
-  wirePicker("currency", function () {
-    var btn = form.querySelector(".cur-btn");
-    if (btn) btn.firstChild ? (btn.childNodes[0].nodeValue = symbol()) : (btn.textContent = symbol());
-    renderPreview();
-  });
-  wirePicker("category", function (picker) {
-    var opt = picker.querySelector("input:checked");
-    if (!opt) return;
-    var label = opt.closest(".picker-opt");
-    var emo = label.querySelector("em"), sumEmo = picker.parentNode.querySelector(".cat-emo"),
-        sumLbl = picker.parentNode.querySelector(".cat-lbl");
-    if (sumEmo && emo) sumEmo.textContent = emo.textContent;
-    if (sumLbl) sumLbl.textContent = opt.value;
-  });
-  wirePicker("paidby", function (picker) {
-    var opt = picker.querySelector("input:checked");
-    if (!opt) return;
-    var src = opt.closest(".picker-opt");
-    var sum = picker.querySelector("summary");
-    var ava = src.querySelector(".ava").cloneNode(true);
-    sum.textContent = "";
-    sum.appendChild(ava);
-    sum.appendChild(document.createTextNode(" " + src.textContent.trim()));
-  });
 
-  // Close any open picker when clicking outside it.
+  // Re-wire on htmx:load as well as at parse time: a boosted navigation does not
+  // re-run this script when the tag is unchanged, and a morphed swap can replace
+  // pickers or chips with listener-less copies. The WeakSet makes that idempotent
+  // without a DOM marker, which a morph would strip back off.
+  var wired = new WeakSet();
+  function wireOnce(el, fn) {
+    if (!el || wired.has(el)) return;
+    wired.add(el);
+    fn(el);
+  }
+
+  function wire() {
+    form = document.getElementById("expense-form");
+    if (!form) return;
+
+    // Switching the target group/direct reloads the form so the participant list
+    // matches the new context (group members vs. friends).
+    wireOnce(form.querySelector("select[data-retarget]"), function (el) {
+      el.addEventListener("change", function () {
+        window.location.href = el.value
+          ? "/expenses/new?group=" + encodeURIComponent(el.value)
+          : "/expenses/new";
+      });
+    });
+
+    // Editing: changing the target group reloads the edit page for that group so
+    // the participant list, the move warning, and the ack checkbox match it. The
+    // server re-renders and enforces the ack on a real group change.
+    wireOnce(form.querySelector("select[data-move-target]"), function (el) {
+      el.addEventListener("change", function () {
+        window.location.href = window.location.pathname +
+          "?target=" + encodeURIComponent(el.value);
+      });
+    });
+
+    wirePicker("currency", function () {
+      var btn = form.querySelector(".cur-btn");
+      if (btn) btn.firstChild ? (btn.childNodes[0].nodeValue = symbol()) : (btn.textContent = symbol());
+      renderPreview();
+    });
+    wirePicker("category", function (picker) {
+      var opt = picker.querySelector("input:checked");
+      if (!opt) return;
+      var label = opt.closest(".picker-opt");
+      var emo = label.querySelector("em"), sumEmo = picker.parentNode.querySelector(".cat-emo"),
+          sumLbl = picker.parentNode.querySelector(".cat-lbl");
+      if (sumEmo && emo) sumEmo.textContent = emo.textContent;
+      if (sumLbl) sumLbl.textContent = opt.value;
+    });
+    wirePicker("paidby", function (picker) {
+      var opt = picker.querySelector("input:checked");
+      if (!opt) return;
+      var src = opt.closest(".picker-opt");
+      var sum = picker.querySelector("summary");
+      var ava = src.querySelector(".ava").cloneNode(true);
+      sum.textContent = "";
+      sum.appendChild(ava);
+      sum.appendChild(document.createTextNode(" " + src.textContent.trim()));
+    });
+
+    // Date quick-chips.
+    form.querySelectorAll(".date-chips .chip").forEach(function (chip) {
+      wireOnce(chip, function (el) {
+        el.addEventListener("click", function () {
+          var d = new Date();
+          d.setDate(d.getDate() + parseInt(el.getAttribute("data-days"), 10));
+          var input = form.querySelector('input[name="date"]');
+          if (input) input.value = d.toISOString().slice(0, 10);
+          form.querySelectorAll(".date-chips .chip").forEach(function (c) { c.setAttribute("aria-pressed", c === el); });
+        });
+      });
+    });
+
+    wireOnce(form, function (el) {
+      el.addEventListener("input", renderPreview);
+      el.addEventListener("change", renderPreview);
+    });
+    renderPreview();
+  }
+
+  // Close any open picker when clicking outside it. Bound to the document once,
+  // which outlives every swap, so it is deliberately outside wire().
   document.addEventListener("click", function (e) {
+    if (!form || !form.isConnected) return;
     form.querySelectorAll(".picker[open]").forEach(function (p) {
       if (!p.contains(e.target)) p.open = false;
     });
   });
 
-  // Date quick-chips.
-  form.querySelectorAll(".date-chips .chip").forEach(function (chip) {
-    chip.addEventListener("click", function () {
-      var d = new Date();
-      d.setDate(d.getDate() + parseInt(chip.getAttribute("data-days"), 10));
-      var input = form.querySelector('input[name="date"]');
-      if (input) input.value = d.toISOString().slice(0, 10);
-      form.querySelectorAll(".date-chips .chip").forEach(function (c) { c.setAttribute("aria-pressed", c === chip); });
-    });
-  });
-
-  form.addEventListener("input", renderPreview);
-  form.addEventListener("change", renderPreview);
-  renderPreview();
+  wire();
+  document.addEventListener("htmx:load", wire);
 })();

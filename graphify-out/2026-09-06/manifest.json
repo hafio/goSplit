@@ -1052,9 +1052,9 @@
     "semantic_hash": ""
   },
   "internal/httpapp/fragment_test.go": {
-    "mtime": 1788630136.5654578,
-    "seen": 1788654350.0300255,
-    "ast_hash": "dc4dbb0e2184619093e7f1ae625c048b",
+    "mtime": 1788629662.4525132,
+    "seen": 1788630016.984443,
+    "ast_hash": "1cd403ae41212378672e588b4dce39c8",
     "semantic_hash": ""
   },
   "internal/httpapp/progressive_test.go": {
@@ -1070,9 +1070,9 @@
     "semantic_hash": ""
   },
   "internal/web/render_fragment_test.go": {
-    "mtime": 1788630131.8043656,
-    "seen": 1788654350.0854318,
-    "ast_hash": "b1113891bf2ff9c7f6a85a8bc2e47511",
+    "mtime": 1788628727.5887508,
+    "seen": 1788630017.0532432,
+    "ast_hash": "0e195cc3b2a959378bd1fffb8e52ebc4",
     "semantic_hash": ""
   },
   "docs/ux-responsiveness-plan.md": {

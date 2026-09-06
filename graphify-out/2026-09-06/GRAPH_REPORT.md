@@ -1,12 +1,12 @@
 # Graph Report - gosplit  (2026-09-06)
 
 ## Corpus Check
-- 184 files · ~179,546 words
+- 184 files · ~179,248 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1959 nodes · 5534 edges · 130 communities (89 shown, 41 thin omitted)
-- Extraction: 82% EXTRACTED · 18% INFERRED · 0% AMBIGUOUS · INFERRED: 1015 edges (avg confidence: 0.85)
+- 1957 nodes · 5528 edges · 136 communities (92 shown, 44 thin omitted)
+- Extraction: 82% EXTRACTED · 18% INFERRED · 0% AMBIGUOUS · INFERRED: 1013 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
@@ -15,13 +15,13 @@
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- Compute
-- newTestService
+- Method
+- covUser
 - net/http.Request
 - NewManager
 - Base Layout
 - Load
-- Server
+- User
 - body
 - openTestStore
 - Implementation
@@ -39,15 +39,15 @@
 - Expense
 - currency/zz_coverage_test.go
 - InsertOrder
-- NewRenderer
-- User
+- Bundle
+- .ImportFromSplitwise
 - convert.js
 - collapseView
 - Build, Verify, Test Command Policy
 - graphify Knowledge Graph Workflow
 - balance_view (derived balances)
 - dev.sh / dev.ps1 task runners
-- Method
+- handlers_expenses.go
 - Auth (magic-link + password)
 - SQLite default (no DB container)
 - newTestRunner
@@ -59,24 +59,24 @@
 - expense_form.js
 - index_test.go
 - tripHarness
-- nameCache
+- Store
 - testing.T
-- RandomToken
+- view.go
 - Convert
 - mkExp
 - Scan
 - GoSplit UI Icon Sprite Sheet
 - push.js
 - Golden Scenario regression fixture
-- covUser
+- newTestService
 - service/zz_coverage2_test.go
 - harness
 - handlers_recurring.go
-- RecoverIncompleteSwap
+- PlaidProvider
 - bank.js
 - GoSplit App Icon
 - bankTxRow
-- handlers_helpers.go
+- .handleGroupDetail
 - Renderer
 - nullInt
 - seedDirectExpense
@@ -85,16 +85,18 @@
 - htmx.min.js
 - github.com/hafio/gosplit
 - JobTracker
-- Keyring
+- crypto.go
 - GoSplit responsiveness + UX plan (Tier 1 quick wins + Tier 2 structural)
-- LineFromInput
+- helpers.go
 - TestThemeColorUpdate
-- TestConvertExactBothAmounts
+- .buildBatches
+- .computeGroupSettlements
 - Store
 - New
-- Header
+- ReadHeader
 - .Dump
-- run
+- RecoverIncompleteSwap
+- NewRenderer
 - ValidTheme
 - service/zz_coverage3_test.go
 - CheckAutoRestore
@@ -125,10 +127,14 @@
 - Split engine (internal/split)
 - Splitwise import
 - Web Push notifications (VAPID)
+- nameCache
 - context.Context
+- Store
 - TestActivityFeedShowAll
 - TestCov3BankConvertRedirect
-- .applyTx
+- .CreateConversionExact
+- safeNext
+- Validated
 - Server
 
 ## God Nodes (most connected - your core abstractions)
@@ -165,75 +171,75 @@
 - **Base layout content-block pattern** — internal_web_templates_activity_page, internal_web_templates_admin_page, internal_web_templates_balances_page, internal_web_templates_bank_page, internal_web_templates_convert_page, internal_web_templates_expense_detail_page, internal_web_templates_expense_form_page, internal_web_templates_forgot_page, internal_web_templates_friend_page, internal_web_templates_friends_page, internal_web_templates_group_page [INFERRED 0.85]
 - **Expense lifecycle flow** — internal_web_templates_expense_form_page, internal_web_templates_expense_detail_page, internal_web_templates_route_expense_new, internal_web_templates_route_expense_move, internal_web_templates_route_expense_delete [INFERRED 0.85]
 
-## Communities (130 total, 41 thin omitted)
+## Communities (136 total, 44 thin omitted)
 
-### Community 0 - "Compute"
+### Community 0 - "Method"
+Cohesion: 0.11
+Nodes (36): TestSplitRemainderStableAcrossLineOrder(), todayISO(), DecodeInputs(), EncodeInputs(), Line, LineFromInput(), TestDecodeInputsRejects(), TestEncodeDecodeInputs() (+28 more)
+
+### Community 1 - "covUser"
 Cohesion: 0.19
-Nodes (22): TestSplitRemainderStableAcrossLineOrder(), Compute(), computeShares(), DefaultSplitAllowed(), distributeRemainder(), finalize(), gcd(), Line (+14 more)
-
-### Community 1 - "newTestService"
-Cohesion: 0.13
-Nodes (20): TestAdminCreateUser(), TestAdminSetPasswordRevokesSessions(), TestCreateConversionExact(), TestAddFriendToGroup(), Service, newTestService(), generatedFrom(), Service (+12 more)
+Nodes (18): generatedFrom(), Service, TestAddExpenseOmitsNonSplittingPayer(), TestAddExpenseRecordsTypedInputs(), TestGenerateOneCopiesWhenNoInputs(), TestGenerateOneReSplitsFromInputs(), TestMoveExpenseRejectsSettlement(), TestMoveExpenseRejectsStaleVersion() (+10 more)
 
 ### Community 2 - "net/http.Request"
-Cohesion: 0.09
-Nodes (17): context.CancelFunc, net/http.Request, net/http.ResponseWriter, Server, Server, safeNext(), Server, applyFeedLimit() (+9 more)
+Cohesion: 0.11
+Nodes (10): context.CancelFunc, net/http.Request, net/http.ResponseWriter, Server, Server, Server, Server, Server (+2 more)
 
 ### Community 3 - "NewManager"
-Cohesion: 0.10
-Nodes (35): ctxKey, net/http.Handler, net/http.HandlerFunc, archiveInfo, CSRFFrom(), Manager, NewManager(), UserFrom() (+27 more)
+Cohesion: 0.07
+Nodes (42): ctxKey, net/http.Handler, CSRFFrom(), Manager, NewManager(), UserFrom(), HashPassword(), RandomToken() (+34 more)
 
 ### Community 4 - "Base Layout"
 Cohesion: 0.08
 Nodes (40): Balance, Group, Groups Page, Route GET /groups/{id} (Group Detail), Route POST /groups/create, Splitwise Import Page, Route POST /import/splitwise, Base Layout (+32 more)
 
 ### Community 5 - "Load"
-Cohesion: 0.10
+Cohesion: 0.11
 Nodes (33): backupEnv(), TestBackupCronAccepted(), TestBackupCronInvalidFailsLoud(), TestBackupCronWithoutDirFailsLoud(), TestBackupDefaults(), TestBackupDirDifferentFromAutoRestoreDirAccepted(), TestBackupDirEqualAutoRestoreDirFailsLoud(), TestBackupRetentionValidation() (+25 more)
 
-### Community 6 - "Server"
-Cohesion: 0.19
-Nodes (3): applySubmittedFields(), displayName(), Server
+### Community 6 - "User"
+Cohesion: 0.15
+Nodes (8): candidate, Server, applySubmittedFields(), displayName(), Server, prefillFromForm(), atoi64(), User
 
 ### Community 7 - "body"
 Cohesion: 0.06
-Nodes (73): TestAdminCreateUser(), TestAdminRequiresAdmin(), TestAdminSetPasswordRevokesTargetSession(), TestAdminUserManagement(), TestExpenseNoteAndCollapse(), TestArchivedGroupHiddenFromActivityAndSection(), TestExpenseFormRendersComponents(), TestExpenseFormRoundTripsMethods() (+65 more)
+Nodes (75): TestAdminCreateUser(), TestAdminRequiresAdmin(), TestAdminSetPasswordRevokesTargetSession(), TestAdminUserManagement(), TestExpenseNoteAndCollapse(), TestArchivedGroupHiddenFromActivityAndSection(), TestConvertExactBothAmounts(), TestRateEndpoint() (+67 more)
 
 ### Community 8 - "openTestStore"
 Cohesion: 0.06
-Nodes (56): Transfer, Simplify(), netAfter(), TestSimplify_GoldenUSDTransactionCount(), TestSimplify_PreservesNetAndSettles(), TestUserNetByExpense(), TestExpenseFilterLimit(), TestGroupMemberCountsAndNets() (+48 more)
+Nodes (57): Transfer, Simplify(), netAfter(), TestSimplify_GoldenUSDTransactionCount(), TestSimplify_PreservesNetAndSettles(), TestUserNetByExpense(), TestBuildLikePattern(), TestExpenseFilterLimit() (+49 more)
 
 ### Community 9 - "Implementation"
 Cohesion: 0.06
 Nodes (30): Archive format, Context, Decided requirements, Deviations from the plan as approved, Docs, Encryption, Explicitly deferred / rejected, GoSplit backup and restore (+ surface the build version) (+22 more)
 
 ### Community 10 - "ExpenseRecurrence"
-Cohesion: 0.17
-Nodes (6): Service, toISO(), todayISO(), ExpenseRecurrence, Store, scanRecurrence()
+Cohesion: 0.18
+Nodes (5): Service, toISO(), ExpenseRecurrence, Store, scanRecurrence()
 
 ### Community 11 - "app service"
 Cohesion: 0.67
 Nodes (3): app service, splitpro-data volume, SplitPro (Go rebuild)
 
 ### Community 12 - "Group"
-Cohesion: 0.24
-Nodes (3): Store, scanGroup(), Group
+Cohesion: 0.17
+Nodes (6): prefixCols(), trimSpace(), Store, scanGroup(), Group, TestCov2PureHelpers()
 
 ### Community 13 - "Format"
-Cohesion: 0.16
-Nodes (13): absInt64(), Server, friendSettlePrefill(), groupSettleSuggestion(), decimals(), Format(), Parse(), pow10() (+5 more)
+Cohesion: 0.18
+Nodes (12): absInt64(), Server, groupSettleSuggestion(), decimals(), Format(), Parse(), pow10(), TestFormat() (+4 more)
 
 ### Community 14 - "Group Detail Page"
 Cohesion: 0.08
 Nodes (44): Activity Item Entity, Activity Page, Admin Users Page, Balance Entity, Balances Page, Bank Link Client Script, Bank Transactions Page, Bank Transaction Entity (+36 more)
 
 ### Community 15 - "testKeyring"
-Cohesion: 0.24
-Nodes (20): frameAt(), seal(), TestDuplicatedFrameFails(), TestEmptyPayloadStillTerminates(), TestFingerprintDistinguishesSecrets(), TestFingerprintDoesNotRevealSealKey(), TestFingerprintIsStable(), TestFlippedFinalFlagFails() (+12 more)
+Cohesion: 0.16
+Nodes (27): Keyring, io.WriteCloser, newAEAD(), NewOpenReader(), NewSealWriter(), frameAt(), open(), seal() (+19 more)
 
 ### Community 16 - "nowISO"
-Cohesion: 0.15
-Nodes (9): time.Duration, FromNow(), NewNanoID(), nowISO(), Store, Store, Store, TestCovIDGenerators() (+1 more)
+Cohesion: 0.14
+Nodes (11): time.Duration, FromNow(), NewNanoID(), NewUUID(), nowISO(), Store, Store, Store (+3 more)
 
 ### Community 17 - "codec_test.go"
 Cohesion: 0.17
@@ -245,35 +251,35 @@ Nodes (26): c(), docker_linux(), expand(), finish(), host_arch(), host_os(), log
 
 ### Community 20 - "service_test.go"
 Cohesion: 0.17
-Nodes (11): extractToken(), TestAdminAutoPromotion(), TestChangePassword(), TestCreateConversion(), TestForgotResetPassword(), TestImportFromSplitwise(), TestMagicLinkFlow(), TestRegisterAndLogin() (+3 more)
+Nodes (10): extractToken(), TestAdminAutoPromotion(), TestChangePassword(), TestCreateConversion(), TestForgotResetPassword(), TestImportFromSplitwise(), TestMagicLinkFlow(), TestRegisterAndLogin() (+2 more)
 
 ### Community 21 - "Expense"
-Cohesion: 0.10
-Nodes (21): database/sql.NullInt64, database/sql.Tx, FormatWithCode(), buildHistoricalCSV(), dateOnly(), sortedInt64Keys(), sortedStrKeys(), nullInt() (+13 more)
+Cohesion: 0.14
+Nodes (13): prefillDerived(), prefillEdit(), FormatWithCode(), Service, BuildLikePattern(), ExpenseFilter, HistoricalBatch, Store (+5 more)
 
 ### Community 22 - "currency/zz_coverage_test.go"
-Cohesion: 0.06
-Nodes (41): PlaidProvider, roundTripFunc, covRoundTripFunc, FrankfurterProvider, NoneProvider, OpenExchangeRatesProvider, net/http.Client, Provider (+33 more)
+Cohesion: 0.11
+Nodes (27): covRoundTripFunc, FrankfurterProvider, NoneProvider, OpenExchangeRatesProvider, net/http.Client, defaultClient(), Provider, NewProvider() (+19 more)
 
 ### Community 23 - "InsertOrder"
-Cohesion: 0.15
-Nodes (19): Column, ColumnKind, Table, ScanDest(), DeleteOrder(), InsertOrder(), isBareIdent(), TableCount() (+11 more)
+Cohesion: 0.12
+Nodes (25): batcher, Column, ColumnKind, Table, database/sql.Tx, ScanDest(), snapshotTables(), DeleteOrder() (+17 more)
 
-### Community 24 - "NewRenderer"
-Cohesion: 0.06
-Nodes (41): Bundle, Load(), parseAcceptLanguage(), parseQ(), firstOther(), load(), TestDetect(), TestLanguages() (+33 more)
+### Community 24 - "Bundle"
+Cohesion: 0.18
+Nodes (11): Bundle, Load(), parseAcceptLanguage(), parseQ(), firstOther(), load(), TestDetect(), TestLanguages() (+3 more)
 
-### Community 25 - "User"
-Cohesion: 0.10
-Nodes (11): Service, Service, swGet(), Service, prefixCols(), trimSpace(), User, orDefault() (+3 more)
+### Community 25 - ".ImportFromSplitwise"
+Cohesion: 0.47
+Nodes (3): Service, swGet(), ImportResult
 
 ### Community 26 - "convert.js"
 Cohesion: 0.37
 Nodes (13): dec(), fetchRate(), fmt(), labels(), num(), recomputeTo(), setSrc(), setValue() (+5 more)
 
-### Community 32 - "Method"
-Cohesion: 0.13
-Nodes (31): candidate, fieldError, fieldErrorf(), fieldErrorsFor(), formatValue(), formVersion(), lineForMethod(), orZero() (+23 more)
+### Community 32 - "handlers_expenses.go"
+Cohesion: 0.12
+Nodes (26): expenseDetailView, fieldError, participantView, fieldErrorf(), fieldErrorsFor(), formatValue(), formVersion(), lineForMethod() (+18 more)
 
 ### Community 34 - "SQLite default (no DB container)"
 Cohesion: 0.67
@@ -292,36 +298,36 @@ Cohesion: 0.13
 Nodes (15): crypto/tls.Config, net.Listener, net/smtp.Client, buildMessage(), Mailer, New(), serveFakeSMTP(), TestBuildMessage() (+7 more)
 
 ### Community 39 - "Service"
-Cohesion: 0.24
-Nodes (8): database/sql.NullString, ExpenseInput, Service, SettlementInput, movable(), nullStr(), orDefault(), sameGroup()
+Cohesion: 0.21
+Nodes (10): database/sql.NullInt64, database/sql.NullString, ExpenseInput, Service, SettlementInput, movable(), nullInt(), nullStr() (+2 more)
 
 ### Community 40 - "Transaction"
-Cohesion: 0.18
-Nodes (5): Transaction, Service, itoa(), bankData, covBank
+Cohesion: 0.12
+Nodes (6): Disabled, Transaction, Service, itoa(), bankData, covBank
 
 ### Community 41 - "expense_form.js"
 Cohesion: 0.44
 Nodes (9): amountMinor(), currentMethod(), decimals(), fmt(), renderPreview(), symbol(), wire(), wireOnce() (+1 more)
 
 ### Community 42 - "index_test.go"
-Cohesion: 0.31
-Nodes (24): craftEntry, ReadHeader(), tablePartName(), assertNothingOutside(), baselineEntries(), baselineManifest(), craftArchive(), itoa() (+16 more)
+Cohesion: 0.33
+Nodes (22): craftEntry, tablePartName(), assertNothingOutside(), baselineEntries(), baselineManifest(), craftArchive(), itoa(), scanCrafted() (+14 more)
 
 ### Community 43 - "tripHarness"
 Cohesion: 0.13
 Nodes (31): harness, settlementPath(), TestEditSettlementGroupMoveNeedsAck(), TestEditSettlementHidesFixedFieldPickers(), TestEditSettlementKeepsZeroDecimalCurrency(), TestEditSettlementNonMemberRendersFieldError(), TestEditSettlementPageHasNoMethodPicker(), TestEditSettlementRejectsBadAmount() (+23 more)
 
-### Community 44 - "nameCache"
-Cohesion: 0.12
-Nodes (14): balanceRow, currencyNet, friendRow, groupRow, nameCache, settlementRow, Server, max64() (+6 more)
+### Community 44 - "Store"
+Cohesion: 0.24
+Nodes (5): friendSettlePrefill(), CumulatedBalance, Store, scanBalances(), Balance
 
 ### Community 45 - "testing.T"
-Cohesion: 0.09
-Nodes (43): testing.T, adminHarness(), harness, harness, TestAdminPageLinksToBackup(), TestBackupDownloadLinkNotBoosted(), TestBackupDownloadRejectsHostileNames(), TestBackupDownloadServesArchive() (+35 more)
+Cohesion: 0.10
+Nodes (41): testing.T, adminHarness(), harness, harness, TestAdminPageLinksToBackup(), TestBackupDownloadLinkNotBoosted(), TestBackupDownloadRejectsHostileNames(), TestBackupDownloadServesArchive() (+33 more)
 
-### Community 46 - "RandomToken"
+### Community 46 - "view.go"
 Cohesion: 0.15
-Nodes (9): HashPassword(), RandomToken(), TestHashPassword_Empty(), TestHashVerifyRoundTrip(), TestRandomTokenUnique(), TestVerifyPassword_InvalidHash(), VerifyPassword(), Service (+1 more)
+Nodes (12): net/http.HandlerFunc, TestAssetURLFingerprinted(), TestQueryWithout(), TestPollableCoversListPagesOnly(), Asset(), assetURL(), FragmentFor(), pollable() (+4 more)
 
 ### Community 47 - "Convert"
 Cohesion: 0.36
@@ -332,8 +338,8 @@ Cohesion: 0.44
 Nodes (9): countRows(), Service, mkExp(), netByUser(), TestArchiveCSVNoteFormat(), TestArchiveDirectPreservesNet(), TestArchiveGroupPreservesNet(), TestArchiveMultiCurrency() (+1 more)
 
 ### Community 49 - "Scan"
-Cohesion: 0.16
-Nodes (24): countingReader, Entry, EntryKind, Index, Limits, Opener, Validated, archive/tar.Reader (+16 more)
+Cohesion: 0.17
+Nodes (23): countingReader, Entry, EntryKind, Index, Limits, Opener, archive/tar.Reader, io.Reader (+15 more)
 
 ### Community 50 - "GoSplit UI Icon Sprite Sheet"
 Cohesion: 0.40
@@ -343,9 +349,9 @@ Nodes (5): Expense & Money Icons (banknote, wallet), Group & Member Icons (users
 Cohesion: 0.57
 Nodes (6): b64ToUint8(), csrf(), enable(), test(), wire(), wireOnce()
 
-### Community 53 - "covUser"
-Cohesion: 0.20
-Nodes (17): covUser(), Service, TestAddExpenseDirectCreatesFriendship(), TestAddExpenseNonMemberRejected(), TestAddFriendByEmail(), TestAdminMagicLinkForUser(), TestArchiveDirectRejectsSelf(), TestArchiveGroupNonMember() (+9 more)
+### Community 53 - "newTestService"
+Cohesion: 0.13
+Nodes (21): TestAdminCreateUser(), TestAdminSetPasswordRevokesSessions(), TestCreateConversionExact(), TestAddFriendToGroup(), Service, newTestService(), TestAddExpenseDirectCreatesFriendship(), TestAddExpenseNonMemberRejected() (+13 more)
 
 ### Community 54 - "service/zz_coverage2_test.go"
 Cohesion: 0.18
@@ -355,9 +361,9 @@ Nodes (9): covMultipartReq(), TestCovBankConnectedFlow(), TestCovBankProviderErr
 Cohesion: 0.15
 Nodes (14): net/http/httptest.Server, net/http.Response, net/url.Values, harness, TestCSRFRejected(), TestFullFlow(), TestHealth(), TestLoginRequiredRedirect() (+6 more)
 
-### Community 57 - "RecoverIncompleteSwap"
-Cohesion: 0.34
-Nodes (14): dirExists(), RecoverIncompleteSwap(), marker(), swapFixture(), TestRecoverCleanupOnlyCrash(), TestRecoverIsIdempotent(), TestRecoverMidSwapCrash(), TestRecoverMidSwapCrashWithoutStaging() (+6 more)
+### Community 57 - "PlaidProvider"
+Cohesion: 0.16
+Nodes (14): PlaidProvider, roundTripFunc, Provider, New(), jsonResp(), plaidStub(), TestBaseURL(), TestCreateLinkToken() (+6 more)
 
 ### Community 58 - "bank.js"
 Cohesion: 0.83
@@ -367,12 +373,12 @@ Nodes (3): connect(), csrf(), wire()
 Cohesion: 0.67
 Nodes (3): GoSplit App Icon, GoSplit Brand Identity, Split and Sharing Visual Metaphor
 
-### Community 61 - "handlers_helpers.go"
-Cohesion: 0.31
-Nodes (7): expenseDetailView, expenseRow, monthGroup, participantView, dateOnly(), groupByMonth(), monthLabel()
+### Community 61 - ".handleGroupDetail"
+Cohesion: 0.38
+Nodes (8): expenseRow, monthGroup, applyFeedLimit(), dateOnly(), groupByMonth(), monthLabel(), parseFilter(), showAllHref()
 
 ### Community 62 - "Renderer"
-Cohesion: 0.26
+Cohesion: 0.29
 Nodes (5): html/template.Template, Renderer, ViewData, htmlHeaders(), setServerTiming()
 
 ### Community 63 - "nullInt"
@@ -395,45 +401,57 @@ Nodes (118): a(), Ae(), an(), at(), B(), Be(), bn(), bt() (+110 more)
 Cohesion: 0.09
 Nodes (33): JobState, pending, sync.Mutex, time.Time, JobStatus, JobTracker, NewJobTracker(), newToken() (+25 more)
 
-### Community 83 - "Keyring"
-Cohesion: 0.13
-Nodes (19): Keyring, openReader, sealWriter, crypto/cipher.AEAD, io.WriteCloser, io.Writer, expand(), newAEAD() (+11 more)
+### Community 83 - "crypto.go"
+Cohesion: 0.17
+Nodes (12): openReader, sealWriter, crypto/cipher.AEAD, io.Writer, expand(), NewKeyring(), NewNoncePrefix(), NewSalt() (+4 more)
 
 ### Community 84 - "GoSplit responsiveness + UX plan (Tier 1 quick wins + Tier 2 structural)"
 Cohesion: 0.13
 Nodes (14): Context, Design decisions worth keeping, Deviations from the approved plan, Docs (same change), Explicitly deferred / rejected, GoSplit responsiveness + UX plan (Tier 1 quick wins + Tier 2 structural), Ledger, Round 2 -- guaranteed freshness + design cleanup (+6 more)
 
-### Community 85 - "LineFromInput"
-Cohesion: 0.25
-Nodes (12): TestAddExpenseRecordsTypedInputs(), TestGenerateOneReSplitsFromInputs(), DecodeInputs(), EncodeInputs(), Line, LineFromInput(), TestDecodeInputsRejects(), TestEncodeDecodeInputs() (+4 more)
+### Community 85 - "helpers.go"
+Cohesion: 0.23
+Nodes (10): avatarColor(), categories(), categoryEmoji(), firstAlnum(), initials(), TestAvatarColorStableAndInRange(), TestCategoriesNonEmpty(), TestCategoryEmoji() (+2 more)
+
+### Community 87 - ".buildBatches"
+Cohesion: 0.29
+Nodes (5): buildHistoricalCSV(), dateOnly(), Service, sortedInt64Keys(), sortedStrKeys()
+
+### Community 88 - ".computeGroupSettlements"
+Cohesion: 0.29
+Nodes (9): balanceRow, currencyNet, friendRow, groupRow, settlementRow, max64(), min64(), rawSettlementRows() (+1 more)
 
 ### Community 89 - "Store"
-Cohesion: 0.10
+Cohesion: 0.11
 Nodes (24): database/sql.DB, Config, Engine, New(), Service, New(), TestAppliedMigrationsMatchesEmbedded(), TestEmbeddedMigrationsAreSortedAndNamed() (+16 more)
 
 ### Community 91 - "New"
-Cohesion: 0.23
-Nodes (3): New(), Server, writeJobJSON()
+Cohesion: 0.20
+Nodes (4): archiveInfo, New(), Server, writeJobJSON()
 
-### Community 92 - "Header"
-Cohesion: 0.42
-Nodes (4): Header, TableStat, decodeB64(), WriteHeader()
+### Community 92 - "ReadHeader"
+Cohesion: 0.36
+Nodes (6): Header, decodeB64(), ReadHeader(), WriteHeader(), TestReadHeaderRejectsBadContainers(), InspectFile()
 
 ### Community 93 - ".Dump"
-Cohesion: 0.20
-Nodes (10): queryer, archive/tar.Writer, Manifest, b64(), Runner, readMigrationVersions(), SameMigrationSet(), writeTarFile() (+2 more)
+Cohesion: 0.32
+Nodes (7): queryer, archive/tar.Writer, b64(), Runner, readMigrationVersions(), writeTarFile(), TestHeaderRejectsAbsurdKDFParameters()
 
-### Community 94 - "run"
-Cohesion: 0.12
-Nodes (27): cliContext(), humanBytes(), loadCLIConfig(), orDash(), printManifest(), runBackupCLI(), runBackupCommand(), runInspectCLI() (+19 more)
+### Community 94 - "RecoverIncompleteSwap"
+Cohesion: 0.09
+Nodes (41): cliContext(), humanBytes(), loadCLIConfig(), orDash(), printManifest(), runBackupCLI(), runBackupCommand(), runInspectCLI() (+33 more)
+
+### Community 95 - "NewRenderer"
+Cohesion: 0.47
+Nodes (9): feedViewData(), TestFragmentMatchesRegionInFullPage(), TestFragmentRegistryIsValid(), TestFragmentVersionTracksContent(), TestRenderFragmentOmitsLayout(), TestRenderFragmentSetsNoStoreHeaders(), TestRenderFragmentUnknownFailsLoudly(), TestRenderFragmentVersionAnd204() (+1 more)
 
 ### Community 96 - "ValidTheme"
 Cohesion: 0.29
 Nodes (8): TestDefaultThemeIsValid(), TestThemeHex(), TestThemesComplete(), TestValidTheme(), themeHex(), Themes(), ValidTheme(), Theme
 
 ### Community 97 - "service/zz_coverage3_test.go"
-Cohesion: 0.20
-Nodes (8): TestCovAuthErrorBranches(), TestCovDispatchDefaults(), TestCovEmailParticipantsSendError(), TestCovImportBranches(), TestCovImportSwGetErrors(), TestCovPushEnabledSendError(), TestCovRecurrenceErrorBranches(), covFailMailer
+Cohesion: 0.18
+Nodes (9): TestCovAuthErrorBranches(), TestCovAuthInactiveAndPromotion(), TestCovDispatchDefaults(), TestCovEmailParticipantsSendError(), TestCovImportBranches(), TestCovImportSwGetErrors(), TestCovPushEnabledSendError(), TestCovRecurrenceErrorBranches() (+1 more)
 
 ### Community 98 - "CheckAutoRestore"
 Cohesion: 0.52
@@ -444,8 +462,8 @@ Cohesion: 0.17
 Nodes (23): sync/atomic.Bool, archiveCount(), newBackupSchedService(), TestMaybeBackupNotYetDue(), TestNewWithCronSchedulesNextRun(), TestNewWithInvalidCronDisablesBackupsWithoutPanicking(), TestNewWithoutCronDisablesBackups(), TestScheduledBackupDoesNotBlockTick() (+15 more)
 
 ### Community 128 - "context.Context"
-Cohesion: 0.07
-Nodes (11): Disabled, context.Context, Service, Service, Store, Store, Store, Store (+3 more)
+Cohesion: 0.09
+Nodes (10): context.Context, Service, Service, Store, Store, Store, Store, Store (+2 more)
 
 ### Community 130 - "TestActivityFeedShowAll"
 Cohesion: 0.40
@@ -455,9 +473,9 @@ Nodes (4): TestActivityFeedShowAll(), TestFeedDateParts(), TestGroupByMonth(), f
 Cohesion: 0.60
 Nodes (4): covSeedBankTx(), harness, TestCov3BankConvertRedirect(), TestCov3BankPageWithCachedTx()
 
-### Community 134 - ".applyTx"
-Cohesion: 0.18
-Nodes (9): ApplyOptions, batcher, Report, snapshotTables(), Runner, InspectFile(), quoteIdent(), quoteIdents() (+1 more)
+### Community 134 - "Validated"
+Cohesion: 0.16
+Nodes (8): ApplyOptions, Report, TableStat, Validated, Manifest, SameMigrationSet(), Runner, TestSameMigrationSet()
 
 ### Community 135 - "Server"
 Cohesion: 0.22
@@ -466,22 +484,22 @@ Nodes (4): fragmentTarget(), Server, isBackgroundRequest(), navSlug()
 ## Knowledge Gaps
 - **136 isolated node(s):** `github.com/hafio/gosplit`, `ctxKey`, `collapseView`, `bankTxRow`, `balanceRow` (+131 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **41 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **44 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `covMultipartReq()` connect `service/zz_coverage2_test.go` to `net/http.Request`, `testing.T`?**
-  _High betweenness centrality (0.045) - this node is a cross-community bridge._
-- **Why does `Open()` connect `Store` to `context.Context`, `newTestService`, `New`, `newTestRunner`, `NewManager`, `body`, `openTestStore`, `run`?**
+  _High betweenness centrality (0.046) - this node is a cross-community bridge._
+- **Why does `Open()` connect `Store` to `context.Context`, `New`, `newTestRunner`, `NewManager`, `body`, `openTestStore`, `newTestService`, `RecoverIncompleteSwap`?**
   _High betweenness centrality (0.026) - this node is a cross-community bridge._
-- **Why does `ctxTimeout()` connect `net/http.Request` to `Method`, `context.Context`, `Server`, `Server`, `Format`, `New`, `handlers_helpers.go`?**
-  _High betweenness centrality (0.018) - this node is a cross-community bridge._
+- **Why does `User` connect `User` to `context.Context`, `covUser`, `NewManager`, `Server`, `Service`, `openTestStore`, `Transaction`, `nowISO`, `.computeGroupSettlements`, `.ImportFromSplitwise`, `Renderer`?**
+  _High betweenness centrality (0.017) - this node is a cross-community bridge._
 - **Are the 120 inferred relationships involving `body()` (e.g. with `TestAdminCreateUser()` and `TestAdminRequiresAdmin()`) actually correct?**
   _`body()` has 120 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 93 inferred relationships involving `newHarness()` (e.g. with `TestAdminCreateUser()` and `TestAdminRequiresAdmin()`) actually correct?**
   _`newHarness()` has 93 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `github.com/hafio/gosplit`, `ctxKey`, `collapseView` to the rest of the system?**
   _136 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `newTestService` be split into smaller, more focused modules?**
-  _Cohesion score 0.13043478260869565 - nodes in this community are weakly interconnected._
+- **Should `Method` be split into smaller, more focused modules?**
+  _Cohesion score 0.11265969802555169 - nodes in this community are weakly interconnected._
