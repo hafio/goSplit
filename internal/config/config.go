@@ -66,7 +66,7 @@ type Config struct {
 	// Backup / restore. See internal/backup.
 	BackupDir                string
 	BackupCron               string // 5-field cron rule; "" disables scheduled backups
-	BackupRetentionCount     int    // archives to keep in BackupDir; <= 0 keeps all
+	BackupRetentionCount     int    // archives to keep in BackupDir; negative keeps all, 0 is refused
 	AutoRestoreDir           string // watched at startup; "" disables auto-restore
 	RestoreMaxUploadMB       int
 	RestoreMaxArchiveBytes   int64

@@ -48,9 +48,9 @@
     "semantic_hash": ""
   },
   "internal/config/config.go": {
-    "mtime": 1788414916.864751,
-    "seen": 1788480194.5068438,
-    "ast_hash": "16828bbf25efa9d930f7b4ea2b31f112",
+    "mtime": 1788682806.628549,
+    "seen": 1788688918.6557794,
+    "ast_hash": "8256e70f308c5e392f7b2cd8a012f7b1",
     "semantic_hash": ""
   },
   "internal/currency/convert.go": {
@@ -540,15 +540,15 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1788628671.4319,
-    "seen": 1788630017.0579503,
-    "ast_hash": "4331fadaacab17f7fe33b816b8eaf3b5",
+    "mtime": 1788684600.37167,
+    "seen": 1788688918.7071292,
+    "ast_hash": "a11e58541b168e3a0589f5fe4493942e",
     "semantic_hash": ""
   },
   "docker-compose.yml": {
-    "mtime": 1788492225.143952,
-    "seen": 1788504769.1911995,
-    "ast_hash": "77f465e15f64ed1896826e74bcc9ea2b",
+    "mtime": 1788686016.273507,
+    "seen": 1788688918.7071328,
+    "ast_hash": "d30f9cb6f75e35f18d6be14fb442e405",
     "semantic_hash": ""
   },
   "internal/web/templates/activity.html": {
@@ -1075,12 +1075,6 @@
     "ast_hash": "b1113891bf2ff9c7f6a85a8bc2e47511",
     "semantic_hash": ""
   },
-  "docs/ux-responsiveness-plan.md": {
-    "mtime": 1788628705.4762309,
-    "seen": 1788630017.0591896,
-    "ast_hash": "f30f736f2e212c1e7045c3312f5a7485",
-    "semantic_hash": ""
-  },
   "cmd/gosplit/backup_cli.go": {
     "mtime": 1788491824.8566277,
     "seen": 1788504769.1451766,
@@ -1243,12 +1237,6 @@
     "ast_hash": "92185edaf40a7b33bc47db11af19a4d7",
     "semantic_hash": ""
   },
-  "docs/backup-restore-plan.md": {
-    "mtime": 1788546794.929129,
-    "seen": 1788600024.2257335,
-    "ast_hash": "0e6756e8fab685ca811c7933ea299e9f",
-    "semantic_hash": ""
-  },
   "internal/web/templates/admin_backup.html": {
     "mtime": 1788491655.245011,
     "seen": 1788504769.1920226,
@@ -1271,6 +1259,48 @@
     "mtime": 1788546756.371947,
     "seen": 1788600024.158953,
     "ast_hash": "f72b8e36a71e86b3b34c514238128fc5",
+    "semantic_hash": ""
+  },
+  "docs/README.md": {
+    "mtime": 1788684812.7571442,
+    "seen": 1788688918.7071354,
+    "ast_hash": "c02cf700c4d6a7c9b734c0247af331b1",
+    "semantic_hash": ""
+  },
+  "docs/architecture.md": {
+    "mtime": 1788686006.49842,
+    "seen": 1788688918.707139,
+    "ast_hash": "ccf139fcc3c9c5d3e9020ef10bcec108",
+    "semantic_hash": ""
+  },
+  "docs/backup-restore.md": {
+    "mtime": 1788685998.2556298,
+    "seen": 1788688918.7071414,
+    "ast_hash": "4d1aca1b4183c01eeb57293b7954af2a",
+    "semantic_hash": ""
+  },
+  "docs/configuration.md": {
+    "mtime": 1788684659.451758,
+    "seen": 1788688918.7071433,
+    "ast_hash": "5fe7c1ebb2db24af9346a15a3f57e42a",
+    "semantic_hash": ""
+  },
+  "docs/deployment.md": {
+    "mtime": 1788685991.482323,
+    "seen": 1788688918.7071452,
+    "ast_hash": "4ccb12683f673b4efabfef50f4a8af6b",
+    "semantic_hash": ""
+  },
+  "docs/development.md": {
+    "mtime": 1788686008.7405071,
+    "seen": 1788688918.7071464,
+    "ast_hash": "96ef064f322b33f107518a21b3153c69",
+    "semantic_hash": ""
+  },
+  "docs/features.md": {
+    "mtime": 1788686004.2343154,
+    "seen": 1788688918.7071483,
+    "ast_hash": "3a3dfa7b831d68258c7313c8e523f0a2",
     "semantic_hash": ""
   }
 }

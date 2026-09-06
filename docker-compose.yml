@@ -1,8 +1,14 @@
-# Default: SQLite — no database container, just a data volume. One command:
-#   docker compose up --build
+# Default: SQLite -- no database container, just a data volume. Builds the
+# image from this checkout (build: .), so upgrades are `git pull` and:
+#   export SESSION_SECRET=$(openssl rand -base64 32)   # once; keep it
+#   docker compose up -d --build
+# Only the variables named in the environment block below are passed in from
+# your shell (or a .env file next to this file); the image itself also sets
+# DATABASE_URL, UPLOAD_DIR and ADDR so data lands on the volume. See
+# docs/deployment.md.
 #
-# PostgreSQL: uncomment the `db` service + its depends_on, and set
-#   DATABASE_URL=postgres://gosplit:gosplit@db:5432/gosplit?sslmode=disable
+# PostgreSQL: uncomment the `db` service, its volume and `depends_on`, and set
+# DATABASE_URL in the environment block below.
 services:
   app:
     build: .
@@ -11,14 +17,28 @@ services:
     volumes:
       - gosplit-data:/data
     restart: unless-stopped
-    # environment:
-    #   # Scheduled backups. BACKUP_DIR must differ from AUTO_RESTORE_DIR.
-    #   BACKUP_DIR: /data/backups
-    #   BACKUP_CRON: "0 4 * * *"
-    #   BACKUP_RETENTION_COUNT: "7"
-    #   # Drop an archive here and restart to restore it. Any failure aborts
-    #   # the boot, so remove the file once .gosplit-restored appears.
-    #   AUTO_RESTORE_DIR: /data/restore
+    environment:
+      SESSION_SECRET: "${SESSION_SECRET:?set SESSION_SECRET (openssl rand -base64 32)}"
+      BASE_URL: "${BASE_URL:-http://localhost:8080}"
+      ADMIN_EMAILS: "${ADMIN_EMAILS:-}"
+      # Archives from the CLI, the admin page and the schedule, plus the buffer
+      # for an uploaded archive and the safety dump a CLI or admin restore
+      # writes first (an auto-restore puts its safety dump in AUTO_RESTORE_DIR).
+      # The image does not set this; the default would land outside the /data
+      # volume. Must differ from AUTO_RESTORE_DIR, or the server refuses to boot.
+      BACKUP_DIR: /data/backups
+      # PostgreSQL (with the db service below). Change the password in both places.
+      # DATABASE_URL: "host=db port=5432 user=gosplit password=gosplit dbname=gosplit sslmode=disable"
+      #
+      # Scheduled backups, evaluated in UTC.
+      # BACKUP_CRON: "0 4 * * *"
+      # BACKUP_RETENTION_COUNT: "7"
+      # Drop one archive here and restart to restore it. On success a
+      # .gosplit-restored marker is written and later boots skip the scan, so
+      # the archive can stay. Any failure is fatal and, with restart:
+      # unless-stopped, retries forever; the fatal log line names the fix
+      # (usually: remove the archive, or unset AUTO_RESTORE_DIR).
+      # AUTO_RESTORE_DIR: /data/restore
     # depends_on:
     #   - db
 
