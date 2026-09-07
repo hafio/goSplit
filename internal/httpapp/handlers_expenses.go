@@ -997,11 +997,18 @@ func (s *Server) handleGroupSettleAll(w http.ResponseWriter, r *http.Request) {
 	}
 	gid := g.ID
 	date := r.FormValue("date")
-	for _, t := range s.computeGroupSettlements(ctx, s.newNameCache(), gid, true) {
-		if _, err := s.Svc.Settle(ctx, t.FromID, t.ToID, t.Amount, t.Currency, &gid, date, me.ID); err != nil {
-			s.renderErr(w, r, "message", "msg.settle_failed", err.Error(), http.StatusBadRequest, err.Error())
-			return
-		}
+	rows := s.computeGroupSettlements(ctx, s.newNameCache(), gid, true)
+	transfers := make([]service.Transfer, 0, len(rows))
+	for _, t := range rows {
+		transfers = append(transfers, service.Transfer{
+			FromID: t.FromID, ToID: t.ToID, Amount: t.Amount, Currency: t.Currency,
+		})
+	}
+	// One service call, so the batch notifies once per member instead of once
+	// per transfer (see service.SettleAll).
+	if _, err := s.Svc.SettleAll(ctx, transfers, gid, date, me.ID); err != nil {
+		s.renderErr(w, r, "message", "msg.settle_failed", err.Error(), http.StatusBadRequest, err.Error())
+		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/groups/%d", gid), http.StatusSeeOther)
 }

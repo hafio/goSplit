@@ -510,6 +510,10 @@ func (s *Server) handleProfileUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		u.ThemeColor = t
 	}
+	// Assigned unconditionally, unlike the fields above: an unchecked box is
+	// absent from the POST body, so an "only if present" guard would make the
+	// opt-in impossible to turn back off.
+	u.EmailExpenseNotify = r.FormValue("email_expense_notify") != ""
 	if err := s.Svc.UpdateAvatar(ctx, u, r); err != nil {
 		s.renderErr(w, r, "profile", "title.profile", s.profileData(), http.StatusBadRequest, err.Error())
 		return

@@ -33,6 +33,25 @@
     <a href="/expenses/new" class="a-btn sm"><svg class="icon"><use href="{{asset "icons.svg"}}#plus"/></svg>{{.T "expense.add"}}</a>
   </nav>
   <div class="spacer"></div>
+  {{/* The bell sits after the spacer rather than inside .nav, which is hidden
+       under 640px -- and .bottom-nav's five slots are full, so this is the only
+       place it stays reachable on a phone. The panel is fetched on open and the
+       badge polls itself: it lives outside #content, so the page freshness
+       poller can never refresh it. */}}
+  <details class="omenu notif-bell">
+    <summary class="a-btn ghost icon-only" aria-label="{{.T "nav.notifications"}}" title="{{.T "nav.notifications"}}">
+      <svg class="icon"><use href="{{asset "icons.svg"}}#bell"/></svg>
+      <span id="notif-badge">{{if .Unread}}<span class="badge">{{.Unread}}</span>{{end}}</span>
+    </summary>
+    <div id="notif-menu" class="omenu-panel notif-panel"
+         hx-get="/notifications/menu" hx-trigger="toggle once from:closest details"
+         hx-target="this" hx-swap="outerHTML" hx-indicator="this"></div>
+  </details>
+  <span class="badge-poller" aria-hidden="true"
+        hx-get="/notifications/badge"
+        hx-trigger="every 30s [document.visibilityState === 'visible']"
+        hx-target="#notif-badge" hx-swap="outerHTML" hx-indicator="this"
+        hx-headers='{"X-Background": "1"}'></span>
   <a class="a-btn ghost icon-only" href="/profile" title="{{.T "action.profile"}}" aria-label="{{.T "action.profile"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#user"/></svg></a>
   <details class="omenu">
     <summary class="a-btn ghost icon-only" aria-label="{{.T "action.options"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#dots"/></svg></summary>

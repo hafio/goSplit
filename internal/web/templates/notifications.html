@@ -1,0 +1,55 @@
+{{define "content"}}
+<div class="m-head">
+  <h1>{{.T "title.notifications"}}</h1>
+  {{if .Data.Items}}
+  <div class="m-actions">
+    <form method="post" action="/notifications/read-all" hx-disabled-elt="find button[type=submit]">
+      {{template "csrf" .CSRF}}
+      <button type="submit" class="a-btn sec sm"><svg class="icon"><use href="{{asset "icons.svg"}}#check"/></svg>{{.T "notif.mark_all_read"}}</button>
+    </form>
+  </div>
+  {{end}}
+</div>
+{{template "notif_list" (dict "Items" .Data.Items "Root" .)}}
+{{end}}
+
+{{/* Shared by the page and the topbar dropdown. Each row is a form, not a
+     link: opening a notification marks it read, which is a write. */}}
+{{define "notif_list"}}
+{{$root := .Root}}
+{{if .Items}}
+<div class="card">
+  {{range .Items}}
+  <form class="notif-row{{if .Read}} dim{{end}}" method="post" action="/notifications/{{.ID}}/open"
+        hx-disabled-elt="find button[type=submit]">
+    {{template "csrf" $root.CSRF}}
+    <button type="submit" class="l-row">
+      <span class="dateblk"><b>{{.DateMonth}}</b><span>{{.DateDay}}</span></span>
+      <span class="cat"><svg class="icon"><use href="{{asset "icons.svg"}}#bell"/></svg></span>
+      <span class="l-main">
+        <span class="l-title">{{.Message}}</span>
+        {{if .ShareLine}}<span class="l-sub">{{.ShareLine}}</span>{{end}}
+      </span>
+      <span class="l-end">{{if not .Read}}<span class="notif-dot" aria-hidden="true"></span>{{end}}</span>
+    </button>
+  </form>
+  {{end}}
+</div>
+{{else}}
+{{template "empty_state" (dict "Icon" "bell" "Text" ($root.T "notif.empty"))}}
+{{end}}
+{{end}}
+
+{{/* The topbar dropdown panel, fetched by the bell on open. */}}
+{{define "frag_notif_menu"}}
+<div id="notif-menu" class="omenu-panel notif-panel">
+  {{template "notif_list" (dict "Items" .Data.Items "Root" .)}}
+  <a class="notif-all" href="/notifications">{{.T "notif.see_all"}}</a>
+</div>
+{{end}}
+
+{{/* The badge alone, so the bell can refresh its count without a page swap.
+     It lives outside #content, which the page freshness poller never touches. */}}
+{{define "frag_notif_badge"}}
+<span id="notif-badge">{{if .Unread}}<span class="badge">{{.Unread}}</span>{{end}}</span>
+{{end}}

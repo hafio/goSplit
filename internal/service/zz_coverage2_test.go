@@ -254,20 +254,22 @@ func TestCovInviteSendsPendingInvites(t *testing.T) {
 	}
 }
 
-// TestCovEmailParticipants drives emailParticipants directly (bypassing the
-// fire-and-forget notifyExpense goroutine) to cover the owe / owed / unchanged
-// message branches and the skip when a recipient can't be loaded.
-func TestCovEmailParticipants(t *testing.T) {
+// TestCovEmailNotifications drives emailNotifications directly (bypassing the
+// dispatched delivery goroutine) to cover the owe / owed / unchanged share-line
+// branches and the skip when a recipient is not in the resolved user map.
+func TestCovEmailNotifications(t *testing.T) {
 	ctx := context.Background()
 	svc, mailer := newTestService(t) // synchronous mail
-	ower := covUser(t, svc, "Ower", "ower@x.com")
-	owed := covUser(t, svc, "Owed", "owed@x.com")
-	flat := covUser(t, svc, "Flat", "flat@x.com")
+	ower := covOptInEmail(t, svc, covUser(t, svc, "Ower", "ower@x.com"))
+	owed := covOptInEmail(t, svc, covUser(t, svc, "Owed", "owed@x.com"))
+	flat := covOptInEmail(t, svc, covUser(t, svc, "Flat", "flat@x.com"))
 
-	e := &store.Expense{ID: "exp-1", Name: "Dinner", Amount: 1000, Currency: "USD"}
-	amounts := map[int64]int64{ower.ID: -500, owed.ID: 500, flat.ID: 0}
-	// A non-existent user id (999999) exercises the GetUser-error skip.
-	svc.emailParticipants(ctx, []int64{ower.ID, owed.ID, flat.ID, 999999}, amounts, e, "added")
+	rows := []*store.Notification{
+		covNotif(ower.ID, -500), covNotif(owed.ID, 500), covNotif(flat.ID, 0),
+		// A recipient absent from the user map exercises the lookup skip.
+		covNotif(999999, 100),
+	}
+	svc.emailNotifications(ctx, rows, covUserMap(t, svc, rows), "Actor", "/expenses/exp-1")
 
 	if len(mailer.msgs) != 3 {
 		t.Fatalf("sent %d emails, want 3 (unknown recipient skipped)", len(mailer.msgs))
@@ -288,22 +290,23 @@ func TestCovEmailParticipants(t *testing.T) {
 	}
 }
 
-// TestCovPushGating covers pushToUsers early-return gates that are reachable
-// without a live push backend: an empty recipient list, the default disabled
+// TestCovPushGating covers pushNotifications early-return gates that are
+// reachable without a live push backend: an empty row set, the default disabled
 // Sender, and a nil Sender all return without attempting delivery.
 func TestCovPushGating(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newTestService(t)
 	u := covUser(t, svc, "U", "u@x.com")
-	e := &store.Expense{ID: "exp-1", Name: "Dinner", Amount: 1000, Currency: "USD"}
+	rows := []*store.Notification{covNotif(u.ID, -500)}
+	users := covUserMap(t, svc, rows)
 
-	// Empty recipients -> early return.
-	svc.pushToUsers(ctx, nil, "title", e)
+	// No rows -> early return.
+	svc.pushNotifications(ctx, nil, users, "Actor", "/expenses/exp-1")
 	// Default Sender is disabled (no VAPID keys) -> early return.
-	svc.pushToUsers(ctx, []int64{u.ID}, "title", e)
+	svc.pushNotifications(ctx, rows, users, "Actor", "/expenses/exp-1")
 	// Nil Sender -> early return.
 	svc.Push = nil
-	svc.pushToUsers(ctx, []int64{u.ID}, "title", e)
+	svc.pushNotifications(ctx, rows, users, "Actor", "/expenses/exp-1")
 }
 
 // covErrRates is a currency.Provider whose Rate lookup always fails, used to

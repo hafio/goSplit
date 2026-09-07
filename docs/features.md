@@ -148,13 +148,30 @@ from the same page.
 
 ## Notifications
 
-- **Web Push**: when the operator has configured VAPID keys, each browser can be enrolled
-  from your profile page, with a test button. Notifications open the relevant page and
-  nudge already-open tabs to refresh.
-- **Email**: participants are emailed when an expense is added to something they are part
-  of, if a mail server is configured.
+Five events notify everyone involved except the person who did it: an expense added,
+edited or deleted, and a settlement recorded or edited. There are three channels, and
+they all read from the same record, so nothing is ever delivered that the app cannot
+also show you.
 
-Both are optional and disable cleanly when unconfigured.
+- **In app** (always on): a bell in the top bar carries the unread count, opens a
+  dropdown of the latest few, and links to the full list at `/notifications`. Clicking an
+  entry marks it read and takes you to what it is about; "Mark all read" clears the rest.
+  Entries say what changed and what it does to your own balance -- "you owe 12.50" -- and
+  are written in your own language, not the language of whoever made the change.
+- **Web Push** (opt in per browser): when the operator has configured VAPID keys, each
+  browser can be enrolled from your profile page, with a test button. Notifications open
+  the relevant page and nudge already-open tabs to refresh. Settling up a whole group
+  sends one notification rather than one per transfer, though the list still records each
+  settlement separately so every entry links to its own.
+- **Email** (opt in per account, **off by default**): tick "Also email me about expense
+  activity" on your profile page. Nothing is emailed until you do. Sign-in links,
+  password resets and invitations are unaffected -- those reach you whether or not you
+  have an account, so they are not notifications and cannot be turned off here.
+
+Push and email are optional and disable cleanly when unconfigured; the in-app record does
+not depend on either. An entry outlives what it refers to: deleting an expense does not
+erase the notice that it was deleted, and an entry whose target is gone still leads
+somewhere sensible. Read entries are kept for 90 days and unread ones for a year.
 
 ## Languages and appearance
 

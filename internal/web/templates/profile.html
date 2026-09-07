@@ -26,6 +26,10 @@
         </div>
       </fieldset>
       <label>{{.T "profile.avatar"}}<input type="file" name="avatar" accept="image/*"></label>
+      {{/* Lives in this form, not the Notifications section below, because that
+           section's push controls are JavaScript with nothing to submit. */}}
+      <label class="check"><input type="checkbox" name="email_expense_notify" value="1"{{if .User.EmailExpenseNotify}} checked{{end}}>{{.T "profile.email_expense_notify"}}</label>
+      <p class="muted small">{{.T "profile.email_expense_hint"}}</p>
       <button type="submit">{{.T "action.save"}}</button>
     </form>
   </section>

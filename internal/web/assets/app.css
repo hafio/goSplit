@@ -311,6 +311,27 @@ a.l-row:hover { background: color-mix(in srgb, var(--accent) 5%, var(--panel)); 
 .omenu-panel .danger { color: var(--danger); }
 .omenu-panel form { margin: 0; }
 
+/* Notification bell. The count sits on the icon the same way the filter panel's
+   activity dot does, ringed against the panel so it reads on either theme. */
+.notif-bell > summary { position: relative; }
+.badge { position: absolute; top: -3px; right: -3px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 999px; background: var(--accent); color: var(--accent-ink);
+  font-size: .62rem; font-weight: 700; line-height: 16px; text-align: center;
+  box-shadow: 0 0 0 2px var(--panel); }
+.notif-panel { min-width: 300px; max-width: min(380px, calc(100vw - 2rem)); padding: .25rem; }
+/* The panel reuses the shared row list, whose rows are forms wrapping a button:
+   drop the omenu-panel button styling so a row keeps its own layout. */
+.notif-panel .card { border: none; border-radius: 8px; }
+.notif-row { margin: 0; }
+.notif-row > button.l-row { width: 100%; padding: .6rem .75rem; font: inherit; text-align: left;
+  border: none; border-bottom: 1px solid var(--line); border-radius: 0; cursor: pointer; }
+.notif-row:last-child > button.l-row { border-bottom: none; }
+.notif-row > button.l-row:hover { background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }
+.notif-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.notif-all { justify-content: center; font-size: .82rem; font-weight: 600; color: var(--accent); }
+label.check { display: flex; flex-direction: row; align-items: center; gap: .45rem; font-size: .88rem; }
+label.check input { width: auto; margin: 0; }
+
 /* generic picker (native <details>) used by the expense form */
 .picker { position: relative; display: inline-block; }
 .picker > summary { list-style: none; cursor: pointer; }
@@ -470,6 +491,10 @@ button[disabled], .a-btn[disabled] { opacity: .55; cursor: default; filter: none
 /* The freshness poller is its own hx-indicator so a background refresh every
    10s shows nothing at all. It renders no box either way; keep it explicit. */
 .poller { display: none; }
+/* The bell's count poller is deliberately a different class: `poller` marks the
+   page-content refresh, which must never run on a form page, and a test asserts
+   exactly that. This one only ever swaps the badge, so it runs everywhere. */
+.badge-poller { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   body.htmx-request::before { animation: none; }

@@ -91,6 +91,30 @@ version no longer matches is refused with `409 Conflict` instead of overwriting 
 else's change. Rows start at version 1, so a request carrying no version token matches
 nothing and fails closed.
 
+### Notifications are a record, not a view
+
+`notifications` holds one row per recipient per event, written by the service on the
+request path before anything is pushed or emailed -- so "nothing is delivered that was not
+recorded" is an invariant rather than a hope. A failed insert is logged and does not fail
+the expense write: losing a bell entry is a smaller harm than refusing a change the user
+was entitled to make.
+
+The link to the subject is `entity_type` + `entity_id` with **no foreign key**, for the
+same reason the archive tables have none: a notification is a historical record decoupled
+from live integrity. A key would either block deleting the expense or cascade the history
+away, and "A deleted the dinner expense" has to stay true once the expense is gone.
+`title`, `amount` and `currency` are likewise a snapshot, so an entry still reads
+correctly after a rename or a re-split -- and `amount` is the *recipient's* signed share,
+not the expense total, which is what lets a row render "you owe 12.50" on its own. The one
+foreign key is `user_id`, cascading, because a deleted account's notifications are noise.
+
+No display text is stored. `kind` is an i18n key stem, so each viewer reads the entry in
+their own language rather than the actor's, and adding an event is a constant plus a
+locale entry. The unread badge is a `ViewData` field rather than page data, because the
+layout is the only thing that renders it; it costs one indexed `COUNT` per authenticated
+render, and it sits outside `#content`, so it carries its own poller instead of riding the
+page freshness poll.
+
 ### Collapsing history
 
 Collapse moves the original rows into `archived_expenses` and
@@ -218,7 +242,9 @@ and SSE as above. Revisit with `Server-Timing` numbers in hand.
 - **Scheduler** ([`SCHEDULER`](configuration.md#scheduler)): ticks once a minute under a
   `cleanup` leader lock. Each tick generates due recurring expenses exactly once, deletes
   expired sessions and tokens, prunes cached exchange rates older than
-  `CACHE_RETENTION_INTERVAL` (`CLEAR_CACHE_CRON_RULE` is read but not yet honoured), and
+  `CACHE_RETENTION_INTERVAL` (`CLEAR_CACHE_CRON_RULE` is read but not yet honoured), purges
+  notifications past their retention (90 days once read, a year unread -- consts in
+  `scheduler.go`, deliberately not configurable), and
   fires a scheduled backup when `BACKUP_CRON` is due, in its own goroutine under a
   separately renewed `scheduled-backup` lock. Cron rules are evaluated in UTC.
 - **Janitor**: per process, every five minutes, not leader-gated. Expires finished
@@ -265,6 +291,11 @@ row counts, commits, then swaps the upload directory with two renames.
 Catalogues are `internal/i18n/locales/<lang>.json`, embedded and loaded by listing the
 directory, so a new locale is one new file. The language is the user's profile setting,
 else the best `Accept-Language` match, else English. Templates call `.T "key"`.
+
+`internal/service` carries its own bundle as well, because notification push and email
+text has to be rendered per recipient rather than per request -- a nil bundle degrades to
+returning the key, the same contract as `ViewData.T`. Parameterised strings are ordinary
+printf values filled with `fmt.Sprintf`, in Go, never in a template.
 
 ## Versioning
 

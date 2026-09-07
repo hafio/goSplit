@@ -140,6 +140,12 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/activity", s.handleActivity)
 
+			r.Get("/notifications", s.handleNotifications)
+			r.Get("/notifications/menu", s.handleNotificationsMenu)
+			r.Get("/notifications/badge", s.handleNotificationsBadge)
+			r.Post("/notifications/read-all", s.handleNotificationsReadAll)
+			r.Post("/notifications/{id}/open", s.handleNotificationOpen)
+
 			r.Get("/recurring", s.handleRecurringList)
 			r.Post("/recurring", s.handleRecurringCreate)
 			r.Post("/recurring/{id}/delete", s.handleRecurringDelete)
@@ -198,9 +204,14 @@ func (s *Server) Router() http.Handler {
 func (s *Server) vd(r *http.Request, title string, data any) web.ViewData {
 	u := auth.UserFrom(r.Context())
 	pref, theme := "", ""
+	unread := 0
 	if u != nil {
 		pref = u.PreferredLanguage
 		theme = u.ThemeColor
+		// The bell is layout chrome, so its count cannot come from .Data. One
+		// indexed COUNT per authenticated render; anonymous pages pay nothing,
+		// and a failure degrades to no badge rather than to no page.
+		unread, _ = s.Store.CountUnreadNotifications(r.Context(), u.ID)
 	}
 	lang := s.Renderer.DetectLang(pref, r.Header.Get("Accept-Language"))
 	return web.ViewData{
@@ -212,6 +223,7 @@ func (s *Server) vd(r *http.Request, title string, data any) web.ViewData {
 		Nav:     navSlug(r.URL.Path),
 		Version: s.Cfg.AppVersion,
 		Path:    r.URL.RequestURI(),
+		Unread:  unread,
 		Data:    data,
 	}
 }
@@ -301,6 +313,8 @@ func navSlug(path string) string {
 		return "groups"
 	case strings.HasPrefix(path, "/activity"):
 		return "activity"
+	case strings.HasPrefix(path, notifPath):
+		return notifPage
 	}
 	return ""
 }

@@ -111,7 +111,7 @@ func (s *Service) AddExpense(ctx context.Context, in ExpenseInput) (*store.Expen
 			}
 		}
 	}
-	s.notifyExpense(created, parts, in.ActorID, "added")
+	s.notifyExpense(ctx, created, parts, in.ActorID, KindExpenseAdded)
 	return created, nil
 }
 
@@ -135,11 +135,59 @@ func (s *Service) CanEditExpense(ctx context.Context, actorID int64, e *store.Ex
 	return false
 }
 
+// Transfer is one leg of a group settle-up: who pays whom, how much.
+type Transfer struct {
+	FromID   int64
+	ToID     int64
+	Amount   int64
+	Currency string
+}
+
 // Settle records a settlement payment (sender pays receiver) as a SETTLEMENT
 // expense driving balances toward zero.
 func (s *Service) Settle(ctx context.Context, sender, receiver int64, amount int64, currency string, groupID *int64, date string, actor int64) (*store.Expense, error) {
+	created, parts, err := s.settle(ctx, sender, receiver, amount, currency, groupID, date, actor)
+	if err != nil {
+		return nil, err
+	}
+	s.notifyExpense(ctx, created, parts, actor, KindSettlementAdded)
+	return created, nil
+}
+
+// SettleAll records a group settle-up: every transfer becomes its own settlement
+// and its own notification rows, but the batch produces a single push per
+// recipient. It owns the loop that used to live in the handler, so a settle-up
+// is one reported outcome rather than a half-applied set behind an error page.
+func (s *Service) SettleAll(ctx context.Context, transfers []Transfer, groupID int64,
+	date string, actor int64) ([]*store.Expense, error) {
+	settled := make([]*store.Expense, 0, len(transfers))
+	partsByID := make(map[string][]store.ExpenseParticipant, len(transfers))
+	for _, t := range transfers {
+		e, parts, err := s.settle(ctx, t.FromID, t.ToID, t.Amount, t.Currency, &groupID, date, actor)
+		if err != nil {
+			return settled, err
+		}
+		settled = append(settled, e)
+		partsByID[e.ID] = parts
+	}
+	if len(settled) == 0 {
+		return settled, nil
+	}
+	name := ""
+	if g, err := s.Store.GetGroup(ctx, groupID); err == nil {
+		name = g.Name
+	}
+	s.notifySettleBatch(ctx, settled, partsByID, actor, groupID, name)
+	return settled, nil
+}
+
+// settle writes one settlement and returns it with its participant rows. It
+// records but never notifies, so Settle can announce a single transfer while
+// SettleAll coalesces a batch -- neither needs a mode flag on the other.
+func (s *Service) settle(ctx context.Context, sender, receiver int64, amount int64,
+	currency string, groupID *int64, date string, actor int64) (*store.Expense, []store.ExpenseParticipant, error) {
 	if amount <= 0 {
-		return nil, ErrSettlementAmount
+		return nil, nil, ErrSettlementAmount
 	}
 	e := &store.Expense{
 		ID:          store.NewUUID(),
@@ -157,7 +205,11 @@ func (s *Service) Settle(ctx context.Context, sender, receiver int64, amount int
 		{UserID: sender, Amount: amount},
 		{UserID: receiver, Amount: -amount},
 	}
-	return s.Store.CreateExpense(ctx, e, parts)
+	created, err := s.Store.CreateExpense(ctx, e, parts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return created, parts, nil
 }
 
 // MoveExpense edits an expense in place (the shared move/edit action): the SAME
@@ -206,7 +258,12 @@ func (s *Service) MoveExpense(ctx context.Context, origID string, in ExpenseInpu
 		return nil, err
 	}
 	s.recordSplitInputs(ctx, origID, in)
-	return s.Store.GetExpense(ctx, origID)
+	updated, err := s.Store.GetExpense(ctx, origID)
+	if err != nil {
+		return nil, err
+	}
+	s.notifyExpense(ctx, updated, parts, in.ActorID, KindExpenseUpdated)
+	return updated, nil
 }
 
 // UpdateSettlement edits a SETTLEMENT in place, preserving its split type and
@@ -284,7 +341,12 @@ func (s *Service) UpdateSettlement(ctx context.Context, id string, in Settlement
 	if err := s.Store.UpdateExpense(ctx, e, parts); err != nil {
 		return nil, err
 	}
-	return s.Store.GetExpense(ctx, id)
+	updated, err := s.Store.GetExpense(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	s.notifyExpense(ctx, updated, parts, in.ActorID, KindSettlementUpdated)
+	return updated, nil
 }
 
 // SettlementParties resolves a settlement's payer and the person they paid from
@@ -330,7 +392,19 @@ func (s *Service) DeleteExpense(ctx context.Context, id string, actorID, version
 	if !s.CanEditExpense(ctx, actorID, e) {
 		return ErrNotEditor
 	}
-	return s.Store.SoftDeleteExpense(ctx, id, actorID, version)
+	// Read the participants before the delete: they are who gets told, and a
+	// failure here must not stop a delete the actor is entitled to make. A soft
+	// delete leaves expense_participants intact either way.
+	parts, pErr := s.Store.GetParticipants(ctx, id)
+	if err := s.Store.SoftDeleteExpense(ctx, id, actorID, version); err != nil {
+		return err
+	}
+	if pErr != nil {
+		slog.Warn("notify: participants for deleted expense", "expense", id, "err", pErr)
+		return nil
+	}
+	s.notifyExpense(ctx, e, parts, actorID, KindExpenseDeleted)
+	return nil
 }
 
 // movable enforces §5.2 eligibility: currency-conversion pairs and recurrence

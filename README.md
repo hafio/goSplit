@@ -18,7 +18,8 @@ that work with JavaScript off, installable as a PWA. No external services requir
 - Filterable activity feed; move expenses between groups; archive groups; collapse old
   history into one balance-preserving entry
 - Currency conversion with live rates, recurring expenses on a cron rule
-- Web Push and email notifications, nine languages, six colour themes with light and dark
+- In-app notifications with a bell and unread count, plus opt-in Web Push and email,
+  nine languages, six colour themes with light and dark
 - Import friends and groups from Splitwise; optional bank sync through Plaid
 - Encrypted whole-instance backups and restores, from the CLI, the admin page, a schedule
   or a watched directory

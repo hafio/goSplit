@@ -113,6 +113,7 @@ var tables = []Table{
 			{"hidden_friend_ids", KindJSONText},
 			{"created_at", KindText},
 			{"theme_color", KindText},
+			{"email_expense_notify", KindBool},
 		},
 	},
 	{
@@ -279,6 +280,26 @@ var tables = []Table{
 			{"user_id", KindInt64},
 			{"endpoint", KindText},
 			{"subscription", KindJSONText},
+		},
+	},
+	{
+		// actor_id and entity_id are deliberately not foreign keys (see
+		// migration 0007), so this table only has to follow users.
+		Name:     "notifications",
+		PKLen:    1,
+		Sequence: "notifications_id_seq",
+		Columns: []Column{
+			{"id", KindInt64},
+			{"user_id", KindInt64},
+			{"actor_id", KindInt64},
+			{"kind", KindText},
+			{"entity_type", KindText},
+			{"entity_id", KindText},
+			{"title", KindText},
+			{"amount", KindInt64},
+			{"currency", KindText},
+			{"read_at", KindNullText},
+			{"created_at", KindText},
 		},
 	},
 	{

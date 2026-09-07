@@ -52,10 +52,10 @@ func TestCovDispatchDefaults(t *testing.T) {
 	}
 }
 
-// TestCovPushEnabledSendError covers pushToUsers past the enabled gate: with an
-// enabled Sender and no subscriptions it lists + builds the payload over an
-// empty loop, and with one stored but invalid-JSON subscription the Send call
-// fails inside push (before any network I/O), exercising the send-error branch.
+// TestCovPushEnabledSendError covers pushNotifications past the enabled gate:
+// with an enabled Sender and no subscriptions it lists and skips, and with one
+// stored but invalid-JSON subscription the Send call fails inside push (before
+// any network I/O), exercising the send-error branch.
 func TestCovPushEnabledSendError(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newTestService(t)
@@ -69,30 +69,31 @@ func TestCovPushEnabledSendError(t *testing.T) {
 	if !svc.Push.Enabled() {
 		t.Fatal("push should be enabled with VAPID keys set")
 	}
-	e := &store.Expense{ID: "exp-1", Name: "Dinner", Amount: 1000, Currency: "USD"}
+	rows := []*store.Notification{covNotif(u.ID, -500)}
+	users := covUserMap(t, svc, rows)
 
-	// Enabled, no subscriptions: covers ListPushSubscriptions + payload build.
-	svc.pushToUsers(ctx, []int64{u.ID}, "title", e)
+	// Enabled, no subscriptions: covers ListPushSubscriptions + the skip.
+	svc.pushNotifications(ctx, rows, users, "Actor", "/expenses/exp-1")
 
 	// One invalid-JSON subscription: Send returns an error (no network I/O),
 	// covering the "else if err != nil" warn branch of the delivery loop.
 	if err := svc.Store.SavePushSubscription(ctx, u.ID, "https://push.example/ep", "not-json"); err != nil {
 		t.Fatalf("save subscription: %v", err)
 	}
-	svc.pushToUsers(ctx, []int64{u.ID}, "title", e)
+	svc.pushNotifications(ctx, rows, users, "Actor", "/expenses/exp-1")
 }
 
-// TestCovEmailParticipantsSendError covers emailParticipants' mail-failure
+// TestCovEmailNotificationsSendError covers emailNotifications' mail-failure
 // branch by swapping in a mailer whose Send always errors.
-func TestCovEmailParticipantsSendError(t *testing.T) {
+func TestCovEmailNotificationsSendError(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newTestService(t)
-	u := covUser(t, svc, "U", "u@x.com")
+	u := covOptInEmail(t, svc, covUser(t, svc, "U", "u@x.com"))
 	svc.Mail = covFailMailer{}
 
-	e := &store.Expense{ID: "e1", Name: "X", Amount: 100, Currency: "USD"}
+	rows := []*store.Notification{covNotif(u.ID, 0)}
 	// A failing Send is logged, not returned; the call must not panic.
-	svc.emailParticipants(ctx, []int64{u.ID}, map[int64]int64{u.ID: 0}, e, "added")
+	svc.emailNotifications(ctx, rows, covUserMap(t, svc, rows), "Actor", "/expenses/exp-1")
 }
 
 // TestCovAuthErrorBranches covers the deterministic auth error/guard paths:

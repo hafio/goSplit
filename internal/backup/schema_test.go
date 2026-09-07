@@ -309,6 +309,7 @@ func TestSequencesOnlyOnAutoIncrementTables(t *testing.T) {
 		"groups":              "groups_id_seq",
 		"expense_notes":       "expense_notes_id_seq",
 		"expense_recurrences": "expense_recurrences_id_seq",
+		"notifications":       "notifications_id_seq",
 	}
 	for _, tbl := range InsertOrder() {
 		if got := tbl.Sequence; got != want[tbl.Name] {

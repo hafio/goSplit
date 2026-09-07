@@ -13,14 +13,14 @@ var ErrNotFound = errors.New("store: not found")
 
 const userCols = `id, name, email, email_verified, password_hash, image, currency,
 	default_currency, preferred_language, theme_color, role, deactivated_at, banking_id,
-	hidden_friend_ids, created_at`
+	hidden_friend_ids, created_at, email_expense_notify`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	var hidden string
 	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.EmailVerified, &u.PasswordHash,
 		&u.Image, &u.Currency, &u.DefaultCurrency, &u.PreferredLanguage, &u.ThemeColor, &u.Role,
-		&u.DeactivatedAt, &u.BankingID, &hidden, &u.CreatedAt)
+		&u.DeactivatedAt, &u.BankingID, &hidden, &u.CreatedAt, &u.EmailExpenseNotify)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -91,8 +91,8 @@ func (s *Store) SetPassword(ctx context.Context, userID int64, hash string) erro
 // UpdateProfile updates editable profile fields.
 func (s *Store) UpdateProfile(ctx context.Context, u *User) error {
 	_, err := s.DB.ExecContext(ctx, s.rebind(
-		`UPDATE users SET name = ?, currency = ?, default_currency = ?, preferred_language = ?, theme_color = ?, image = ? WHERE id = ?`),
-		u.Name, u.Currency, u.DefaultCurrency, u.PreferredLanguage, u.ThemeColor, u.Image, u.ID)
+		`UPDATE users SET name = ?, currency = ?, default_currency = ?, preferred_language = ?, theme_color = ?, image = ?, email_expense_notify = ? WHERE id = ?`),
+		u.Name, u.Currency, u.DefaultCurrency, u.PreferredLanguage, u.ThemeColor, u.Image, u.EmailExpenseNotify, u.ID)
 	return err
 }
 

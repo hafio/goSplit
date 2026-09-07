@@ -156,6 +156,7 @@ var pageFiles = map[string]string{
 	"expense_form":   "expense_form.html",
 	"expense_detail": "expense_detail.html",
 	"activity":       "activity.html",
+	"notifications":  "notifications.html",
 	"profile":        "profile.html",
 	"admin":          "admin.html",
 	"admin_backup":   "admin_backup.html",
@@ -190,6 +191,12 @@ var fragments = map[string]map[string]Fragment{
 	"groups":         {"content": contentFragment},
 	"group":          {"content": contentFragment, "group-feed": {Block: "frag_group_feed"}},
 	"activity":       {"content": contentFragment, "activity-feed": {Block: "frag_activity_feed"}},
+	// The bell's two blocks are layout chrome rather than page regions, fetched
+	// directly by the dropdown and the badge poller. They are registered anyway
+	// so validateFragments proves at boot that the blocks exist.
+	"notifications": {"content": contentFragment,
+		"notif-menu":  {Block: "frag_notif_menu"},
+		"notif-badge": {Block: "frag_notif_badge"}},
 	"expense_detail": {"content": contentFragment},
 	"recurring":      {"content": contentFragment},
 }
@@ -268,6 +275,9 @@ type ViewData struct {
 	Lang  string
 	Theme string // accent theme slug; defaults to DefaultTheme
 	Nav   string // active primary-nav slug (balances/friends/groups/activity)
+	// Unread is the viewer's unread notification count, for the topbar bell.
+	// The layout only ever receives ViewData, so this cannot live in Data.
+	Unread int
 	// Version is the build tag stamped into the binary, shown in the footer so
 	// it is possible to tell which build a running container is serving.
 	Version string

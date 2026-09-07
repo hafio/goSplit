@@ -80,6 +80,12 @@ PostgreSQL uses a pool and is the engine to choose when you run more than one re
 | `EMAIL_TLS_REJECT_UNAUTHORIZED` | `true` | Set `false` only for a relay with a self-signed certificate. |
 | `FROM_EMAIL` | `no-reply@gosplit.local` | Sender address. Also the fallback contact for Web Push (below). |
 
+Configuring a mail server does **not** turn on expense notification email. In-app
+notifications are the default channel and always on; each user opts into email
+individually on their profile page, and the setting is off for every account until they
+do. What SMTP being configured changes is sign-in links, password resets and invitations
+-- those are not notifications and are not affected by that opt-in.
+
 ## Web Push notifications
 
 | Variable | Default | Notes |

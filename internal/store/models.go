@@ -20,6 +20,10 @@ type User struct {
 	BankingID         sql.NullString
 	HiddenFriendIDs   []int64
 	CreatedAt         string
+	// EmailExpenseNotify opts the user in to the expense email. In-app
+	// notifications are the default channel, so this is off for everyone until
+	// they ask for mail.
+	EmailExpenseNotify bool
 }
 
 // IsAdmin reports whether the user has the ADMIN role.
@@ -27,6 +31,29 @@ func (u *User) IsAdmin() bool { return u.Role == "ADMIN" }
 
 // IsActive reports whether the account is not deactivated.
 func (u *User) IsActive() bool { return !u.DeactivatedAt.Valid }
+
+// Notification mirrors the notifications table: one in-app event entry for one
+// recipient. It is a historical record -- entity_type/entity_id link to its
+// subject with no foreign key, so deleting that subject neither fails nor
+// erases the notification, and title/Amount/Currency are a snapshot so the
+// entry still reads correctly afterwards. No display text is stored; Kind is
+// an i18n key stem rendered in the viewer's own language.
+type Notification struct {
+	ID         int64
+	UserID     int64
+	ActorID    int64
+	Kind       string
+	EntityType string
+	EntityID   string
+	Title      string
+	Amount     int64 // the recipient's signed net share, minor units
+	Currency   string
+	ReadAt     sql.NullString
+	CreatedAt  string
+}
+
+// IsRead reports whether the recipient has seen this notification.
+func (n *Notification) IsRead() bool { return n.ReadAt.Valid }
 
 // Session is a server-side session record.
 type Session struct {

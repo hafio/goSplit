@@ -148,10 +148,32 @@ Add the field and its `getEnv*` line in `internal/config/config.go`, validate it
 
 ### Adding a table
 
-Write the migration for both dialects under `internal/store/migrations/`, then add the
-table and its column kinds to the registry in `internal/backup/schema.go`. A test
+Write the migration for both dialects under `internal/store/migrations/` -- the two files
+must share a filename, because that name is the version key in `schema_migrations` -- then
+add the table and its column kinds to the registry in `internal/backup/schema.go`. A test
 compares the registry against the live schema and fails if they drift, so a table missing
 from backups cannot ship unnoticed.
+
+Three things about that registry are easy to get wrong:
+
+- **Column order is physical, not logical.** The test reads `pragma_table_info`, so the
+  registry has to match the order the columns actually exist in -- and `ALTER TABLE`
+  appends. A column added by a later migration therefore goes **last** in the registry even
+  if it reads better elsewhere in the hand-written `<x>Cols` SELECT list, which is free to
+  order columns however it likes. `users.theme_color` is the standing example of the two
+  disagreeing on purpose; do not "tidy" it.
+- **Adding a column to an existing table counts.** The same test covers every registered
+  table, so a one-line `ALTER TABLE` still means a registry edit.
+- **A serial primary key needs two more edits**: `Sequence: "<table>_id_seq"` on the
+  registry entry, and the table in the hardcoded `want` map in
+  `TestSequencesOnlyOnAutoIncrementTables`. Placement in the `tables` slice is also
+  meaningful -- it is the FK-safe insert order, so a table referencing `users` sits after
+  it, and `schema_migrations` stays last.
+
+Finally, seed a row in `seedEverything` (`internal/backup/helper_test.go`): its contract is
+at least one row in every registered table, and a table with no rows never exercises its
+wire encoding. Seed both states of anything nullable or boolean, so a restore that confuses
+`NULL` with `""` is caught.
 
 ## Versioning and release
 

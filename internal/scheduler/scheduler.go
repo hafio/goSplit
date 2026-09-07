@@ -1,7 +1,8 @@
 // Package scheduler runs periodic work in-process, guarded by a DB leader lock
 // so only one instance acts when several share a Postgres database:
 //   - generate due recurring expenses (exactly once),
-//   - purge expired sessions/tokens and stale cached currency rates,
+//   - purge expired sessions/tokens, stale cached currency rates and aged-out
+//     notifications,
 //   - take a scheduled backup on a cron rule, pruning to a retention count.
 //
 // Gated by the SCHEDULER config flag.
@@ -19,6 +20,7 @@ import (
 	"github.com/hafio/gosplit/internal/backup"
 	"github.com/hafio/gosplit/internal/config"
 	"github.com/hafio/gosplit/internal/service"
+	"github.com/hafio/gosplit/internal/store"
 )
 
 // backupLockID is deliberately separate from the cleanup lock. The cleanup
@@ -28,6 +30,15 @@ const backupLockID = "scheduled-backup"
 
 // backupLockTTL is renewed for as long as the dump runs.
 const backupLockTTL = 10 * time.Minute
+
+// Notification retention. Read entries go after a season; unread ones get far
+// longer, because an old unread entry is one the recipient has still never
+// seen. Consts rather than config: there is no deployment for which a different
+// number changes anything an operator cares about.
+const (
+	readNotificationTTL   = 90 * 24 * time.Hour
+	unreadNotificationTTL = 365 * 24 * time.Hour
+)
 
 // Scheduler ticks periodically and performs maintenance while it holds the
 // leader lock.
@@ -108,6 +119,10 @@ func (s *Scheduler) tick(ctx context.Context) {
 	cutoff := time.Now().UTC().Add(-s.Svc.Config.CacheRetentionInterval).Format("2006-01-02")
 	if err := st.DeleteRatesBefore(ctx, cutoff); err != nil {
 		slog.Warn("scheduler: rate cache cleanup", "err", err)
+	}
+	if err := st.DeleteNotificationsBefore(ctx,
+		store.FromNow(-readNotificationTTL), store.FromNow(-unreadNotificationTTL)); err != nil {
+		slog.Warn("scheduler: notification cleanup", "err", err)
 	}
 
 	s.maybeBackup(ctx)

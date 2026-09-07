@@ -84,20 +84,22 @@ func seedEverything(t *testing.T, st *store.Store) {
 
 	// Two users: one with every nullable column set, one with them all NULL,
 	// so a restore that confuses NULL with "" is caught.
+	// email_expense_notify differs between the two so the boolean round-trips in
+	// both states, not just its default.
 	exec(t, st, `INSERT INTO users (id, name, email, email_verified, password_hash, image,
 		currency, default_currency, preferred_language, role, deactivated_at, banking_id,
-		hidden_friend_ids, created_at, theme_color)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		hidden_friend_ids, created_at, theme_color, email_expense_notify)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		1, "Alice", "alice@example.com", "2026-01-01T00:00:00.000Z", "argon2-hash", "/uploads/a.png",
 		"USD", "USD", "en", "ADMIN", nil, "bank-1",
-		`{"b":2,"a":1}`, "2026-01-01T00:00:00.000Z", "burgundy")
+		`{"b":2,"a":1}`, "2026-01-01T00:00:00.000Z", "burgundy", true)
 	exec(t, st, `INSERT INTO users (id, name, email, email_verified, password_hash, image,
 		currency, default_currency, preferred_language, role, deactivated_at, banking_id,
-		hidden_friend_ids, created_at, theme_color)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		hidden_friend_ids, created_at, theme_color, email_expense_notify)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		2, "", "bob@example.com", nil, nil, nil,
 		"EUR", "EUR", "de", "USER", "2026-02-02T00:00:00.000Z", nil,
-		`[]`, "2026-01-02T00:00:00.000Z", "burgundy")
+		`[]`, "2026-01-02T00:00:00.000Z", "burgundy", false)
 
 	// One group with simplify_debts true, one false.
 	exec(t, st, `INSERT INTO groups (id, public_id, name, image, created_by, default_currency,
@@ -173,6 +175,17 @@ func seedEverything(t *testing.T, st *store.Store) {
 		"alice@example.com", "vt-1", "magic", "2026-12-02T00:00:00.000Z")
 	exec(t, st, `INSERT INTO push_notifications (user_id, endpoint, subscription) VALUES (?,?,?)`,
 		1, "https://push.example/1", `{"keys":{"p256dh":"x","auth":"y"}}`)
+
+	// One read and one unread notification, so read_at round-trips both as a
+	// value and as NULL. The negative amount is a signed net share, not a typo.
+	exec(t, st, `INSERT INTO notifications (id, user_id, actor_id, kind, entity_type,
+		entity_id, title, amount, currency, read_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		1, 2, 1, "expense_added", "expense", "exp-1", "Hotel", -bigAmount, "USD",
+		nil, "2026-01-15T00:00:00.000Z")
+	exec(t, st, `INSERT INTO notifications (id, user_id, actor_id, kind, entity_type,
+		entity_id, title, amount, currency, read_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		2, 1, 2, "expense_deleted", "expense", "exp-2", "Coffee", 250, "EUR",
+		"2026-01-16T00:00:00.000Z", "2026-01-16T00:00:00.000Z")
 	exec(t, st, `INSERT INTO cached_bank_data (user_id, data, updated_at) VALUES (?,?,?)`,
 		1, `{"accounts":[{"id":"a1"}]}`, "2026-01-12T00:00:00.000Z")
 	exec(t, st, `INSERT INTO cached_currency_rates (from_currency, to_currency, rate_date, rate) VALUES (?,?,?,?)`,
