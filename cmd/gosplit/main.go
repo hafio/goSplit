@@ -93,6 +93,11 @@ func run() error {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: parseLogLevel(cfg.LogLevel)})))
 	slog.Info("starting", "version", version)
 
+	// Create the directories this instance writes to, before anything needs
+	// them. Distroless has no mkdir, so a directory the app does not create is
+	// one the operator cannot create in place either.
+	prepareDataDirs(cfg)
+
 	// An upload swap interrupted by a crash leaves a recognizable state on
 	// disk. Repair it before touching the database.
 	if err := backup.RecoverIncompleteSwap(cfg); err != nil {

@@ -24,7 +24,7 @@ import (
 // schema does not match.
 
 // backupCommands are the subcommand names dispatch recognizes.
-var backupCommands = map[string]bool{"backup": true, "restore": true, "inspect": true}
+var backupCommands = map[string]bool{"backup": true, "restore": true, "inspect": true, "paths": true}
 
 // wantsBackup reports which backup subcommand args names, if any. It is
 // separate from wantsVersion so that function and its tests stay untouched.
@@ -49,6 +49,8 @@ func runBackupCommand(cmd string, rest []string) error {
 		return runRestoreCLI(rest)
 	case "inspect":
 		return runInspectCLI(rest)
+	case "paths":
+		return runPathsCLI(rest)
 	default:
 		return fmt.Errorf("unknown subcommand %q", cmd)
 	}

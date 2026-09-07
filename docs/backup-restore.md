@@ -50,6 +50,27 @@ same environment. In the container, which has no shell, exec the binary directly
 docker exec <container> /app/gosplit backup -o /data/backups
 ```
 
+### Seeing where things are
+
+The image has no shell, so there is no `ls` to check what is on the volume. `gosplit paths`
+reports it instead -- every directory the app writes to, whether it exists and is
+writable, its owner, the archives in each, and whether a startup restore marker is
+present:
+
+```sh
+docker exec <container> /app/gosplit paths
+```
+
+It reads nothing from the database and changes nothing, so it is safe to run at any time.
+It is the fastest way to answer "where did my backup go" and "why can the app not write
+there".
+
+If you point `-o` (or `BACKUP_DIR`) at a **bind-mounted** host directory, it has to be
+writable by UID 65532, the user the container runs as -- a root-owned mount fails with
+`permission denied`. `chown -R 65532:65532 <host path>` fixes it; see
+[deployment](deployment.md#bind-mounts-must-be-owned-by-65532). Named volumes need
+nothing.
+
 `gosplit backup` refuses to run if the database has migrations this binary has not
 applied yet. The message tells you to start the server once, which applies them, and try
 again. This stops a pre-upgrade backup from silently migrating your data.

@@ -26,6 +26,10 @@ the three values that matter.
   volume; set `BACKUP_DIR=/data/backups` yourself.
 - Cron rules (`BACKUP_CRON`) are standard 5-field `min hour dom mon dow` and are evaluated
   in UTC regardless of the host's time zone.
+- Any directory the app writes to must be writable by **UID 65532**, the user the
+  container runs as. Named volumes inherit that from the image; a **bind-mounted** host
+  directory keeps its own ownership and needs `chown -R 65532:65532`. See
+  [bind mounts](deployment.md#bind-mounts-must-be-owned-by-65532).
 
 ## Core
 

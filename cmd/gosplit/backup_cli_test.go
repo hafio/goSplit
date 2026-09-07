@@ -20,6 +20,7 @@ func TestWantsBackup(t *testing.T) {
 		{"backup with flags", []string{"gosplit", "backup", "-o", "/data"}, "backup", true},
 		{"restore", []string{"gosplit", "restore", "--file", "x.gsbak"}, "restore", true},
 		{"inspect", []string{"gosplit", "inspect", "x.gsbak"}, "inspect", true},
+		{"paths", []string{"gosplit", "paths"}, "paths", true},
 		// A bare invocation must still start the server, so anything the
 		// dispatcher does not recognize falls through.
 		{"unknown subcommand", []string{"gosplit", "serve"}, "", false},
@@ -42,7 +43,7 @@ func TestWantsBackup(t *testing.T) {
 // claim the same argument, which would make the order of the checks in main()
 // a silent behaviour decision.
 func TestWantsBackupAndVersionAreDisjoint(t *testing.T) {
-	for _, arg := range []string{"version", "-version", "--version", "backup", "restore", "inspect"} {
+	for _, arg := range []string{"version", "-version", "--version", "backup", "restore", "inspect", "paths"} {
 		args := []string{"gosplit", arg}
 		_, isBackup := wantsBackup(args)
 		isVersion := wantsVersion(args)

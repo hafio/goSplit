@@ -73,7 +73,7 @@ func CheckAutoRestore(ctx context.Context, st *store.Store, cfg *config.Config) 
 	// Prove the marker can be written BEFORE restoring. Without this probe a
 	// read-only directory would mean a successful restore is never recorded,
 	// and the instance would wipe and re-restore on every single restart.
-	if err := probeWritable(dir); err != nil {
+	if err := EnsureWritableDir(dir, "AUTO_RESTORE_DIR"); err != nil {
 		return fmt.Errorf("auto-restore: %s holds %s but the marker file cannot be written there: %w -- a restore would repeat on every restart, so it was not attempted. Make the directory writable, or unset AUTO_RESTORE_DIR, then restart", dir, filepath.Base(archive), err)
 	}
 
@@ -154,18 +154,6 @@ func findAutoRestoreArchive(dir string) (string, error) {
 		return "", nil
 	}
 	return filepath.Join(dir, found[0]), nil
-}
-
-// probeWritable checks that dir accepts a new file, by creating and removing
-// one.
-func probeWritable(dir string) error {
-	f, err := os.CreateTemp(dir, ".gosplit-probe-*")
-	if err != nil {
-		return err
-	}
-	name := f.Name()
-	_ = f.Close()
-	return os.Remove(name)
 }
 
 // writeMarker records that a restore has run. Only the file's existence is

@@ -26,6 +26,9 @@ services:
       # writes first (an auto-restore puts its safety dump in AUTO_RESTORE_DIR).
       # The image does not set this; the default would land outside the /data
       # volume. Must differ from AUTO_RESTORE_DIR, or the server refuses to boot.
+      # This path is on the named volume, which the image already owns as UID
+      # 65532. Point it at a BIND MOUNT instead and that host directory needs
+      # chown -R 65532:65532 first, or the app cannot write to it.
       BACKUP_DIR: /data/backups
       # PostgreSQL (with the db service below). Change the password in both places.
       # DATABASE_URL: "host=db port=5432 user=gosplit password=gosplit dbname=gosplit sslmode=disable"

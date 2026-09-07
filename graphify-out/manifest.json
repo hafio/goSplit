@@ -1,8 +1,8 @@
 {
   "cmd/gosplit/main.go": {
-    "mtime": 1788546738.9871793,
-    "seen": 1788600024.1292236,
-    "ast_hash": "0e75995169c294e7fe167134f1a15876",
+    "mtime": 1788751420.4511247,
+    "seen": 1788754120.7513835,
+    "ast_hash": "9388890f19ec80f5e5fb80e72d168a3d",
     "semantic_hash": ""
   },
   "go.mod": {
@@ -432,9 +432,9 @@
     "semantic_hash": "6fec5edceea70622309d1432762d99b2"
   },
   "internal/store/store.go": {
-    "mtime": 1788415917.4280546,
-    "seen": 1788480194.5448196,
-    "ast_hash": "c9e854879d494b66143e751b1ad69158",
+    "mtime": 1788751373.550004,
+    "seen": 1788754120.7850199,
+    "ast_hash": "7858d99c6739f63b38384c33e39df0a2",
     "semantic_hash": ""
   },
   "internal/store/theme_color_test.go": {
@@ -546,9 +546,9 @@
     "semantic_hash": ""
   },
   "docker-compose.yml": {
-    "mtime": 1788686016.273507,
-    "seen": 1788688918.7071328,
-    "ast_hash": "d30f9cb6f75e35f18d6be14fb442e405",
+    "mtime": 1788750241.7417288,
+    "seen": 1788750549.8475912,
+    "ast_hash": "b6ff6a6509d05a39a1d77d231bb609bc",
     "semantic_hash": ""
   },
   "internal/web/templates/activity.html": {
@@ -1076,15 +1076,15 @@
     "semantic_hash": ""
   },
   "cmd/gosplit/backup_cli.go": {
-    "mtime": 1788491824.8566277,
-    "seen": 1788504769.1451766,
-    "ast_hash": "c0917144e259fc569d1f3ec5fa9dd5b1",
+    "mtime": 1788751355.8359401,
+    "seen": 1788754120.7513728,
+    "ast_hash": "e9da7bbeafa16fed3d93219404ca867a",
     "semantic_hash": ""
   },
   "internal/backup/autorestore.go": {
-    "mtime": 1788491363.7956066,
-    "seen": 1788504769.1476562,
-    "ast_hash": "28dd1ac094edecaedccd1bb0ac739519",
+    "mtime": 1788749912.3544817,
+    "seen": 1788750549.805799,
+    "ast_hash": "ab6bc1e8ee81d3f50b6bd6b5786f6e73",
     "semantic_hash": ""
   },
   "internal/backup/codec.go": {
@@ -1106,9 +1106,9 @@
     "semantic_hash": ""
   },
   "internal/backup/dump.go": {
-    "mtime": 1788415682.7987223,
-    "seen": 1788480194.5055847,
-    "ast_hash": "e9e8dc66c039725a735dcbfdc164f4c8",
+    "mtime": 1788749923.219562,
+    "seen": 1788750549.8070936,
+    "ast_hash": "b1b1293dac11675bb5ce9409ee261085",
     "semantic_hash": ""
   },
   "internal/backup/index.go": {
@@ -1172,9 +1172,9 @@
     "semantic_hash": ""
   },
   "cmd/gosplit/backup_cli_test.go": {
-    "mtime": 1788491968.931294,
-    "seen": 1788504769.1451802,
-    "ast_hash": "cca70b48e6970ba1031bc463f760c910",
+    "mtime": 1788751502.4740252,
+    "seen": 1788754120.7513776,
+    "ast_hash": "ae8fcdeef58ddfc3230ec297ffdf5dc4",
     "semantic_hash": ""
   },
   "internal/backup/jobs.go": {
@@ -1214,9 +1214,9 @@
     "semantic_hash": ""
   },
   "internal/httpapp/handlers_backup.go": {
-    "mtime": 1788491722.2534797,
-    "seen": 1788504769.1592257,
-    "ast_hash": "d2ff6d9270e2bca05abd16ddc94c5851",
+    "mtime": 1788749942.736629,
+    "seen": 1788750549.8152668,
+    "ast_hash": "5f7d9dc31ee588be4ebecadb27ac6245",
     "semantic_hash": ""
   },
   "internal/httpapp/handlers_backup_test.go": {
@@ -1274,21 +1274,21 @@
     "semantic_hash": ""
   },
   "docs/backup-restore.md": {
-    "mtime": 1788685998.2556298,
-    "seen": 1788688918.7071414,
-    "ast_hash": "4d1aca1b4183c01eeb57293b7954af2a",
+    "mtime": 1788751528.8003192,
+    "seen": 1788754120.7935605,
+    "ast_hash": "e52cf756173f85be0f4a5d610a65594e",
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1788684659.451758,
-    "seen": 1788688918.7071433,
-    "ast_hash": "5fe7c1ebb2db24af9346a15a3f57e42a",
+    "mtime": 1788750171.7240808,
+    "seen": 1788750549.8481321,
+    "ast_hash": "e3e21eced4aaa2d61b929493ef5f85bb",
     "semantic_hash": ""
   },
   "docs/deployment.md": {
-    "mtime": 1788685991.482323,
-    "seen": 1788688918.7071452,
-    "ast_hash": "4ccb12683f673b4efabfef50f4a8af6b",
+    "mtime": 1788751528.8019338,
+    "seen": 1788754120.7938502,
+    "ast_hash": "461e0bccc755a1bfa4e21450f7d1afcb",
     "semantic_hash": ""
   },
   "docs/development.md": {
@@ -1301,6 +1301,48 @@
     "mtime": 1788686004.2343154,
     "seen": 1788688918.7071483,
     "ast_hash": "3a3dfa7b831d68258c7313c8e523f0a2",
+    "semantic_hash": ""
+  },
+  "internal/backup/paths.go": {
+    "mtime": 1788749890.1958718,
+    "seen": 1788750549.808283,
+    "ast_hash": "bbf9283c57200802ae9352d96cbaa0da",
+    "semantic_hash": ""
+  },
+  "internal/backup/paths_test.go": {
+    "mtime": 1788750102.3312826,
+    "seen": 1788750549.8082857,
+    "ast_hash": "1aa5b463b23115a82e2acbe988d2dc67",
+    "semantic_hash": ""
+  },
+  "cmd/gosplit/dirs.go": {
+    "mtime": 1788751392.9729066,
+    "seen": 1788754120.7513804,
+    "ast_hash": "853d74a173f3f5b4192ae6ab6f60e818",
+    "semantic_hash": ""
+  },
+  "cmd/gosplit/owner_unix.go": {
+    "mtime": 1788751355.8339396,
+    "seen": 1788754120.7516851,
+    "ast_hash": "30ebe9d961cef14c4b5bc1391cdce97d",
+    "semantic_hash": ""
+  },
+  "cmd/gosplit/owner_windows.go": {
+    "mtime": 1788751355.8349402,
+    "seen": 1788754120.751687,
+    "ast_hash": "ba277db62ae83cb302f20665f916a701",
+    "semantic_hash": ""
+  },
+  "cmd/gosplit/paths_cli.go": {
+    "mtime": 1788751334.896789,
+    "seen": 1788754120.7516885,
+    "ast_hash": "6c57373daa1146c5db2f4431d0e81964",
+    "semantic_hash": ""
+  },
+  "cmd/gosplit/paths_cli_test.go": {
+    "mtime": 1788751502.473025,
+    "seen": 1788754120.7516904,
+    "ast_hash": "467c7ea0893b0ee8af827c2f8b8fc529",
     "semantic_hash": ""
   }
 }

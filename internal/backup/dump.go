@@ -170,8 +170,11 @@ func (r *Runner) DumpToDir(ctx context.Context, dir, prefix string) (string, Man
 	if dir == "" {
 		return "", Manifest{}, fmt.Errorf("backup: no output directory configured (set BACKUP_DIR or pass -o)")
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", Manifest{}, fmt.Errorf("backup: create %s: %w", dir, err)
+	// Checked up front, before the snapshot opens: an unwritable directory is
+	// the most common deployment mistake here, and there is no point dumping a
+	// whole database only to fail on the last write.
+	if err := EnsureWritableDir(dir, "BACKUP_DIR or -o"); err != nil {
+		return "", Manifest{}, err
 	}
 	name := fmt.Sprintf("%s-%s%s", prefix, r.now().Format("20060102T150405Z"), ArchiveExt)
 	final := filepath.Join(dir, name)

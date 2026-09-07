@@ -224,8 +224,10 @@ func (s *Server) handleRestoreUpload(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = file.Close() }()
 
 	// Buffer to BackupDir, not os.TempDir: the runtime image has a read-only
-	// root filesystem and only the data volume is writable.
-	if err := os.MkdirAll(s.Cfg.BackupDir, 0o755); err != nil {
+	// root filesystem and only the data volume is writable. Routed through the
+	// shared check so a wrong-ownership bind mount produces the same
+	// actionable message here as it does on the command line.
+	if err := backup.EnsureWritableDir(s.Cfg.BackupDir, "BACKUP_DIR"); err != nil {
 		s.renderBackupPage(w, r, http.StatusInternalServerError, err.Error(), "")
 		return
 	}

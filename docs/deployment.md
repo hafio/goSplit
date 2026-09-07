@@ -22,11 +22,13 @@ if you need a deployment that cannot change under you.
 
 What is inside:
 
-- One static binary at `/app/gosplit`, running as the distroless `nonroot` user. There is
-  no shell, no package manager and no `curl`.
+- One static binary at `/app/gosplit`, running as the distroless `nonroot` user, **UID
+  65532**. There is no shell, no package manager and no `curl`.
 - `VOLUME /data`. The image sets `DATABASE_URL=file:/data/gosplit.db` and
   `UPLOAD_DIR=/data/uploads`, so with SQLite everything that matters lives on that one
-  volume. Back it up, or better, use the built-in [backups](backup-restore.md).
+  volume. Back it up, or better, use the built-in [backups](backup-restore.md). The image
+  ships `/data` already owned by 65532, so a fresh named volume inherits that and needs
+  nothing from you.
 - `BACKUP_DIR` is **not** set in the image. Its default, `./data/backups`, resolves against
   the `/app` working directory: off the volume and not writable by `nonroot`, so every
   backup would fail. Pass `BACKUP_DIR=/data/backups` (the Compose file does).
@@ -35,6 +37,40 @@ What is inside:
   `config: SESSION_SECRET is required` until you provide one.
 
 Because there is no shell, run the CLI with `docker exec <container> /app/gosplit ...`.
+There is no `ls` or `mkdir` either, so two things stand in for them: the app creates every
+configured directory (`UPLOAD_DIR`, `BACKUP_DIR`, `AUTO_RESTORE_DIR`, and the SQLite
+directory) at startup, and `gosplit paths` reports what is on the volume:
+
+```sh
+docker exec <container> /app/gosplit paths
+```
+
+That prints each directory, whether it exists and is writable, its owner, and the
+archives in it. A directory it cannot create or write is a startup warning, not a fatal
+error -- the instance still serves; the backup that needs it is what fails.
+
+### Bind mounts must be owned by 65532
+
+A **named volume** needs nothing: the image ships `/data` owned by 65532 and Docker copies
+that ownership when it first creates the volume.
+
+A **bind mount** does not go through that initialization -- the host directory keeps its
+own ownership, which is usually root. The container cannot write into it, and a backup
+fails with `permission denied`:
+
+```sh
+mkdir -p /srv/gosplit/backups
+chown -R 65532:65532 /srv/gosplit/backups
+```
+
+That applies to anything the app writes: a bind-mounted `/data`, a `BACKUP_DIR` you mount
+to get archives onto the host, and `AUTO_RESTORE_DIR` (which also has to be writable, so
+the marker file can be recorded). The error names the UID and this command, so you do not
+have to remember the number.
+
+The alternative is to run the container as the UID that already owns the directory
+(`user: "0:0"` in Compose, say). It works, but then the data volume is root-owned too and
+you have taken on that consequence deliberately.
 
 ## Reverse proxy and HTTPS
 

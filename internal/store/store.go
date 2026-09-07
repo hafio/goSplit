@@ -111,6 +111,20 @@ func SQLiteReadOnlyDSN(cfg *config.Config) string {
 		"&mode=ro"
 }
 
+// SQLiteDataDir reports the directory holding the SQLite database file, so
+// startup can create it and `gosplit paths` can report on it. Returns "" for a
+// non-SQLite engine or an in-memory database, neither of which has one.
+func SQLiteDataDir(cfg *config.Config) string {
+	if cfg.Engine != config.EngineSQLite {
+		return ""
+	}
+	path := sqlitePath(cfg.DatabaseURL)
+	if path == "" || strings.HasPrefix(path, ":memory:") {
+		return ""
+	}
+	return filepath.Dir(path)
+}
+
 // sqlitePath strips the scheme and any query from a SQLite DATABASE_URL,
 // leaving the bare file path. The query goes so that callers control the
 // pragmas themselves.
