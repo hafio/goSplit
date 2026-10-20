@@ -79,34 +79,56 @@ func TestRegisterAndLogin(t *testing.T) {
 	}
 }
 
-func TestAdminAutoPromotion(t *testing.T) {
-	svc, _ := newTestService(t)
+// TestAdminAutoPromotionNeedsAVerifiedAddress: registering an ADMIN_EMAILS
+// address proves nothing, so the account stays USER, and so does a password
+// sign-in. The first sign-in with a link -- which reached the address --
+// promotes it, and later password sign-ins keep it ADMIN.
+func TestAdminAutoPromotionNeedsAVerifiedAddress(t *testing.T) {
+	svc, mailer := newTestService(t)
 	ctx := context.Background()
 	u, err := svc.Register(ctx, "Admin", "admin@example.com", "hunter2pass")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.Role != "ADMIN" {
-		t.Fatalf("admin email should be promoted, role=%s", u.Role)
+	if u.Role != store.RoleUser {
+		t.Fatalf("registered admin-listed role = %q, want USER until verified", u.Role)
+	}
+	if u, err = svc.LoginPassword(ctx, "admin@example.com", "hunter2pass"); err != nil || u.Role != store.RoleUser {
+		t.Fatalf("unverified password sign-in = %v / %v, want USER", u.Role, err)
+	}
+
+	if err := svc.RequestMagicLink(ctx, "admin@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if u, err = svc.ConsumeMagicLink(ctx, extractToken(mailer.last(), "token=")); err != nil || u.Role != store.RoleAdmin {
+		t.Fatalf("link sign-in = %v / %v, want ADMIN", u.Role, err)
+	}
+	if u, err = svc.LoginPassword(ctx, "admin@example.com", "hunter2pass"); err != nil || u.Role != store.RoleAdmin {
+		t.Errorf("later password sign-in = %v / %v, want ADMIN kept", u.Role, err)
 	}
 }
 
-// TestAdminEmailPromotesLimited covers ADMIN_EMAILS winning over LIMITED: an
-// account an admin created as LIMITED, whose address is later listed, becomes
-// ADMIN at its next sign-in.
+// TestAdminEmailPromotesLimited covers ADMIN_EMAILS winning over LIMITED once
+// the address is verified: an account an admin created as LIMITED, whose address
+// is later listed, stays LIMITED at an unverified sign-in and becomes ADMIN at
+// the first sign-in after its owner has verified it (here, by a password reset).
 func TestAdminEmailPromotesLimited(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
-	if _, err := svc.AdminCreateUser(ctx, "Late", "late@example.com", store.RoleLimited, "", "", "password12"); err != nil {
+	created, err := svc.AdminCreateUser(ctx, "Late", "late@example.com", store.RoleLimited, "", "", "password12")
+	if err != nil {
 		t.Fatal(err)
 	}
 	svc.Config.AdminEmails = append(svc.Config.AdminEmails, "late@example.com")
 	u, err := svc.LoginPassword(ctx, "late@example.com", "password12")
-	if err != nil {
+	if err != nil || u.Role != store.RoleLimited {
+		t.Fatalf("unverified listed sign-in = %v / %v, want LIMITED", u.Role, err)
+	}
+	if err := svc.Store.MarkEmailVerified(ctx, created.ID); err != nil {
 		t.Fatal(err)
 	}
-	if u.Role != store.RoleAdmin {
-		t.Fatalf("listed LIMITED account role = %q after sign-in, want ADMIN", u.Role)
+	if u, err = svc.LoginPassword(ctx, "late@example.com", "password12"); err != nil || u.Role != store.RoleAdmin {
+		t.Fatalf("verified listed sign-in = %v / %v, want ADMIN", u.Role, err)
 	}
 }
 
@@ -192,6 +214,7 @@ func TestCreateConversion(t *testing.T) {
 	ctx := context.Background()
 	a, _ := svc.Register(ctx, "A", "a@example.com", "password12")
 	b, _ := svc.Register(ctx, "B", "b@example.com", "password12")
+	covFriends(t, svc, a, b)
 
 	e, err := svc.CreateConversion(ctx, a.ID, a.ID, b.ID, 10000, "USD", "EUR", "2025-01-01", nil)
 	if err != nil {

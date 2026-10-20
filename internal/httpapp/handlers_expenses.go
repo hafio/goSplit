@@ -70,7 +70,7 @@ func fieldErrorsFor(err error) map[string]string {
 	case errors.Is(err, split.ErrPercentSum), errors.Is(err, split.ErrExactSum),
 		errors.Is(err, split.ErrShareUnits), errors.Is(err, split.ErrNegativeBP),
 		errors.Is(err, split.ErrNoParticipants), errors.Is(err, split.ErrDuplicateUser),
-		errors.Is(err, service.ErrNotMember):
+		errors.Is(err, service.ErrNotMember), errors.Is(err, service.ErrNotRelated):
 		out[participantsField] = err.Error()
 	}
 	return out
@@ -94,10 +94,13 @@ func (s *Server) candidatesForContext(r *http.Request, me *store.User, groupID *
 	case groupID != nil && s.mayListMembers(ctx, me, *groupID):
 		users, _ = s.Store.GroupMembers(ctx, *groupID)
 	case friendID != nil:
-		f, err := s.Store.GetUser(ctx, *friendID)
 		users = []*store.User{me}
-		if err == nil {
-			users = append(users, f)
+		// Only someone the caller is related to: otherwise ?friend=<id> would
+		// show any account's name or email.
+		if related, err := s.Store.AreRelated(ctx, me.ID, *friendID); err == nil && related {
+			if f, err := s.Store.GetUser(ctx, *friendID); err == nil {
+				users = append(users, f)
+			}
 		}
 	default:
 		users = []*store.User{me}
@@ -436,14 +439,16 @@ func (s *Server) renderExpenseError(w http.ResponseWriter, r *http.Request, msg 
 func (s *Server) handleExpenseDetail(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := ctxTimeout(r)
 	defer cancel()
+	me := s.currentUser(r)
 	e, err := s.Store.GetExpense(ctx, chi.URLParam(r, "id"))
-	if err != nil {
+	// Someone with no part in it gets the same 404 as for an unknown id, so the
+	// page cannot be used to read other people's expenses.
+	if err != nil || !s.Svc.CanViewExpense(ctx, me.ID, e) {
 		http.NotFound(w, r)
 		return
 	}
 	parts, _ := s.Store.GetParticipants(ctx, e.ID)
 	nc := s.newNameCache()
-	me := s.currentUser(r)
 	v := s.buildExpenseDetail(ctx, nc, me.ID, e, parts)
 	if me.IsAdmin() && !s.Svc.IsTransactionMember(ctx, me.ID, e) {
 		// An admin looking at someone else's transaction: say so on the page, and
@@ -1034,16 +1039,11 @@ func (s *Server) handleSettlePage(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := ctxTimeout(r)
 	defer cancel()
 	me := s.currentUser(r)
-	fid, ok := atoi64(chi.URLParam(r, "id"))
-	if !ok { // cov:ignore glue: a bad id maps to 404, the same mapping tested elsewhere
-		http.NotFound(w, r)
+	friend, ok := s.resolveRelated(ctx, w, r, me)
+	if !ok {
 		return
 	}
-	friend, err := s.Store.GetUser(ctx, fid)
-	if err != nil { // cov:ignore glue: a bad id maps to 404, the same mapping tested elsewhere
-		http.NotFound(w, r)
-		return
-	}
+	fid := friend.ID
 	bals, _ := s.Store.FriendBalance(ctx, me.ID, fid)
 	amountStr, currency := friendSettlePrefill(bals, me.DefaultCurrency)
 	paidBy, _ := s.settleDirection(ctx, me.ID, fid, nil, currency)
@@ -1285,7 +1285,7 @@ func (s *Server) recordSettlement(ctx context.Context, w http.ResponseWriter, r 
 		return
 	}
 	from, to := s.settleDirection(ctx, me.ID, other, groupID, currency)
-	if _, err := s.Svc.Settle(ctx, from, to, amount, currency, groupID, r.FormValue("date"), me.ID); err != nil { // cov:ignore pass-through: settlement rules are tested in internal/service
+	if _, err := s.Svc.Settle(ctx, from, to, amount, currency, groupID, r.FormValue("date"), me.ID); err != nil {
 		s.renderErr(w, r, "message", "msg.settle_failed", err.Error(), http.StatusBadRequest, err.Error())
 		return
 	}

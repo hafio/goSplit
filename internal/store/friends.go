@@ -64,6 +64,29 @@ func (s *Store) AreFriends(ctx context.Context, ownerID, friendID int64) (bool, 
 	return false, err
 }
 
+// AreRelated reports whether a and b share anything: a friendship, a group, or
+// an expense (deleted and collapsed ones included). It decides whose name a
+// user may see and whom they may put money against outside a group.
+func (s *Store) AreRelated(ctx context.Context, a, b int64) (bool, error) {
+	var one int
+	err := s.DB.QueryRowContext(ctx, s.rebind(
+		`SELECT 1 FROM friendships WHERE owner_id = ? AND friend_id = ?
+		 UNION ALL
+		 SELECT 1 FROM group_users x JOIN group_users y ON y.group_id = x.group_id
+		 WHERE x.user_id = ? AND y.user_id = ?
+		 UNION ALL
+		 SELECT 1 FROM expense_participants x JOIN expense_participants y ON y.expense_id = x.expense_id
+		 WHERE x.user_id = ? AND y.user_id = ?
+		 LIMIT 1`), a, b, a, b, a, b).Scan(&one)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return false, err
+}
+
 // prefixCols rewrites a comma-separated column list to prefix each column with
 // an alias (e.g. "id, name" -> "u.id, u.name").
 func prefixCols(alias, cols string) string {

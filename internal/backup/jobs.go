@@ -6,10 +6,11 @@ import (
 	"encoding/base64"
 	"log/slog"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/hafio/gosplit/internal/config"
 )
 
 // A backup or a restore takes far longer than an HTTP request may. The server
@@ -46,6 +47,15 @@ type JobStatus struct {
 	// observes completion can re-establish their session if that user still
 	// exists in the restored data.
 	ActingUserID int64
+	// Restore marks a job begun by StartRestore. Only a restore's token opens
+	// the session-less progress and status routes -- the ones that can sign the
+	// acting admin back in -- so a backup's token must not.
+	Restore bool
+	// ActingEmail is the acting admin's address when the restore started. Ids
+	// are not identities across datasets: after restoring another instance's
+	// archive, ActingUserID may name somebody else, so the re-login also
+	// requires this address to match.
+	ActingEmail string
 
 	CreatedAt  time.Time
 	FinishedAt time.Time
@@ -82,13 +92,27 @@ func NewJobTracker() *JobTracker {
 // that one is cancelled the moment the kickoff response returns, which would
 // abort the work immediately.
 func (t *JobTracker) Start(actingUserID int64, fn func(context.Context) (JobStatus, error)) (string, error) {
+	return t.start(JobStatus{ActingUserID: actingUserID}, fn)
+}
+
+// StartRestore is Start for a restore. The job is marked as one, so its token
+// -- and no other -- opens the routes that work without a session, and it
+// records who started it by id and address.
+func (t *JobTracker) StartRestore(actingUserID int64, actingEmail string, fn func(context.Context) (JobStatus, error)) (string, error) {
+	return t.start(JobStatus{ActingUserID: actingUserID, ActingEmail: actingEmail, Restore: true}, fn)
+}
+
+// start runs fn as a job whose identity -- who started it, and whether it is a
+// restore -- is fixed by seed and survives whatever fn returns.
+func (t *JobTracker) start(seed JobStatus, fn func(context.Context) (JobStatus, error)) (string, error) {
 	token, err := newToken()
 	if err != nil { // cov:ignore impossible: newToken fails only if crypto/rand does
 		return "", err
 	}
-	now := time.Now()
+	seed.State = JobRunning
+	seed.CreatedAt = time.Now()
 	t.mu.Lock()
-	t.jobs[token] = &JobStatus{State: JobRunning, ActingUserID: actingUserID, CreatedAt: now}
+	t.jobs[token] = &seed
 	t.mu.Unlock()
 
 	go func() {
@@ -102,6 +126,8 @@ func (t *JobTracker) Start(actingUserID int64, fn func(context.Context) (JobStat
 		}
 		st.CreatedAt = cur.CreatedAt
 		st.ActingUserID = cur.ActingUserID
+		st.ActingEmail = cur.ActingEmail
+		st.Restore = cur.Restore
 		st.FinishedAt = time.Now()
 		if err != nil {
 			st.State = JobError
@@ -211,10 +237,6 @@ func newToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// dsnCredential matches the secret-bearing parts of a connection string, in
-// both the URL and libpq keyword forms.
-var dsnCredential = regexp.MustCompile(`(?i)(password\s*=\s*)('[^']*'|"[^"]*"|\S+)|(://[^:/@\s]+:)[^@\s]+(@)`)
-
 // sanitizeErr strips secrets from an error before it is surfaced to an admin
 // or written to a log.
 //
@@ -226,7 +248,7 @@ func sanitizeErr(err error) string {
 		return ""
 	}
 	msg := err.Error()
-	msg = dsnCredential.ReplaceAllString(msg, "${1}[redacted]${3}[redacted]${4}")
+	msg = config.RedactDSN(msg)
 
 	// A driver's DETAIL line quotes the values that violated a constraint.
 	if i := strings.Index(msg, "DETAIL:"); i >= 0 {

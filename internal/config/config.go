@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -155,7 +156,7 @@ func Load() (*Config, error) {
 	case strings.HasPrefix(c.DatabaseURL, "file:"), strings.HasPrefix(c.DatabaseURL, "sqlite://"), c.DatabaseURL == "":
 		c.Engine = EngineSQLite
 	default:
-		return nil, fmt.Errorf("config: cannot infer DB engine from DATABASE_URL %q (want file:/sqlite://, postgres://, or a host=... dbname=... keyword DSN)", c.DatabaseURL)
+		return nil, fmt.Errorf("config: cannot infer DB engine from DATABASE_URL %q (want file:/sqlite://, postgres://, or a host=... dbname=... keyword DSN)", RedactDSN(c.DatabaseURL))
 	}
 
 	c.SecureCookies = strings.HasPrefix(c.BaseURL, "https://")
@@ -231,6 +232,22 @@ var pgKeywords = map[string]bool{
 	"host": true, "hostaddr": true, "port": true, "user": true, "password": true,
 	"dbname": true, "sslmode": true, "connect_timeout": true, "application_name": true,
 	"options": true, "sslrootcert": true, "sslcert": true, "sslkey": true, "target_session_attrs": true,
+}
+
+// dsnPassword matches a connection-string password, in the libpq keyword form
+// (password=...) and in the URL form (scheme://user:password@host).
+var dsnPassword = regexp.MustCompile(`(?i)(password\s*=\s*)('[^']*'|"[^"]*"|\S+)|(://[^:/@\s]+:)[^@\s]+(@)`)
+
+// RedactDSN masks every connection-string password in s, so a DSN -- or an
+// error that quotes one -- can be printed or logged.
+func RedactDSN(s string) string {
+	return dsnPassword.ReplaceAllStringFunc(s, func(m string) string {
+		sub := dsnPassword.FindStringSubmatch(m)
+		if sub[1] != "" {
+			return sub[1] + "[redacted]"
+		}
+		return sub[3] + "[redacted]" + sub[4]
+	})
 }
 
 // looksLikePostgresKeywordDSN reports whether s is a libpq keyword/value DSN

@@ -45,8 +45,8 @@ directory) at startup, and `gosplit paths` reports what is on the volume:
 docker exec <container> /app/gosplit paths
 ```
 
-That prints each directory, whether it exists and is writable, its owner, and the
-archives in it. A directory it cannot create or write is a startup warning, not a fatal
+That prints the database (any password in `DATABASE_URL` shown as `[redacted]`) and each
+directory, whether it exists and is writable, its owner, and the archives in it. A directory it cannot create or write is a startup warning, not a fatal
 error -- the instance still serves; the backup that needs it is what fails.
 
 ### Bind mounts must be owned by 65532
@@ -89,11 +89,10 @@ Paths the proxy must pass through unchanged, besides the app pages:
 | `/uploads/*` | profile avatars |
 | `/manifest.webmanifest`, `/sw.js`, `/offline` | the installable PWA and its offline page |
 
-Note that `/uploads/*` is served without authentication, with a one-hour cache header, by
-a plain file server with directory listing on: an anonymous `GET /uploads/` lists every
-avatar filename. The names are random, but if you do not want them enumerable, block the
-bare `/uploads/` path at the proxy. Avatars are the only thing stored there; do not put
-anything else in `UPLOAD_DIR`.
+Note that `/uploads/*` is served without authentication, with a one-hour cache header.
+Directories are never listed -- `GET /uploads/` is a 404 -- so an avatar can only be
+fetched by its random name. Avatars are the only thing stored there; do not put anything
+else in `UPLOAD_DIR`.
 
 Responses are gzip-compressed by the app for HTML, CSS, JavaScript, JSON and text, so the
 proxy need not compress again. Request bodies are never decompressed; do not send
@@ -200,8 +199,12 @@ users who set a password are not blocked by a mail outage.
 
 ## First admin
 
-Put your address in `ADMIN_EMAILS` before you register. Your account is promoted the
-first time you sign in, and stays admin. Admins get `/admin` (user management) and
+Put your address in `ADMIN_EMAILS`, then sign in once with a magic link sent to it -- from
+the sign-in page, whether or not you registered with a password first. Using the link
+verifies the address, and that sign-in promotes the account; it stays admin. Without a
+mail server the link is printed to the server log (`docker compose logs app`). Registering
+alone does not promote, so nobody else can claim the address by registering it first.
+Admins get `/admin` (user management) and
 `/admin/backup`. Once you have an admin, consider `DISABLE_EMAIL_SIGNUP=true` and create
 further users from the admin console. Those start as LIMITED, which cannot create groups:
 pick USER in the Add user form for anyone who should (see
@@ -219,6 +222,11 @@ The LIMITED role needs no migration: `users.role` is free text, so upgrading cha
 existing account. Everyone keeps their current role, including pending accounts invited
 before the upgrade (USER); only accounts created afterwards on someone else's behalf start
 as LIMITED.
+
+`ADMIN_EMAILS` promotion now waits for a verified address. Earlier versions promoted an
+address the moment someone registered it, so after upgrading, check the admins listed in
+`/admin` and change the role of any account you do not recognise. Existing admins stay
+admins.
 
 Netting entries (split type `NETTING`, see [architecture.md](architecture.md#netting-entries))
 are only protected from editing by this version: rolling back to an older image would show

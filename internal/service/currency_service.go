@@ -83,6 +83,15 @@ func (s *Service) CreateConversionExact(ctx context.Context, actor, sender, rece
 	if amountFrom <= 0 || amountTo <= 0 {
 		return nil, errors.New("conversion amounts must be positive")
 	}
+	// Both legs move money between sender and receiver, so they get the same
+	// checks as any expense: group members inside a group, related outside.
+	if groupID != nil {
+		if err := s.assertGroupMembers(ctx, *groupID, actor, sender, receiver); err != nil {
+			return nil, err
+		}
+	} else if err := s.assertRelated(ctx, actor, sender, receiver); err != nil {
+		return nil, err
+	}
 	if date == "" {
 		date = todayISO()
 	}

@@ -165,10 +165,15 @@ any other row; because each set is zero-sum per person, the nets stay exact.
 The router applies request-id, real-ip, logging, recovery, gzip compression and the
 maintenance gate globally, then splits into public routes (auth pages, `/healthz`, static
 assets, the PWA files, the token-gated restore status), signed-in routes, and admin
-routes. CSRF is verified on every mutating request. The restore upload declares its own
-middleware chain so that a body size limit is installed ahead of its CSRF check, which
-would otherwise buffer the whole multipart upload before the limit applied; CSRF still
-runs.
+routes. CSRF is verified on every mutating request. Because the CSRF check parses the form
+before any route has looked at the caller, every body is capped first, at
+`UPLOAD_MAX_FILE_SIZE_MB` plus 1 MiB, and a declared length over the cap gets `413` at once.
+The restore upload sits outside that chain with its own: the `RESTORE_MAX_UPLOAD_MB` cap,
+then authentication and the admin check, then longer read and write deadlines, then CSRF.
+
+`/uploads/*` serves files only; a directory answers 404 rather than a listing. The
+token-gated restore progress page and status poll answer only a restore job's token, not
+a backup's.
 
 The maintenance gate answers `503` with `Retry-After` to every non-safe request while an
 in-process restore holds the database.

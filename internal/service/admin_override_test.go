@@ -210,7 +210,8 @@ func TestAdminSettlementEditSkipsOnlyTheActorCheck(t *testing.T) {
 	}
 
 	// The admin is one side of this settlement and not in g: the pair check
-	// still applies to them.
+	// still applies to them. (A direct settlement needs the two to be related.)
+	covFriends(t, f.svc, f.admin, f.a)
 	own, err := f.svc.Settle(ctx, f.admin.ID, f.a.ID, 300, "USD", nil, "2026-03-13", f.admin.ID)
 	if err != nil {
 		t.Fatal(err)

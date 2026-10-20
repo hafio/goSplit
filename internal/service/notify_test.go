@@ -57,7 +57,9 @@ func covNotifications(t *testing.T, svc *Service, userID int64) []*store.Notific
 // covPair builds two users and a direct expense input between them.
 func covPair(t *testing.T, svc *Service) (*store.User, *store.User) {
 	t.Helper()
-	return covUser(t, svc, "Actor", "actor@x.com"), covUser(t, svc, "Other", "other@x.com")
+	actor, other := covUser(t, svc, "Actor", "actor@x.com"), covUser(t, svc, "Other", "other@x.com")
+	covFriends(t, svc, actor, other)
+	return actor, other
 }
 
 func covInput(actor, payer, other *store.User, total int64) ExpenseInput {

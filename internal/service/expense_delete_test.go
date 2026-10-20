@@ -92,6 +92,7 @@ func TestDeleteExpenseRejectsStaleVersion(t *testing.T) {
 	svc, _ := newTestService(t)
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
+	covFriends(t, svc, a, b)
 
 	in := ExpenseInput{
 		Name: "Dinner", Total: 1000, Method: split.EQUAL, Currency: "USD",

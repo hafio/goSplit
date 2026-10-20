@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -28,6 +29,7 @@ import (
 //     A restore replaces the users table, and sessions cascade-delete with
 //     users, so the caller's own session row is gone by the time the restore
 //     finishes. A session-gated poll could never observe its own success.
+//     Only a restore job's token opens it; a backup job's token does not.
 
 // restoreConfirmPhrase is what an admin must type to confirm. Deliberately not
 // localized: it has to be unambiguous whichever locale the panel is rendered
@@ -214,8 +216,8 @@ func (s *Server) handleBackupDownload(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRestoreUpload(w http.ResponseWriter, r *http.Request) {
 	u := s.currentUser(r)
 
-	// The body was already bounded by maxUploadBytes middleware, which must
-	// run before CSRF verification -- see the route registration.
+	// The body was bounded by maxUploadBytes before VerifyCSRF parsed it, and
+	// the form is already parsed -- see the route registration.
 	file, _, err := r.FormFile("archive")
 	if err != nil {
 		s.renderBackupPage(w, r, http.StatusBadRequest, s.tr(r, "err.restore_no_file"), "")
@@ -239,11 +241,12 @@ func (s *Server) handleRestoreUpload(w http.ResponseWriter, r *http.Request) {
 	tmpPath := tmp.Name()
 	_, copyErr := io.Copy(tmp, file)
 	closeErr := tmp.Close()
-	if copyErr != nil || closeErr != nil {
+	if copyErr != nil || closeErr != nil { // cov:ignore env: needs a full or failing BACKUP_DIR
 		_ = os.Remove(tmpPath)
 		msg := s.tr(r, "err.restore_upload")
 		if copyErr != nil {
-			// A body over the cap surfaces here as a read error.
+			// The form was parsed in full before this handler ran, so only a
+			// failing BACKUP_DIR gets here.
 			msg = fmt.Sprintf("%s (%s)", msg, copyErr)
 		}
 		s.renderBackupPage(w, r, http.StatusBadRequest, msg, "")
@@ -280,14 +283,17 @@ func (s *Server) handleRestoreConfirm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/backup?pending="+token+"&badphrase=1", http.StatusSeeOther)
 		return
 	}
-	v, path, actingID, ok := s.Jobs.TakePending(token)
+	v, path, _, ok := s.Jobs.TakePending(token)
 	if !ok {
 		s.renderBackupPage(w, r, http.StatusBadRequest, s.tr(r, "err.restore_expired"), "")
 		return
 	}
 
+	// The admin confirming is the one whose browser polls for the result, so
+	// that is who may be signed back in -- not whoever uploaded the archive.
+	me := s.currentUser(r)
 	runner := backup.New(s.Store, s.Cfg)
-	jobToken, err := s.Jobs.Start(actingID, func(ctx context.Context) (backup.JobStatus, error) {
+	jobToken, err := s.Jobs.StartRestore(me.ID, me.Email, func(ctx context.Context) (backup.JobStatus, error) {
 		ctx, cancel := context.WithTimeout(ctx, backupTimeout)
 		defer cancel()
 
@@ -315,10 +321,11 @@ func (s *Server) handleRestoreConfirm(w http.ResponseWriter, r *http.Request) {
 
 // handleRestoreProgress renders the waiting page for a running restore. It is
 // outside the admin group for the same reason the poll is: by the time the
-// restore finishes, the caller's session row no longer exists.
+// restore finishes, the caller's session row no longer exists. Only a restore
+// job's token opens it.
 func (s *Server) handleRestoreProgress(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
-	if _, ok := s.Jobs.Status(token); !ok { // cov:ignore glue: an unknown token maps to 404, tested for the poll route
+	if st, ok := s.Jobs.Status(token); !ok || !st.Restore {
 		http.NotFound(w, r)
 		return
 	}
@@ -336,23 +343,28 @@ func (s *Server) handleRestoreProgress(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRestoreStatus(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	st, ok := s.Jobs.Status(token)
-	if !ok {
+	// A backup job's token is not a restore's. Its URL sits in browser history
+	// and proxy logs, and answering it here would hand out the job's status
+	// and, once done, the admin's session.
+	if !ok || !st.Restore {
 		http.NotFound(w, r)
 		return
 	}
 	if st.State == backup.JobDone && st.ActingUserID != 0 {
-		s.reauthenticateAfterRestore(w, r, st.ActingUserID)
+		s.reauthenticateAfterRestore(w, r, st)
 	}
 	writeJobJSON(w, st)
 }
 
 // reauthenticateAfterRestore signs the acting admin back in when their user
-// survived the restore, and clears the stale cookie when it did not.
-func (s *Server) reauthenticateAfterRestore(w http.ResponseWriter, r *http.Request, userID int64) {
+// survived the restore -- the same id AND the same address, because restoring
+// another instance's archive can give that id to somebody else -- and clears
+// the stale cookie when it did not.
+func (s *Server) reauthenticateAfterRestore(w http.ResponseWriter, r *http.Request, st backup.JobStatus) {
 	ctx, cancel := ctxTimeout(r)
 	defer cancel()
 
-	if u, err := s.Store.GetUser(ctx, userID); err == nil && u != nil {
+	if u, err := s.Store.GetUser(ctx, st.ActingUserID); err == nil && u != nil && strings.EqualFold(u.Email, st.ActingEmail) {
 		if s.currentUser(r) == nil {
 			if err := s.Auth.SetSession(w, r, u.ID); err != nil { // cov:ignore log-only: creating the session row fails only on a broken database
 				slog.Warn("backup: could not re-establish the admin session after a restore", "err", err)
@@ -360,8 +372,9 @@ func (s *Server) reauthenticateAfterRestore(w http.ResponseWriter, r *http.Reque
 		}
 		return
 	}
-	// The acting admin is not in the restored data; drop the dead cookie.
-	s.Auth.ClearSession(w, r) // cov:ignore redundant: Authenticate already ignores a dead session token
+	// The acting admin is not in the restored data, or that id now belongs to
+	// someone else; drop the dead cookie.
+	s.Auth.ClearSession(w, r)
 }
 
 // writeJobJSON renders a job's state for the page's poll.
@@ -401,13 +414,36 @@ func (s *Server) restoreErrMessage(r *http.Request, err error) string {
 //
 // This has to run BEFORE VerifyCSRF. That middleware falls back to
 // r.FormValue("csrf_token"), which calls ParseMultipartForm and would
-// otherwise buffer an unbounded upload -- spilling to a filesystem the
-// container may not even have -- before the handler's own cap could apply.
-func maxUploadBytes(mb int) func(http.Handler) http.Handler {
+// otherwise read an unbounded body -- spilling to a filesystem the container
+// may not even have -- before anything has checked who sent it. A declared
+// length over the limit is refused at once with 413, naming setting; a body
+// that declares none is cut off at the limit.
+func maxUploadBytes(mb int, setting string) func(http.Handler) http.Handler {
 	limit := int64(mb) << 20
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.ContentLength > limit {
+				http.Error(w, fmt.Sprintf("request body is larger than the %d MB limit (%s)", mb, setting),
+					http.StatusRequestEntityTooLarge)
+				return
+			}
 			r.Body = http.MaxBytesReader(w, r.Body, limit)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// extendDeadlines lifts the server's read and write timeouts for one request.
+// An archive upload and its validation can take far longer than the 30s
+// ReadTimeout and 60s WriteTimeout every other route keeps. It sits after
+// RequireAdmin in the chain, so nobody else can hold a connection that long.
+func extendDeadlines(d time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rc := http.NewResponseController(w)
+			deadline := time.Now().Add(d)
+			_ = rc.SetReadDeadline(deadline)
+			_ = rc.SetWriteDeadline(deadline)
 			next.ServeHTTP(w, r)
 		})
 	}

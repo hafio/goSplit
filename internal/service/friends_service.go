@@ -13,11 +13,10 @@ import (
 
 // inviteeRole is the role of an account created on someone else's behalf (a
 // friend or group invite, a Splitwise import): LIMITED, which cannot create
-// groups, unless the address is in ADMIN_EMAILS. Self sign-ups stay USER.
-func (s *Service) inviteeRole(email string) string {
-	if s.Config.IsAdminEmail(email) {
-		return store.RoleAdmin
-	}
+// groups. That holds for an ADMIN_EMAILS address too -- it is promoted once its
+// owner verifies it by signing in with a link (promoteAdminIfNeeded). Self
+// sign-ups stay USER.
+func (s *Service) inviteeRole(string) string {
 	return store.RoleLimited
 }
 

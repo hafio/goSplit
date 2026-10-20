@@ -47,16 +47,11 @@ func (s *Server) handleConvertPage(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := ctxTimeout(r)
 	defer cancel()
 	me := s.currentUser(r)
-	fid, ok := atoi64(chi.URLParam(r, "id"))
+	friend, ok := s.resolveRelated(ctx, w, r, me)
 	if !ok {
-		http.NotFound(w, r)
 		return
 	}
-	friend, err := s.Store.GetUser(ctx, fid)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
+	fid := friend.ID
 	bals, _ := s.Store.FriendBalance(ctx, me.ID, fid)
 
 	// Preselect from the first nonzero balance: its currency + abs amount, and
@@ -129,7 +124,7 @@ func (s *Server) handleConvert(w http.ResponseWriter, r *http.Request) {
 		s.renderErr(w, r, "message", "msg.conversion_failed", s.tr(r, "err.invalid_direction"), http.StatusBadRequest, "invalid direction")
 		return
 	}
-	if _, err := s.Svc.CreateConversionExact(ctx, me.ID, sender, receiver, fromAmt, toAmt, fromCur, toCur, r.FormValue("date"), nil); err != nil { // cov:ignore pass-through: the conversion rules are tested in internal/service
+	if _, err := s.Svc.CreateConversionExact(ctx, me.ID, sender, receiver, fromAmt, toAmt, fromCur, toCur, r.FormValue("date"), nil); err != nil {
 		s.renderErr(w, r, "message", "msg.conversion_failed", err.Error(), http.StatusBadRequest, err.Error())
 		return
 	}

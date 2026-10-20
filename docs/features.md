@@ -18,7 +18,11 @@ history, whole-instance backups and a few other things noted below.
   again with the new one.
 - **Registration** is open by default. The operator can close it
   (`DISABLE_EMAIL_SIGNUP`), in which case new users are created from the admin console.
-- Addresses listed in `ADMIN_EMAILS` become **admins** automatically on first sign-in.
+- Addresses listed in `ADMIN_EMAILS` become **admins** automatically, once the address is
+  verified: at the first sign-in with a magic link, or the first sign-in after a password
+  reset. Registering an address, or being invited under it, does not verify it.
+- **Signing out** also clears what the browser kept of the account: the offline copies of
+  its pages and the service worker, which the next page load registers again.
 
 ### Roles
 
@@ -27,14 +31,16 @@ Every account has one of three roles:
 - **USER**: a full account. Everyone who signs up themselves (the register page, or a
   first magic-link request for a new address) gets this role.
 - **LIMITED**: everything a user can do except create groups, which also rules out the
-  Splitwise import (it creates groups). A limited user can still be added to groups, join
-  one through its link, add and settle expenses, and invite people. This is the default
+  Splitwise import (it creates groups). A limited user can still be added to groups, add
+  and settle expenses, and invite people. This is the default
   for every account created on someone else's behalf: by an admin in the console, by a
   friend or group invite to a new address, and by a Splitwise import.
 - **ADMIN**: a full account plus the [admin console](#admin-console).
 
-An address in `ADMIN_EMAILS` always ends up an admin: it is created as one when invited or
-imported, and promoted at sign-in otherwise, limited or not. Only an admin changes roles;
+An address in `ADMIN_EMAILS` ends up an admin once its owner verifies it (see
+[Signing in](#signing-in)), limited or not; until then it keeps the role it was created
+with, so whoever registers or invites the address first gains nothing. Only an admin
+changes roles;
 nothing demotes anyone automatically. While self-registration is open, LIMITED is advisory
 rather than a hard boundary: anyone, a limited user included, can register a second
 address and get a full account. Close registration (`DISABLE_EMAIL_SIGNUP=true`) when the
@@ -55,6 +61,13 @@ share, and a filterable history that includes the expenses you share in groups. 
 you can settle up, convert a balance to another currency, or collapse old history (see
 [Collapsing history](#collapsing-history)). A friend can be hidden, which greys the row out
 but keeps it listed, or removed outright.
+
+These pages exist for anyone you share something with -- a friendship, a group, or any
+expense, past ones included -- which is everyone the Balances page lists. For anyone else
+they answer "not found", like an unknown id, so they cannot be used to look up an
+account's name or email. The same rule decides whom you can put money against outside a
+group: a direct expense, a friend settlement or a currency conversion with someone you
+share nothing with is refused.
 
 ## Groups
 
@@ -106,8 +119,9 @@ involved: the payer, the creator and the participants -- and admins, who can edi
 delete any transaction (see [Admin console](#admin-console)). Automatic "Group debts
 simplified" entries (see [Settlements](#settlements)) cannot be edited or deleted by
 anyone. Someone else opening the edit
-form gets a refusal. Deletion is a soft delete; the detail page still shows the row marked
-as deleted, with who deleted it and when.
+form gets a refusal. An expense's own page opens for the people involved, for members of
+its group and for admins; for anyone else it is "not found". Deletion is a soft delete;
+the detail page still shows the row marked as deleted, with who deleted it and when.
 
 **Moving an expense** to a different group, into a group, or out to a direct expense goes
 through a guided re-split, because the set of people changes.
@@ -205,7 +219,8 @@ history collapses, "Group debts simplified" entries and deleted expenses exclude
 09:00 UTC on the first of every month; rules are evaluated in UTC). The server creates
 each due expense exactly once, even when several replicas run. A recurring group
 settlement rewires the group's pairs like a manual one (see [Settlements](#settlements)).
-Recurrences can be deleted from the same page.
+Only an expense you are part of can be made to recur. Recurrences can be deleted from the
+same page.
 
 ## Notifications
 
@@ -275,8 +290,9 @@ page's live rate lookup, bank sync (Plaid Link), and enrolling a browser for pus
 The Import page takes your Splitwise API key and imports your friends and groups. It does
 not import expenses (matching the upstream project) and is safe to run twice: groups
 already imported are skipped. The key is used for the import request and not stored.
-Accounts the import creates for your Splitwise friends and group members are limited
-(admins in `ADMIN_EMAILS` excepted). Because it creates groups, the import is not available
+Accounts the import creates for your Splitwise friends and group members are limited; an
+address in `ADMIN_EMAILS` is promoted once its owner verifies it. Because it creates groups,
+the import is not available
 to limited accounts: the menu entry is hidden and the page answers with an explanation.
 
 ## Bank sync (optional)

@@ -2,10 +2,13 @@ package httpapp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,6 +16,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hafio/gosplit/internal/auth"
+	"github.com/hafio/gosplit/internal/backup"
 )
 
 // adminHarness returns a harness signed in as an admin. admin@example.com is
@@ -334,6 +340,193 @@ func TestRestoreStatusUnknownToken(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("restore status for an unknown token = %d, want 404", resp.StatusCode)
+	}
+}
+
+// TestRestoreRoutesRefuseBackupTokens: the session-less progress page and
+// status poll answer only a restore job's token. A finished backup job's token
+// -- it sits in the generate redirect's URL -- is unknown there, so it can
+// neither read the job nor sign anyone in. A finished restore signs its admin
+// back in only when the id still carries the admin's address (control).
+func TestRestoreRoutesRefuseBackupTokens(t *testing.T) {
+	h := adminHarness(t)
+	var adminID int64
+	if err := h.st.DB.QueryRow(`SELECT id FROM users WHERE email = 'admin@example.com'`).Scan(&adminID); err != nil {
+		t.Fatal(err)
+	}
+	done := func(context.Context) (backup.JobStatus, error) { return backup.JobStatus{State: backup.JobDone}, nil }
+	start := func(run func(func(context.Context) (backup.JobStatus, error)) (string, error)) string {
+		t.Helper()
+		token, err := run(done)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 200; i++ {
+			if st, _ := h.app.Jobs.Status(token); st.State == backup.JobDone {
+				return token
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatalf("job %s never finished", token)
+		return ""
+	}
+	anon := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	get := func(path string) (*http.Response, bool) {
+		t.Helper()
+		resp, err := anon.Get(h.srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		for _, c := range resp.Cookies() {
+			if c.Name == auth.SessionCookie && c.Value != "" {
+				return resp, true
+			}
+		}
+		return resp, false
+	}
+	before := countOf(t, h, `SELECT COUNT(*) FROM sessions`)
+
+	backupTok := start(func(fn func(context.Context) (backup.JobStatus, error)) (string, error) {
+		return h.app.Jobs.Start(adminID, fn)
+	})
+	for _, path := range []string{"/admin/backup/restore/status/" + backupTok, "/admin/backup/restoring/" + backupTok} {
+		if resp, signedIn := get(path); resp.StatusCode != http.StatusNotFound || signedIn {
+			t.Errorf("GET %s with a backup token = %d (signed in: %v), want 404", path, resp.StatusCode, signedIn)
+		}
+	}
+	if n := countOf(t, h, `SELECT COUNT(*) FROM sessions`); n != before {
+		t.Errorf("sessions %d -> %d after polling with a backup token", before, n)
+	}
+
+	// The restored data gave the acting admin's id to someone with another
+	// address: nobody is signed in.
+	otherTok := start(func(fn func(context.Context) (backup.JobStatus, error)) (string, error) {
+		return h.app.Jobs.StartRestore(adminID, "someone-else@example.com", fn)
+	})
+	if resp, signedIn := get("/admin/backup/restore/status/" + otherTok); resp.StatusCode != http.StatusOK || signedIn {
+		t.Errorf("status for a restore whose id changed hands = %d (signed in: %v), want 200 and no session", resp.StatusCode, signedIn)
+	}
+	if n := countOf(t, h, `SELECT COUNT(*) FROM sessions`); n != before {
+		t.Errorf("sessions %d -> %d after a restore whose id changed hands", before, n)
+	}
+
+	restoreTok := start(func(fn func(context.Context) (backup.JobStatus, error)) (string, error) {
+		return h.app.Jobs.StartRestore(adminID, "ADMIN@example.com", fn) // the address match ignores case
+	})
+	if resp, _ := get("/admin/backup/restoring/" + restoreTok); resp.StatusCode != http.StatusOK {
+		t.Errorf("progress page for a restore token = %d, want 200", resp.StatusCode)
+	}
+	if resp, signedIn := get("/admin/backup/restore/status/" + restoreTok); resp.StatusCode != http.StatusOK || !signedIn {
+		t.Errorf("status for a finished restore = %d (signed in: %v), want 200 and a session", resp.StatusCode, signedIn)
+	}
+	if n := countOf(t, h, `SELECT COUNT(*) FROM sessions`); n != before+1 {
+		t.Errorf("sessions %d -> %d, want one more for the re-established admin", before, n)
+	}
+}
+
+// TestRestoreUploadCapIsEnforcedFirst: an upload over RESTORE_MAX_UPLOAD_MB is
+// refused with 413 before any of it is read, so nothing is staged -- even when
+// the archive in it is valid.
+func TestRestoreUploadCapIsEnforcedFirst(t *testing.T) {
+	h := adminHarness(t)
+	archive, err := os.ReadFile(filepath.Join(h.cfg.BackupDir, h.mustGenerateBackup(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.cfg.RestoreMaxUploadMB = 1 // read when the router is built
+	srv := httptest.NewServer(h.app.Router())
+	t.Cleanup(srv.Close)
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("csrf_token", h.csrf())
+	_ = mw.WriteField("filler", strings.Repeat("x", 2<<20))
+	fw, err := mw.CreateFormFile("archive", "a.gsbak")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = fw.Write(archive)
+	_ = mw.Close()
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/admin/backup/restore/upload", &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := h.client.Do(req) // the jar keys cookies on the host, so the admin stays signed in
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if b := body(t, resp); resp.StatusCode != http.StatusRequestEntityTooLarge || !strings.Contains(b, "RESTORE_MAX_UPLOAD_MB") {
+		t.Errorf("oversized upload = %d %q, want 413 naming RESTORE_MAX_UPLOAD_MB", resp.StatusCode, b)
+	}
+	if staged, _ := filepath.Glob(filepath.Join(h.cfg.BackupDir, "upload-*.gsbak.tmp")); len(staged) != 0 {
+		t.Errorf("a refused upload was buffered: %v", staged)
+	}
+	if _, err := os.Stat(h.cfg.UploadDir + ".restore"); !os.IsNotExist(err) {
+		t.Errorf("a refused upload was staged (stat err %v)", err)
+	}
+}
+
+// TestRestoreUploadChecksTheCallerBeforeParsing: an anonymous upload is sent
+// to sign in by RequireUser, which now runs before VerifyCSRF parses the form,
+// so a stranger's body is never read. (VerifyCSRF used to run first and answer
+// 403 after parsing.)
+func TestRestoreUploadChecksTheCallerBeforeParsing(t *testing.T) {
+	h := newHarness(t)
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, _ := mw.CreateFormFile("archive", "a.gsbak")
+	_, _ = fw.Write([]byte("irrelevant"))
+	_ = mw.Close()
+	req, err := http.NewRequest(http.MethodPost, h.srv.URL+"/admin/backup/restore/upload", &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	anon := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := anon.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther || !strings.HasPrefix(resp.Header.Get("Location"), "/login") {
+		t.Errorf("anonymous upload = %d to %q, want 303 to /login", resp.StatusCode, resp.Header.Get("Location"))
+	}
+}
+
+// TestExtendDeadlinesOutlastsTheServerTimeout: a body arriving more slowly
+// than the server's ReadTimeout is still read in full once extendDeadlines has
+// run -- what a large archive upload over an ordinary link needs.
+func TestExtendDeadlinesOutlastsTheServerTimeout(t *testing.T) {
+	srv := httptest.NewUnstartedServer(extendDeadlines(10 * time.Second)(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			n, err := io.Copy(io.Discard, r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			_, _ = fmt.Fprint(w, n)
+		})))
+	srv.Config.ReadTimeout = 100 * time.Millisecond
+	srv.Start()
+	t.Cleanup(srv.Close)
+
+	pr, pw := io.Pipe()
+	go func() {
+		for i := 0; i < 6; i++ {
+			time.Sleep(60 * time.Millisecond)
+			_, _ = pw.Write(bytes.Repeat([]byte("x"), 1024))
+		}
+		_ = pw.Close()
+	}()
+	resp, err := http.Post(srv.URL, "application/octet-stream", pr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := body(t, resp); resp.StatusCode != http.StatusOK || b != "6144" {
+		t.Errorf("slow upload = %d %q, want 200 and all 6144 bytes", resp.StatusCode, b)
 	}
 }
 

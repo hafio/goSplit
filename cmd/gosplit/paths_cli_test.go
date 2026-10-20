@@ -302,6 +302,27 @@ func TestPrepareDataDirsToleratesUnwritable(t *testing.T) {
 	}
 }
 
+// TestRunPathsCLIRedactsTheDatabasePassword: the report operators paste into
+// tickets names the database without its password.
+func TestRunPathsCLIRedactsTheDatabasePassword(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SESSION_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("DATABASE_URL", "host=db user=app password=s3cr3t dbname=gosplit")
+	t.Setenv("UPLOAD_DIR", filepath.Join(dir, "uploads"))
+	t.Setenv("BACKUP_DIR", filepath.Join(dir, "backups"))
+	t.Setenv("AUTO_RESTORE_DIR", "")
+	t.Setenv("BACKUP_CRON", "")
+
+	var runErr error
+	out := captureStdout(t, func() { runErr = runPathsCLI(nil) })
+	if runErr != nil {
+		t.Fatalf("paths: %v", runErr)
+	}
+	if strings.Contains(out, "s3cr3t") || !strings.Contains(out, "host=db user=app password=[redacted] dbname=gosplit") {
+		t.Errorf("paths output leaks the password or drops the DSN:\n%s", out)
+	}
+}
+
 // captureStdout runs fn with os.Stdout redirected and returns what it wrote.
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()

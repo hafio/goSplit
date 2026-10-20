@@ -87,8 +87,9 @@ More, including the dev scripts: [Running locally](docs/development.md#running-l
 ### First run
 
 Open the app and register with a name, email and password; registering signs you in
-straight away. Put your own address in `ADMIN_EMAILS` before you register to become the
-administrator, see [First admin](docs/deployment.md#first-admin). Without a mail server,
+straight away. Put your own address in `ADMIN_EMAILS` to become the administrator; it is
+promoted the first time you sign in with a magic link, see
+[First admin](docs/deployment.md#first-admin). Without a mail server,
 magic-link and password-reset emails are written to the log (`docker compose logs app`)
 instead of being sent, so copy the link from there when you use those paths.
 

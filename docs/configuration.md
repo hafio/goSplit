@@ -67,7 +67,7 @@ PostgreSQL uses a pool and is the engine to choose when you run more than one re
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `UPLOAD_DIR` | `./data/uploads` | Where profile avatars are stored. Served publicly at `/uploads/`. Included in every backup archive, and must be set for a restore to work. |
-| `UPLOAD_MAX_FILE_SIZE_MB` | `10` | Maximum avatar upload. Also the per-file cap a restore enforces on the uploads inside an archive. A backup includes every file regardless of size, so lowering this below a file already archived makes that archive fail validation until the value is raised again. |
+| `UPLOAD_MAX_FILE_SIZE_MB` | `10` | Maximum avatar upload. Every request body except a restore upload is capped at this plus 1 MiB before it is parsed; a larger one is refused with `413`. Also the per-file cap a restore enforces on the uploads inside an archive. A backup includes every file regardless of size, so lowering this below a file already archived makes that archive fail validation until the value is raised again. |
 
 ## Email (SMTP)
 
@@ -135,7 +135,7 @@ The behaviour behind these is described in [backup-restore.md](backup-restore.md
 | `BACKUP_CRON` | none | 5-field cron rule (UTC) for scheduled backups. Empty disables them. **Fatal** if the rule does not parse or `BACKUP_DIR` is empty. |
 | `BACKUP_RETENTION_COUNT` | `7` | Keep this many newest archives in `BACKUP_DIR`; older ones are pruned as the last step of each scheduled backup, and only then. Without `BACKUP_CRON` (or with `SCHEDULER=false`) nothing is ever pruned. Negative keeps everything. `0` is **fatal**, since it would mean keep none. |
 | `AUTO_RESTORE_DIR` | none | Checked at every start. If it holds exactly one archive and no `.gosplit-restored` marker, the archive is restored and the marker written. Empty disables the check. Must be writable (the marker and a safety dump go there) and must differ from `BACKUP_DIR`. **Fatal at boot** if two or more archives are present, if the directory cannot take the marker, or if validation or the restore fails; the boot keeps failing until the archive is removed. See [restoring at startup](backup-restore.md#restoring-at-startup). |
-| `RESTORE_MAX_UPLOAD_MB` | `500` | Largest archive the admin page accepts for upload. |
+| `RESTORE_MAX_UPLOAD_MB` | `500` | Largest archive the admin page accepts for upload. A larger upload is refused with `413` before any of it is read. An admin's upload and its validation may take up to two hours, against the 30-second read limit every other request has. |
 | `RESTORE_MAX_ARCHIVE_MB` | `2048` | Largest decompressed archive a restore will process. |
 | `RESTORE_MAX_ENTRIES` | `200000` | Most files (tables plus uploads) an archive may contain. |
 | `RESTORE_MAX_TABLE_FILE_MB` | `512` | Largest single table file inside an archive. |
@@ -148,7 +148,7 @@ meaning unlimited. They exist because an archive is a file that could come from 
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `ADMIN_EMAILS` | none | Comma-separated. A user whose address matches (case-insensitive) is promoted to admin when they register or sign in. A matching address is created as an admin directly when it is invited or imported, and wins over the LIMITED default anywhere else. Users are never demoted automatically. |
+| `ADMIN_EMAILS` | none | Comma-separated. A user whose address matches (case-insensitive) is promoted to admin once the address is verified: at the first sign-in with a magic link, or the first sign-in after a password reset. Registering, being invited or being imported under the address does not verify it, so such an account keeps its USER or LIMITED role until then. Users are never demoted automatically. |
 | `DISABLE_EMAIL_SIGNUP` | `false` | `true` closes self-service registration. The register page returns 403 and a magic-link request for an unknown address reports success without creating an account. Admins can still create users. With sign-up closed every new account comes from the admin console, an invite or an import, and all of those start as LIMITED (no group creation, see [Roles](features.md#roles)); pick USER in the console for people who should create groups. While sign-up stays open, LIMITED is advisory: anyone can register another address as a full user. |
 | `ENABLE_SENDING_INVITES` | `true` | `false` stops users from adding a friend or group member by an email address that has no account yet. Picking an existing user still works. Accounts created by an invite are LIMITED. |
 | `DEFAULT_HOMEPAGE` | `/balances` | Where a signed-in user lands. |

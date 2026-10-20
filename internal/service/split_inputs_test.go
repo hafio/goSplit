@@ -20,6 +20,7 @@ func TestAddExpenseRecordsTypedInputs(t *testing.T) {
 	svc, _ := newTestService(t)
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
+	covFriends(t, svc, a, b)
 
 	e, err := svc.AddExpense(ctx, ExpenseInput{
 		Name: "Dinner", Total: 3000, Method: split.SHARE, Currency: "USD",
@@ -53,6 +54,7 @@ func TestAddExpenseOmitsNonSplittingPayer(t *testing.T) {
 	svc, _ := newTestService(t)
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
+	covFriends(t, svc, a, b)
 
 	e, err := svc.AddExpense(ctx, ExpenseInput{
 		Name: "Treat", Total: 1000, Method: split.EQUAL, Currency: "USD",
@@ -82,6 +84,7 @@ func TestSettleRecordsNoInputs(t *testing.T) {
 	svc, _ := newTestService(t)
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
+	covFriends(t, svc, a, b)
 
 	e, err := svc.Settle(ctx, a.ID, b.ID, 2500, "USD", nil, "2026-01-02", a.ID)
 	if err != nil {
@@ -100,6 +103,7 @@ func TestUpdateSettlementKeepsSplitType(t *testing.T) {
 	svc, _ := newTestService(t)
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
+	covFriends(t, svc, a, b)
 
 	s0, err := svc.Settle(ctx, a.ID, b.ID, 2500, "USD", nil, "2026-01-02", a.ID)
 	if err != nil {
@@ -139,6 +143,7 @@ func TestUpdateSettlementGuards(t *testing.T) {
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
 	c := covUser(t, svc, "C", "c@x.com")
+	covFriends(t, svc, a, b)
 
 	ordinary, err := svc.AddExpense(ctx, ExpenseInput{
 		Name: "Dinner", Total: 1000, Method: split.EQUAL, Currency: "USD",
@@ -187,6 +192,7 @@ func TestMoveExpenseRejectsStaleVersion(t *testing.T) {
 	svc, _ := newTestService(t)
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
+	covFriends(t, svc, a, b)
 
 	in := ExpenseInput{
 		Name: "Dinner", Total: 1000, Method: split.EQUAL, Currency: "USD",
@@ -224,6 +230,7 @@ func TestGenerateOneReSplitsFromInputs(t *testing.T) {
 	svc, _ := newTestService(t)
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
+	covFriends(t, svc, a, b)
 
 	tmpl, err := svc.AddExpense(ctx, ExpenseInput{
 		Name: "Rent", Total: 3000, Method: split.SHARE, Currency: "USD",
@@ -321,6 +328,7 @@ func TestUpdateSettlementRequiresTargetGroupMembership(t *testing.T) {
 	a := covUser(t, svc, "A", "a@x.com") // recorded it; not a member of either group
 	b := covUser(t, svc, "B", "b@x.com")
 	c := covUser(t, svc, "C", "c@x.com")
+	covFriends(t, svc, a, b, c)
 	// CreateGroup adds the creator, so B is a member of both; C only of shared.
 	shared, err := svc.Store.CreateGroup(ctx, &store.Group{Name: "Shared", CreatedBy: b.ID, DefaultCurrency: "USD"})
 	if err != nil {
@@ -413,6 +421,7 @@ func TestUpdateSettlementRejectsCurrencySwitch(t *testing.T) {
 	svc, _ := newTestService(t)
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
+	covFriends(t, svc, a, b)
 
 	s0, err := svc.Settle(ctx, a.ID, b.ID, 2500, "USD", nil, "2026-01-02", a.ID)
 	if err != nil {
@@ -448,6 +457,7 @@ func TestMoveExpenseRejectsSettlement(t *testing.T) {
 	svc, _ := newTestService(t)
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
+	covFriends(t, svc, a, b)
 
 	s0, err := svc.Settle(ctx, a.ID, b.ID, 2500, "USD", nil, "2026-01-02", a.ID)
 	if err != nil {
@@ -477,6 +487,7 @@ func TestUpdateSettlementRejectsCorruptRows(t *testing.T) {
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
 	c := covUser(t, svc, "C", "c@x.com")
+	covFriends(t, svc, a, b)
 
 	edit := func(id string, version int64) error {
 		_, err := svc.UpdateSettlement(ctx, id, SettlementInput{
@@ -523,6 +534,7 @@ func TestRecordSplitInputsLogsFailure(t *testing.T) {
 	svc, _ := newTestService(t)
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
+	covFriends(t, svc, a, b)
 
 	in := ExpenseInput{
 		Name: "Dinner", Total: 3000, Method: split.SHARE, Currency: "USD",

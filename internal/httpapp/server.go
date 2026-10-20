@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -62,13 +63,16 @@ func (s *Server) Router() http.Handler {
 	// Public assets + health: no session lookup, no CSRF, cacheable.
 	r.Handle("/static/*", s.Renderer.AssetsHandler())
 	r.Handle("/uploads/*", cacheControl("public, max-age=3600",
-		http.StripPrefix("/uploads/", http.FileServer(http.Dir(s.Cfg.UploadDir)))))
+		http.StripPrefix("/uploads/", http.FileServer(filesOnly{http.Dir(s.Cfg.UploadDir)}))))
 	r.Get("/healthz", s.handleHealth)
 	r.Get("/manifest.webmanifest", s.serveAsset("manifest.webmanifest", "application/manifest+json", "public, max-age=3600"))
 	r.Get("/sw.js", s.serveAsset("sw.js", "application/javascript", "no-cache"))
 
-	// Everything else needs the session/CSRF context.
+	// Everything else needs the session/CSRF context. VerifyCSRF parses the
+	// form before any route has checked the caller, so every body is capped
+	// first: the largest legitimate one is an avatar upload.
 	r.Group(func(r chi.Router) {
+		r.Use(maxUploadBytes(s.Cfg.UploadMaxFileSizeMB+1, "UPLOAD_MAX_FILE_SIZE_MB"))
 		r.Use(s.Auth.Authenticate)
 		r.Use(s.Auth.VerifyCSRF)
 
@@ -76,9 +80,10 @@ func (s *Server) Router() http.Handler {
 
 		// A restore replaces the users table, and sessions cascade-delete
 		// with users, so by the time it finishes the caller's own session
-		// row is gone. These two are gated by the unguessable job token
-		// instead, and the status handler re-establishes the session when
-		// the acting admin survived in the restored data.
+		// row is gone. These two are gated by the unguessable restore job
+		// token instead (a backup job's token is refused), and the status
+		// handler re-establishes the session when the acting admin survived
+		// in the restored data.
 		r.Get("/admin/backup/restoring/{token}", s.handleRestoreProgress)
 		r.Get("/admin/backup/restore/status/{token}", s.handleRestoreStatus)
 
@@ -129,7 +134,6 @@ func (s *Server) Router() http.Handler {
 			r.Get("/groups/{id}/settle/{to}", s.handleGroupSettlePage)
 			r.Post("/groups/{id}/settle/{to}", s.handleGroupSettle)
 			r.Post("/groups/{id}/invite", s.handleGroupInvite)
-			r.Post("/groups/join/{publicId}", s.handleGroupJoin)
 			r.Get("/g/{publicId}", s.handleGroupJoinPage)
 
 			r.Get("/expenses/new", s.handleExpenseNew)
@@ -190,15 +194,15 @@ func (s *Server) Router() http.Handler {
 			r.Get("/admin/backup/download/{name}", s.handleBackupDownload)
 			r.Post("/admin/backup/restore/confirm", s.handleRestoreConfirm)
 		})
-
-		// The restore upload needs its own middleware order: MaxBytesReader
-		// must wrap the body BEFORE VerifyCSRF runs, because that middleware
-		// falls back to r.FormValue, which parses the whole multipart body.
-		// On the shared chain it would buffer an unbounded upload before the
-		// handler's own cap could apply.
-		r.With(maxUploadBytes(s.Cfg.RestoreMaxUploadMB), s.Auth.RequireUser, s.Auth.RequireAdmin, privateResponses, s.Auth.VerifyCSRF).
-			Post("/admin/backup/restore/upload", s.handleRestoreUpload)
 	})
+
+	// The restore upload lives outside that group: its cap is the archive
+	// limit, not the avatar one. The order matters. The body is capped before
+	// anything reads it, only an admin gets the long deadlines, and VerifyCSRF
+	// -- which parses the multipart form -- runs last.
+	r.With(maxUploadBytes(s.Cfg.RestoreMaxUploadMB, "RESTORE_MAX_UPLOAD_MB"), s.Auth.Authenticate,
+		s.Auth.RequireUser, s.Auth.RequireAdmin, privateResponses, extendDeadlines(backupTimeout), s.Auth.VerifyCSRF).
+		Post("/admin/backup/restore/upload", s.handleRestoreUpload)
 
 	return r
 }
@@ -400,6 +404,27 @@ func (s *Server) serveAsset(name, contentType, cache string) http.HandlerFunc {
 		w.Header().Set("Cache-Control", cache)
 		_, _ = w.Write(b)
 	}
+}
+
+// filesOnly serves files and nothing else. A directory opens as not-exist, so
+// http.FileServer answers 404 instead of listing every avatar's name.
+type filesOnly struct{ http.FileSystem }
+
+func (f filesOnly) Open(name string) (http.File, error) {
+	file, err := f.FileSystem.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil { // cov:ignore io-fault: a stat of the file just opened
+		_ = file.Close()
+		return nil, err
+	}
+	if info.IsDir() {
+		_ = file.Close()
+		return nil, fs.ErrNotExist
+	}
+	return file, nil
 }
 
 // cacheControl sets a Cache-Control header before delegating to next.

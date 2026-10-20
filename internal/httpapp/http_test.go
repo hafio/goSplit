@@ -132,6 +132,22 @@ func (h *harness) register(name, email, password string) {
 		h.t.Fatalf("register status %d", resp.StatusCode)
 	}
 	_ = body(h.t, resp)
+	// An ADMIN_EMAILS address is promoted only once verified, by its owner's
+	// first sign-in with a link (TestAdminPromotionWaitsForVerification). The
+	// fixture stands in for that step so admin tests need not each repeat it.
+	if h.cfg.IsAdminEmail(email) {
+		ctx := context.Background()
+		u, err := h.st.GetUserByEmail(ctx, email)
+		if err != nil {
+			h.t.Fatalf("registered admin: %v", err)
+		}
+		if err := h.st.MarkEmailVerified(ctx, u.ID); err != nil {
+			h.t.Fatal(err)
+		}
+		if err := h.st.SetRole(ctx, u.ID, store.RoleAdmin); err != nil {
+			h.t.Fatal(err)
+		}
+	}
 }
 
 // login switches the active session to an existing user via the password form.

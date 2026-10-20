@@ -24,16 +24,11 @@ func (s *Server) handleFriendCollapsePage(w http.ResponseWriter, r *http.Request
 	ctx, cancel := ctxTimeout(r)
 	defer cancel()
 	me := s.currentUser(r)
-	fid, ok := atoi64(chi.URLParam(r, "id"))
+	friend, ok := s.resolveRelated(ctx, w, r, me)
 	if !ok {
-		http.NotFound(w, r)
 		return
 	}
-	friend, err := s.Store.GetUser(ctx, fid)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
+	fid := friend.ID
 	action := fmt.Sprintf("/friends/%d/collapse", fid)
 	vd := collapseView{Kind: "friend", Target: displayName(friend), Action: action,
 		CancelURL: fmt.Sprintf("/friends/%d", fid), Before: r.URL.Query().Get("before"),

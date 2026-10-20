@@ -3,6 +3,7 @@ package httpapp
 import (
 	"net/http"
 	"strings"
+	"unicode"
 )
 
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
@@ -116,12 +117,20 @@ func (s *Server) handleMagicConsume(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	s.Auth.ClearSession(w, r)
+	// Drop what this browser kept of the account: the service worker's offline
+	// copies of its pages, and the worker itself, which the next page load
+	// registers again. On a shared device the next person would otherwise see
+	// them offline.
+	w.Header().Set("Clear-Site-Data", `"cache", "storage"`)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
 // safeNext returns next only if it is a local path (prevents open redirects).
+// Browsers read a backslash as a slash, so "/\evil.example" would leave the
+// site just like "//evil.example"; control characters are refused as well.
 func safeNext(next string) string {
-	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") {
+	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") ||
+		strings.ContainsAny(next, `\`) || strings.IndexFunc(next, unicode.IsControl) >= 0 {
 		return "/"
 	}
 	return next

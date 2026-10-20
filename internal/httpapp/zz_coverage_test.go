@@ -83,8 +83,9 @@ func TestGroupDetailNotFoundAndForbidden(t *testing.T) {
 	}
 }
 
-// TestGroupJoinFlow covers handleGroupJoinPage (render + 404) and handleGroupJoin
-// (a public-id join makes the caller a member).
+// TestGroupJoinFlow covers handleGroupJoinPage (render + 404), and that holding
+// the join link adds nobody: there is no route that joins the caller, so a POST
+// to the old one leaves the group as it was.
 func TestGroupJoinFlow(t *testing.T) {
 	h := newHarness(t)
 	h.register("Alice", "alice@example.com", "password123")
@@ -103,21 +104,25 @@ func TestGroupJoinFlow(t *testing.T) {
 		_ = body(t, resp)
 	}
 
-	// Bob is a separate account; the join page renders and the join adds him.
+	// Bob is a separate account; the join page renders, but posting to the old
+	// join route does not make him a member.
 	h.register("Bob", "bob@example.com", "password123")
 	if resp := h.get("/g/" + pid); resp.StatusCode != http.StatusOK {
 		t.Fatalf("join page status %d", resp.StatusCode)
 	} else {
 		_ = body(t, resp)
 	}
-	if resp := h.post("/groups/join/"+pid, url.Values{}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("join post status %d", resp.StatusCode)
+	if resp := h.post("/groups/join/"+pid, url.Values{}); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("join post status %d, want 404", resp.StatusCode)
+		_ = body(t, resp)
 	} else {
 		_ = body(t, resp)
 	}
-	// Bob is now a member, so the group detail page is reachable (no 403).
-	if resp := h.get("/groups/1"); resp.StatusCode != http.StatusOK {
-		t.Errorf("joined member GET /groups/1 status %d, want 200", resp.StatusCode)
+	if n := countOf(t, h, `SELECT COUNT(*) FROM group_users WHERE group_id = 1`); n != 1 {
+		t.Errorf("group 1 has %d members after Bob held the join link, want 1", n)
+	}
+	if resp := h.get("/groups/1"); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-member GET /groups/1 status %d, want 403", resp.StatusCode)
 		_ = body(t, resp)
 	} else {
 		_ = body(t, resp)

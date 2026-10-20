@@ -10,6 +10,7 @@ func TestCreateConversionExact(t *testing.T) {
 	svc, _ := newTestService(t)
 	a, _ := svc.Register(ctx, "A", "a@example.com", "password12")
 	b, _ := svc.Register(ctx, "B", "b@example.com", "password12")
+	covFriends(t, svc, a, b)
 
 	// Explicit amounts are stored verbatim — no rate recomputation.
 	e, err := svc.CreateConversionExact(ctx, a.ID, a.ID, b.ID, 10000, 7830, "SGD", "USD", "2026-01-01", nil)

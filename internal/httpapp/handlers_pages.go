@@ -99,20 +99,37 @@ func (s *Server) handleFriends(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "friends", "title.friends", map[string]any{"Friends": rows})
 }
 
+// resolveRelated returns the user a friend-scoped page's {id} names, when the
+// caller shares a friendship, a group or an expense with them. Anyone else gets
+// the same 404 as an unknown id: ids are sequential, and these pages show a
+// name or an email. A failed lookup counts as unrelated.
+func (s *Server) resolveRelated(ctx context.Context, w http.ResponseWriter, r *http.Request, me *store.User) (*store.User, bool) {
+	fid, ok := atoi64(chi.URLParam(r, "id"))
+	if !ok {
+		http.NotFound(w, r)
+		return nil, false
+	}
+	if related, err := s.Store.AreRelated(ctx, me.ID, fid); err != nil || !related {
+		http.NotFound(w, r)
+		return nil, false
+	}
+	u, err := s.Store.GetUser(ctx, fid)
+	if err != nil { // cov:ignore impossible: a related user's row exists
+		http.NotFound(w, r)
+		return nil, false
+	}
+	return u, true
+}
+
 func (s *Server) handleFriendDetail(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := ctxTimeout(r)
 	defer cancel()
 	u := s.currentUser(r)
-	fid, ok := atoi64(chi.URLParam(r, "id"))
+	friend, ok := s.resolveRelated(ctx, w, r, u)
 	if !ok {
-		http.NotFound(w, r)
 		return
 	}
-	friend, err := s.Store.GetUser(ctx, fid)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
+	fid := friend.ID
 	bals, _ := s.Store.FriendBalance(ctx, u.ID, fid)
 	filter, view := parseFilter(r)
 	showAll := applyFeedLimit(r, &filter)
@@ -456,6 +473,9 @@ func (s *Server) handleGroupInvite(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/groups/%d", gid), http.StatusSeeOther)
 }
 
+// handleGroupJoinPage shows the invitation behind a group's join link. Nothing
+// joins anyone: there is deliberately no route that adds the caller, because
+// the link travels in chats and email. A member adds them with Add member.
 func (s *Server) handleGroupJoinPage(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := ctxTimeout(r)
 	defer cancel()
@@ -466,19 +486,6 @@ func (s *Server) handleGroupJoinPage(w http.ResponseWriter, r *http.Request) {
 	}
 	vd := s.vdPage(w, r, s.tr(r, "title.join")+" "+g.Name, fmt.Sprintf(s.tr(r, "msg.group_invite"), g.Name))
 	s.Renderer.Render(w, http.StatusOK, "message", vd)
-}
-
-func (s *Server) handleGroupJoin(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := ctxTimeout(r)
-	defer cancel()
-	u := s.currentUser(r)
-	g, err := s.Store.GetGroupByPublicID(ctx, chi.URLParam(r, "publicId"))
-	if err != nil { // cov:ignore glue: a bad id maps to 404, the same mapping tested elsewhere
-		http.NotFound(w, r)
-		return
-	}
-	_ = s.Store.AddGroupMember(ctx, g.ID, u.ID)
-	http.Redirect(w, r, fmt.Sprintf("/groups/%d", g.ID), http.StatusSeeOther)
 }
 
 // --- activity -------------------------------------------------------------

@@ -50,7 +50,8 @@ func runPathsCLI(args []string) error {
 	fmt.Printf("gosplit %s\n", version)
 	fmt.Printf("running as uid %d gid %d\n", os.Getuid(), os.Getgid())
 	fmt.Printf("engine       %s\n", cfg.Engine)
-	fmt.Printf("database     %s\n", cfg.DatabaseURL)
+	// Operators paste this output into tickets; a Postgres DSN carries its password.
+	fmt.Printf("database     %s\n", config.RedactDSN(cfg.DatabaseURL))
 	fmt.Println()
 
 	for _, d := range collectDirStatuses(cfg) {

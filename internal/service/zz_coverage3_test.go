@@ -104,7 +104,7 @@ func TestCovEmailNotificationsSendError(t *testing.T) {
 // ChangePassword.
 func TestCovAuthErrorBranches(t *testing.T) {
 	ctx := context.Background()
-	svc, _ := newTestService(t)
+	svc, mailer := newTestService(t)
 
 	// Register refuses when email signup is disabled.
 	svc.Config.DisableEmailSignup = true
@@ -126,13 +126,17 @@ func TestCovAuthErrorBranches(t *testing.T) {
 		t.Fatalf("empty magic email: got %v, want an 'email is required' error", err)
 	}
 
-	// An admin-listed unknown email is created with the ADMIN role.
+	// An admin-listed unknown email is created as USER: requesting a link proves
+	// nothing about owning the address. Consuming the link does, and promotes.
 	if err := svc.RequestMagicLink(ctx, "admin@example.com"); err != nil {
 		t.Fatalf("admin magic link: %v", err)
 	}
 	au, err := svc.Store.GetUserByEmail(ctx, "admin@example.com")
-	if err != nil || au.Role != "ADMIN" {
-		t.Errorf("admin magic user role = %q err=%v, want ADMIN", au.Role, err)
+	if err != nil || au.Role != store.RoleUser {
+		t.Errorf("admin magic user role before the link is used = %q err=%v, want USER", au.Role, err)
+	}
+	if got, err := svc.ConsumeMagicLink(ctx, extractToken(mailer.last(), "token=")); err != nil || got.Role != store.RoleAdmin {
+		t.Errorf("admin magic user after the link = %+v err=%v, want ADMIN", got, err)
 	}
 
 	// Invalid tokens.
@@ -254,9 +258,11 @@ func TestCovImportBranches(t *testing.T) {
 	if res.Friends != 2 || res.Groups != 1 || res.Skipped != 2 {
 		t.Fatalf("import result = %+v, want Friends=2 Groups=1 Skipped=2", res)
 	}
+	// An admin-listed address is no exception: it is promoted only once its
+	// owner verifies it by signing in with a link.
 	au, err := svc.Store.GetUserByEmail(ctx, "admin@example.com")
-	if err != nil || au.Role != "ADMIN" {
-		t.Errorf("imported admin role = %q err=%v, want ADMIN", au.Role, err)
+	if err != nil || au.Role != store.RoleLimited {
+		t.Errorf("imported admin-listed role = %q err=%v, want LIMITED", au.Role, err)
 	}
 	// Everyone else the import creates was added on the actor's behalf: LIMITED.
 	for _, email := range []string{"pal@x.com", "mate@x.com"} {

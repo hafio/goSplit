@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -22,16 +23,37 @@ func covUser(t *testing.T, svc *Service, name, email string) *store.User {
 	return u
 }
 
+// covFriends makes every pair of us friends: the precondition for a direct
+// expense, settlement or conversion between them (assertRelated).
+func covFriends(t *testing.T, svc *Service, us ...*store.User) {
+	t.Helper()
+	for i, a := range us {
+		for _, b := range us[i+1:] {
+			if err := svc.Store.AddFriend(context.Background(), a.ID, b.ID); err != nil {
+				t.Fatalf("befriend %d and %d: %v", a.ID, b.ID, err)
+			}
+		}
+	}
+}
+
 // TestAddExpenseDirectCreatesFriendship exercises the AddExpense happy path for a
-// non-group ("direct") expense: the split engine computes zero-sum participant
-// rows (EQUAL of 1000 between two people = +500 / -500), the expense is persisted
-// with the currency upper-cased, and direct-expense counterparts are auto-linked
-// as friends (AddExpense's in.GroupID == nil branch).
+// non-group ("direct") expense between two people who share a group but are not
+// yet friends: the split engine computes zero-sum participant rows (EQUAL of 1000
+// between two people = +500 / -500), the expense is persisted with the currency
+// upper-cased, and the counterpart is auto-linked as a friend (AddExpense's
+// in.GroupID == nil branch).
 func TestAddExpenseDirectCreatesFriendship(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newTestService(t)
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
+	g, err := svc.Store.CreateGroup(ctx, &store.Group{Name: "Flat", CreatedBy: a.ID, DefaultCurrency: "USD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Store.AddGroupMember(ctx, g.ID, b.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	e, err := svc.AddExpense(ctx, ExpenseInput{
 		Name: "Dinner", Total: 1000, Method: split.EQUAL, Currency: "usd",
@@ -97,6 +119,7 @@ func TestSettleRecordsDirectionAndRejectsNonPositive(t *testing.T) {
 	svc, _ := newTestService(t)
 	sender := covUser(t, svc, "S", "s@x.com")
 	receiver := covUser(t, svc, "R", "r@x.com")
+	covFriends(t, svc, sender, receiver)
 
 	if _, err := svc.Settle(ctx, sender.ID, receiver.ID, 0, "USD", nil, "2026-01-10", sender.ID); err == nil {
 		t.Error("zero settlement amount should error")
@@ -242,6 +265,7 @@ func TestCreateRecurrenceValidation(t *testing.T) {
 	svc, _ := newTestService(t)
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
+	covFriends(t, svc, a, b)
 
 	// Bad cron.
 	if _, err := svc.CreateRecurrence(ctx, a.ID, "no-such-expense", "not a cron"); err == nil ||
@@ -266,6 +290,14 @@ func TestCreateRecurrenceValidation(t *testing.T) {
 	}, []store.ExpenseParticipant{{UserID: a.ID, Amount: 500}, {UserID: b.ID, Amount: -500}})
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Someone outside the expense cannot put it on a schedule.
+	c := covUser(t, svc, "C", "c@x.com")
+	if _, err := svc.CreateRecurrence(ctx, c.ID, tmpl.ID, "0 0 * * *"); !errors.Is(err, ErrNotRecurrenceOwner) {
+		t.Errorf("outsider recur: got %v, want ErrNotRecurrenceOwner", err)
+	}
+	if list, _ := svc.ListRecurrences(ctx, c.ID); len(list) != 0 {
+		t.Errorf("a refused recurrence was stored: %v", list)
 	}
 	rec, err := svc.CreateRecurrence(ctx, a.ID, tmpl.ID, "0 0 * * *")
 	if err != nil {

@@ -13,6 +13,10 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
+// ErrNotRecurrenceOwner refuses a recurrence on an expense the actor is not part
+// of.
+var ErrNotRecurrenceOwner = errors.New("you can only repeat an expense you are part of")
+
 // cronParser accepts standard 5-field cron expressions (min hour dom mon dow).
 var cronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -26,6 +30,12 @@ func (s *Service) CreateRecurrence(ctx context.Context, actor int64, templateExp
 	tmpl, err := s.Store.GetExpense(ctx, templateExpenseID)
 	if err != nil {
 		return nil, err
+	}
+	// Only someone part of the expense may repeat it. Without this, knowing an
+	// expense's id would be enough to keep charging its participants on a
+	// schedule.
+	if !s.IsTransactionMember(ctx, actor, tmpl) {
+		return nil, ErrNotRecurrenceOwner
 	}
 	if tmpl.SplitType == "CURRENCY_CONVERSION" || tmpl.ConversionToID.Valid {
 		return nil, errors.New("currency-conversion expenses cannot recur")

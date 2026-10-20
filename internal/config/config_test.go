@@ -35,6 +35,39 @@ func TestLooksLikePostgresKeywordDSN(t *testing.T) {
 // validSecret is a 32-char session secret that satisfies Load's length floor.
 const validSecret = "0123456789abcdef0123456789abcdef"
 
+// TestRedactDSN: a password is masked in both DSN forms, quoted or not, inside
+// a longer message too, and nothing else changes.
+func TestRedactDSN(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"host=db user=app password=s3cr3t dbname=gosplit", "host=db user=app password=[redacted] dbname=gosplit"},
+		{"host=db PASSWORD = 'p@ss w0rd' dbname=x", "host=db PASSWORD = [redacted] dbname=x"},
+		{`host=db password="a b" dbname=x`, "host=db password=[redacted] dbname=x"},
+		{"postgres://app:topsecret@db:5432/gosplit?sslmode=disable", "postgres://app:[redacted]@db:5432/gosplit?sslmode=disable"},
+		{"open postgres://app:topsecret@db/x: refused", "open postgres://app:[redacted]@db/x: refused"},
+		{"postgres://app@db:5432/gosplit", "postgres://app@db:5432/gosplit"},
+		{"file:./data/gosplit.db", "file:./data/gosplit.db"},
+	} {
+		if got := RedactDSN(tc.in); got != tc.want {
+			t.Errorf("RedactDSN(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestLoadRedactsAnUnknownDatabaseURL: an unrecognised DATABASE_URL is quoted
+// in the startup error so the operator can spot the typo -- minus its password,
+// because that error lands in the log.
+func TestLoadRedactsAnUnknownDatabaseURL(t *testing.T) {
+	t.Setenv("SESSION_SECRET", validSecret)
+	t.Setenv("DATABASE_URL", "postgress://app:topsecret@db/gosplit")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "cannot infer DB engine") {
+		t.Fatalf("Load err = %v, want the engine error", err)
+	}
+	if strings.Contains(err.Error(), "topsecret") || !strings.Contains(err.Error(), "postgress://app:[redacted]@db") {
+		t.Errorf("engine error leaks the password or drops the URL: %v", err)
+	}
+}
+
 func TestLoadRequiresSessionSecret(t *testing.T) {
 	t.Setenv("SESSION_SECRET", "")
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "SESSION_SECRET is required") {

@@ -61,7 +61,8 @@ present:
 docker exec <container> /app/gosplit paths
 ```
 
-It reads nothing from the database and changes nothing, so it is safe to run at any time.
+It reads nothing from the database and changes nothing, so it is safe to run at any time,
+and it shows any password in `DATABASE_URL` as `[redacted]`, so its output is safe to share.
 It is the fastest way to answer "where did my backup go" and "why can the app not write
 there".
 
@@ -187,7 +188,8 @@ restored values.
 
 ### Restoring from the admin page
 
-`/admin/backup` accepts an upload (up to `RESTORE_MAX_UPLOAD_MB`), validates it, shows the
+`/admin/backup` accepts an upload (up to `RESTORE_MAX_UPLOAD_MB`; a larger one is refused
+with `413` before any of it is read), validates it, shows the
 manifest summary, and asks you to type `RESTORE ALL DATA` to proceed. The phrase is fixed
 and not translated. A wrong phrase leaves the staged archive in place so you can try
 again; an abandoned upload is discarded after 15 minutes.
@@ -195,9 +197,13 @@ again; an abandoned upload is discarded after 15 minutes.
 The restore replaces the users and sessions tables, so your own session is gone the
 moment it commits. The progress page and its status poll are therefore gated by an
 unguessable job token rather than by a session. When the job finishes, a request to that
-URL signs you back in if your user exists in the restored data, and otherwise sends you to
-the login page. The token stays valid until the job is swept fifteen minutes after it
-finishes, so treat the URL as a credential: do not share it or let it into logs.
+URL signs you back in if the restored data still has your account -- the same id and the
+same email address, since restoring another instance's archive can give your id to
+someone else -- and otherwise sends you to the login page. "You" is the admin who typed
+the confirmation, whoever uploaded the archive. The token stays valid until the job is swept fifteen minutes after it
+finishes, so treat the URL as a credential: do not share it or let it into logs. Only a
+restore's token opens these two URLs; the token of a backup started from the same page
+gets a 404 there.
 
 Uploads are buffered inside `BACKUP_DIR`, not the system temp directory, because the
 container's root filesystem is read-only. Make sure the volume has room for two more

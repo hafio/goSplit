@@ -51,7 +51,10 @@ type SettlementInput struct {
 // Errors surfaced to expense handlers.
 var (
 	// ErrNotMember names the actor too, not just the participants: see assertMembers.
-	ErrNotMember       = errors.New("you and everyone involved must be members of the target group")
+	ErrNotMember = errors.New("you and everyone involved must be members of the target group")
+	// ErrNotRelated refuses money between people who share nothing: outside a
+	// group, any account id would otherwise do (see assertRelated).
+	ErrNotRelated      = errors.New("outside a group you can only share money with friends or people in one of your groups")
 	ErrNotMovable      = errors.New("this expense cannot be moved")
 	ErrMoveNoAck       = errors.New("you must acknowledge the recalculated split")
 	ErrNotEditor       = errors.New("you can't edit or delete this expense")
@@ -96,6 +99,8 @@ func (s *Service) AddExpense(ctx context.Context, in ExpenseInput) (*store.Expen
 		if err := s.assertMembers(ctx, *in.GroupID, in.Lines, in.PaidBy, in.ActorID); err != nil {
 			return nil, err
 		}
+	} else if err := s.assertRelated(ctx, in.ActorID, lineIDs(in.PaidBy, in.Lines)...); err != nil {
+		return nil, err
 	}
 	parts, err := s.buildParticipants(in)
 	if err != nil { // cov:ignore pass-through: split rules are tested in internal/split
@@ -163,6 +168,21 @@ func (s *Service) IsTransactionMember(ctx context.Context, actorID int64, e *sto
 	return false
 }
 
+// CanViewExpense reports whether viewerID may open e's detail page: a member of
+// the transaction, a member of its group (whose feed lists it), or an admin.
+// Anyone else is treated as if e did not exist. Lookup failures count as "no".
+func (s *Service) CanViewExpense(ctx context.Context, viewerID int64, e *store.Expense) bool {
+	if s.IsTransactionMember(ctx, viewerID, e) {
+		return true
+	}
+	if e.GroupID.Valid {
+		if member, err := s.Store.IsGroupMember(ctx, e.GroupID.Int64, viewerID); err == nil && member {
+			return true
+		}
+	}
+	return s.isAdmin(ctx, viewerID)
+}
+
 // isAdmin reports whether actorID is an active admin, read fresh from the store
 // so a demotion or deactivation takes effect on the very next action. Any lookup
 // failure counts as "not an admin": the override fails closed.
@@ -188,6 +208,11 @@ type Transfer struct {
 // Settle records a settlement payment (sender pays receiver) as a SETTLEMENT
 // expense driving balances toward zero.
 func (s *Service) Settle(ctx context.Context, sender, receiver int64, amount int64, currency string, groupID *int64, date string, actor int64) (*store.Expense, error) {
+	if groupID == nil {
+		if err := s.assertRelated(ctx, actor, sender, receiver); err != nil {
+			return nil, err
+		}
+	}
 	created, parts, err := s.settle(ctx, sender, receiver, amount, currency, groupID, date, actor)
 	if err != nil {
 		return nil, err
@@ -306,6 +331,16 @@ func (s *Service) MoveExpense(ctx context.Context, origID string, in ExpenseInpu
 			memberActor = in.PaidBy
 		}
 		if err := s.assertMembers(ctx, *in.GroupID, in.Lines, in.PaidBy, memberActor); err != nil {
+			return nil, err
+		}
+	} else {
+		// Same exemption outside a group: an admin who is not part of the
+		// transaction is checked through its payer instead of themselves.
+		owner := in.ActorID
+		if viaAdmin {
+			owner = in.PaidBy
+		}
+		if err := s.assertRelated(ctx, owner, lineIDs(in.PaidBy, in.Lines)...); err != nil {
 			return nil, err
 		}
 	}
@@ -548,6 +583,37 @@ func (s *Service) assertMembers(ctx context.Context, groupID int64, lines []spli
 		uniq = append(uniq, id)
 	}
 	return s.assertGroupMembers(ctx, groupID, uniq...)
+}
+
+// assertRelated fails closed with ErrNotRelated unless every id other than
+// owner is related to owner (Store.AreRelated). It guards everything that puts
+// money between people outside a group -- a direct expense, a friend
+// settlement, a currency conversion -- where nothing else ties the ids in the
+// request to the person making it. Without it any account id would do, and the
+// stranger would be befriended, charged and notified.
+func (s *Service) assertRelated(ctx context.Context, owner int64, ids ...int64) error {
+	for _, id := range ids {
+		if id == owner {
+			continue
+		}
+		ok, err := s.Store.AreRelated(ctx, owner, id)
+		if err != nil { // cov:ignore store-fault: needs a failing database
+			return err
+		}
+		if !ok {
+			return ErrNotRelated
+		}
+	}
+	return nil
+}
+
+// lineIDs is the payer plus every participant of a split.
+func lineIDs(paidBy int64, lines []split.Line) []int64 {
+	ids := []int64{paidBy}
+	for _, l := range lines {
+		ids = append(ids, l.UserID)
+	}
+	return ids
 }
 
 // assertGroupMembers fails closed with ErrNotMember unless every id belongs to

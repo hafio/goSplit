@@ -52,6 +52,32 @@ func TestJobTrackerLifecycle(t *testing.T) {
 	}
 }
 
+// TestStartRestoreMarksTheJob: only a job begun by StartRestore carries the
+// restore mark, and the mark survives completion -- the session-less restore
+// routes trust nothing else.
+func TestStartRestoreMarksTheJob(t *testing.T) {
+	tr := NewJobTracker()
+	done := func(context.Context) (JobStatus, error) { return JobStatus{State: JobDone}, nil }
+	backupTok, err := tr.Start(7, done)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	restoreTok, err := tr.StartRestore(7, "root@example.com", done)
+	if err != nil {
+		t.Fatalf("StartRestore: %v", err)
+	}
+	for _, tok := range []string{backupTok, restoreTok} {
+		waitFor(t, func() bool { st, _ := tr.Status(tok); return st.State == JobDone }, "job finishes")
+	}
+
+	if st, _ := tr.Status(backupTok); st.Restore {
+		t.Error("a backup job is marked as a restore")
+	}
+	if st, _ := tr.Status(restoreTok); !st.Restore || st.ActingUserID != 7 || st.ActingEmail != "root@example.com" {
+		t.Errorf("finished restore job = %+v, want the restore mark and its acting user's id and address", st)
+	}
+}
+
 // TestJobTrackerRecordsFailure asserts a failing job lands in the error state
 // with a sanitized message.
 func TestJobTrackerRecordsFailure(t *testing.T) {

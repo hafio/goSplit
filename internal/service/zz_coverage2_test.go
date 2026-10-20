@@ -236,13 +236,14 @@ func TestCovInviteSendsPendingInvites(t *testing.T) {
 		t.Errorf("existing friend role = %q, want USER kept", again.Role)
 	}
 
-	// Admin-listed email is created with the ADMIN role.
+	// An admin-listed address invited by someone else is LIMITED like any other:
+	// the inviter does not own it. Its owner's first link sign-in promotes it.
 	if err := svc.AddFriendByEmail(ctx, owner.ID, "admin@example.com"); err != nil {
 		t.Fatalf("AddFriendByEmail (admin): %v", err)
 	}
 	adminU, err := svc.Store.GetUserByEmail(ctx, "admin@example.com")
-	if err != nil || adminU.Role != "ADMIN" {
-		t.Errorf("admin invite role = %q err=%v, want ADMIN", adminU.Role, err)
+	if err != nil || adminU.Role != store.RoleLimited {
+		t.Errorf("admin-listed invite role = %q err=%v, want LIMITED", adminU.Role, err)
 	}
 
 	// InviteToGroup with a new email -> pending member + invite naming the group.
@@ -338,6 +339,7 @@ func TestCovConversionErrors(t *testing.T) {
 	svc, _ := newTestService(t)
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
+	covFriends(t, svc, a, b)
 
 	// Same currency and non-positive amount are rejected before any lookup.
 	if _, err := svc.CreateConversion(ctx, a.ID, a.ID, b.ID, 1000, "USD", "USD", "2026-01-01", nil); err == nil ||

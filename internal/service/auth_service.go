@@ -27,8 +27,8 @@ const (
 	resetTTL  = 1 * time.Hour
 )
 
-// Register creates a password account, applies admin auto-promotion, and
-// returns the new user. Honors DISABLE_EMAIL_SIGNUP.
+// Register creates a password account and returns the new user. Honors
+// DISABLE_EMAIL_SIGNUP. It never promotes: see promoteAdminIfNeeded.
 func (s *Service) Register(ctx context.Context, name, email, password string) (*store.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if s.Config.DisableEmailSignup {
@@ -43,15 +43,14 @@ func (s *Service) Register(ctx context.Context, name, email, password string) (*
 	if err != nil { // cov:ignore impossible: HashPassword fails only if crypto/rand does
 		return nil, err
 	}
-	role := "USER"
-	if s.Config.IsAdminEmail(email) {
-		role = "ADMIN"
-	}
+	// Even an ADMIN_EMAILS address starts as USER: registering proves nothing
+	// about owning it. Promotion waits for a verified address (see
+	// promoteAdminIfNeeded), or the first person to register it would be admin.
 	u, err := s.Store.CreateUser(ctx, &store.User{
 		Name:         name,
 		Email:        email,
 		PasswordHash: sql.NullString{String: hash, Valid: true},
-		Role:         role,
+		Role:         store.RoleUser,
 	})
 	if err != nil { // cov:ignore store-fault: needs a failing database
 		return nil, err
@@ -96,11 +95,9 @@ func (s *Service) RequestMagicLink(ctx context.Context, email string) error {
 		if s.Config.DisableEmailSignup {
 			return nil // pretend success
 		}
-		role := "USER"
-		if s.Config.IsAdminEmail(email) {
-			role = "ADMIN"
-		}
-		if _, err := s.Store.CreateUser(ctx, &store.User{Email: email, Role: role}); err != nil { // cov:ignore store-fault: needs a failing database
+		// USER even for an ADMIN_EMAILS address: consuming the link is what
+		// verifies it, and promotes it then.
+		if _, err := s.Store.CreateUser(ctx, &store.User{Email: email, Role: store.RoleUser}); err != nil { // cov:ignore store-fault: needs a failing database
 			return err
 		}
 	} else if err != nil { // cov:ignore store-fault: needs a failing database
@@ -155,6 +152,9 @@ func (s *Service) ConsumeMagicLink(ctx context.Context, token string) (*store.Us
 		return nil, ErrAccountInactive
 	}
 	_ = s.Store.MarkEmailVerified(ctx, u.ID)
+	// The link reached this address, so it is verified from now on, whatever
+	// the row said when it was read.
+	u.EmailVerified.Valid = true
 	s.promoteAdminIfNeeded(ctx, u)
 	return u, nil
 }
@@ -224,9 +224,11 @@ func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) 
 }
 
 // promoteAdminIfNeeded upgrades a user to ADMIN if their email is in
-// ADMIN_EMAILS (never auto-demotes).
+// ADMIN_EMAILS and verified -- by a consumed sign-in link or a password reset.
+// An unverified address is never promoted: anyone can register or be invited
+// under someone else's address. It never auto-demotes.
 func (s *Service) promoteAdminIfNeeded(ctx context.Context, u *store.User) {
-	if u.Role != "ADMIN" && s.Config.IsAdminEmail(u.Email) {
+	if u.Role != store.RoleAdmin && u.EmailVerified.Valid && s.Config.IsAdminEmail(u.Email) {
 		if err := s.Store.SetRole(ctx, u.ID, "ADMIN"); err == nil {
 			u.Role = "ADMIN"
 		}

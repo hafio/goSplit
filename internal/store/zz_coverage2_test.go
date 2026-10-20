@@ -232,6 +232,8 @@ func TestCov2ClosedStoreErrors(t *testing.T) {
 	mustErr("ListFriends", err)
 	_, err = st.AreFriends(ctx, 1, 2)
 	mustErr("AreFriends", err)
+	_, err = st.AreRelated(ctx, 1, 2)
+	mustErr("AreRelated", err)
 
 	// groups.go
 	_, err = st.CreateGroup(ctx, &Group{Name: "G", CreatedBy: 1})
