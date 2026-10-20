@@ -13,13 +13,14 @@ import (
 // Admin-management errors surfaced to handlers.
 var (
 	ErrPasswordTooShort = errors.New("password must be at least 8 characters")
-	ErrInvalidRole      = errors.New("role must be USER or ADMIN")
+	ErrInvalidRole      = errors.New("role must be LIMITED, USER or ADMIN")
 	ErrEmailRequired    = errors.New("email is required")
 )
 
 // AdminCreateUser creates a user on behalf of an admin. Email is required and
-// must be unique; role must be USER/ADMIN (defaults USER); currency/language
-// fall back to store defaults when blank. A blank password leaves the account
+// must be unique; role must be one of store.ValidRole and defaults to LIMITED,
+// like every account created on someone else's behalf; currency/language fall
+// back to store defaults when blank. A blank password leaves the account
 // password-less (magic-link sign-in); a set password must be ≥ 8 chars.
 func (s *Service) AdminCreateUser(ctx context.Context, name, email, role, currency, lang, password string) (*store.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
@@ -27,14 +28,14 @@ func (s *Service) AdminCreateUser(ctx context.Context, name, email, role, curren
 		return nil, ErrEmailRequired
 	}
 	if role == "" {
-		role = "USER"
+		role = store.RoleLimited
 	}
-	if role != "USER" && role != "ADMIN" {
+	if !store.ValidRole(role) {
 		return nil, ErrInvalidRole
 	}
 	if _, err := s.Store.GetUserByEmail(ctx, email); err == nil {
 		return nil, ErrEmailTaken
-	} else if !errors.Is(err, store.ErrNotFound) {
+	} else if !errors.Is(err, store.ErrNotFound) { // cov:ignore store-fault: needs a failing database
 		return nil, err
 	}
 	u := &store.User{
@@ -49,7 +50,7 @@ func (s *Service) AdminCreateUser(ctx context.Context, name, email, role, curren
 			return nil, ErrPasswordTooShort
 		}
 		hash, err := auth.HashPassword(password)
-		if err != nil {
+		if err != nil { // cov:ignore impossible: HashPassword fails only if crypto/rand does
 			return nil, err
 		}
 		u.PasswordHash = sql.NullString{String: hash, Valid: true}
@@ -64,10 +65,10 @@ func (s *Service) AdminSetPassword(ctx context.Context, userID int64, password s
 		return ErrPasswordTooShort
 	}
 	hash, err := auth.HashPassword(password)
-	if err != nil {
+	if err != nil { // cov:ignore impossible: HashPassword fails only if crypto/rand does
 		return err
 	}
-	if err := s.Store.SetPassword(ctx, userID, hash); err != nil {
+	if err := s.Store.SetPassword(ctx, userID, hash); err != nil { // cov:ignore store-fault: needs a failing database
 		return err
 	}
 	return s.Store.DeleteUserSessions(ctx, userID)

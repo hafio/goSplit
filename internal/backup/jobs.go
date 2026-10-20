@@ -83,7 +83,7 @@ func NewJobTracker() *JobTracker {
 // abort the work immediately.
 func (t *JobTracker) Start(actingUserID int64, fn func(context.Context) (JobStatus, error)) (string, error) {
 	token, err := newToken()
-	if err != nil {
+	if err != nil { // cov:ignore impossible: newToken fails only if crypto/rand does
 		return "", err
 	}
 	now := time.Now()
@@ -97,7 +97,7 @@ func (t *JobTracker) Start(actingUserID int64, fn func(context.Context) (JobStat
 		t.mu.Lock()
 		defer t.mu.Unlock()
 		cur := t.jobs[token]
-		if cur == nil {
+		if cur == nil { // cov:ignore race: Prune dropped the job while it was still running
 			return
 		}
 		st.CreatedAt = cur.CreatedAt
@@ -107,7 +107,7 @@ func (t *JobTracker) Start(actingUserID int64, fn func(context.Context) (JobStat
 			st.State = JobError
 			st.Err = sanitizeErr(err)
 			slog.Error("backup: job failed", "err", st.Err)
-		} else if st.State == "" {
+		} else if st.State == "" { // cov:ignore defensive: every job function sets its own state
 			st.State = JobDone
 		}
 		t.jobs[token] = &st
@@ -130,7 +130,7 @@ func (t *JobTracker) Status(token string) (JobStatus, bool) {
 // its token.
 func (t *JobTracker) StagePending(v *Validated, path string, actingUserID int64) (string, error) {
 	token, err := newToken()
-	if err != nil {
+	if err != nil { // cov:ignore impossible: newToken fails only if crypto/rand does
 		return "", err
 	}
 	t.mu.Lock()
@@ -205,7 +205,7 @@ func (t *JobTracker) DiscardPending(token string) {
 // table and so destroys the caller's own session row mid-flight.
 func newToken() (string, error) {
 	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
+	if _, err := rand.Read(b); err != nil { // cov:ignore impossible: crypto/rand cannot fail since Go 1.24
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
@@ -244,7 +244,7 @@ func removeQuietly(path string) {
 	if path == "" {
 		return
 	}
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) { // cov:ignore log-only: a temporary file that cannot be removed
 		slog.Warn("backup: could not remove temporary file", "path", path, "err", err)
 	}
 }

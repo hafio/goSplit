@@ -139,7 +139,7 @@ func (m *Manager) RequireAdmin(next http.Handler) http.Handler {
 // SetSession creates a session row and writes the session cookie.
 func (m *Manager) SetSession(w http.ResponseWriter, r *http.Request, userID int64) error {
 	token := RandomToken(32)
-	if _, err := m.Store.CreateSession(r.Context(), token, userID, SessionTTL); err != nil {
+	if _, err := m.Store.CreateSession(r.Context(), token, userID, SessionTTL); err != nil { // cov:ignore store-fault: creating the session row fails only on a broken database
 		return err
 	}
 	http.SetCookie(w, &http.Cookie{

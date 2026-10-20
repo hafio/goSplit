@@ -23,7 +23,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.renderErr(w, r, "login", "title.sign_in", nil, http.StatusUnauthorized, err.Error())
 		return
 	}
-	if err := s.Auth.SetSession(w, r, u.ID); err != nil {
+	if err := s.Auth.SetSession(w, r, u.ID); err != nil { // cov:ignore store-fault: creating the session row fails only on a broken database
 		s.renderErr(w, r, "login", "title.sign_in", nil, http.StatusInternalServerError, s.tr(r, "err.session_start"))
 		return
 	}
@@ -31,7 +31,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRegisterPage(w http.ResponseWriter, r *http.Request) {
-	if s.Cfg.DisableEmailSignup {
+	if s.Cfg.DisableEmailSignup { // cov:ignore pass-through: the service refusal is tested in internal/service
 		vd := s.vdPage(w, r, "msg.signup_disabled_title", s.tr(r, "msg.signup_disabled"))
 		s.Renderer.Render(w, http.StatusForbidden, "message", vd)
 		return
@@ -47,7 +47,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		s.renderErr(w, r, "register", "title.create_account", nil, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.Auth.SetSession(w, r, u.ID); err != nil {
+	if err := s.Auth.SetSession(w, r, u.ID); err != nil { // cov:ignore store-fault: creating the session row fails only on a broken database
 		s.renderErr(w, r, "register", "title.create_account", nil, http.StatusInternalServerError, s.tr(r, "err.session_start"))
 		return
 	}
@@ -107,7 +107,7 @@ func (s *Server) handleMagicConsume(w http.ResponseWriter, r *http.Request) {
 		s.Renderer.Render(w, http.StatusBadRequest, "message", vd)
 		return
 	}
-	if err := s.Auth.SetSession(w, r, u.ID); err != nil {
+	if err := s.Auth.SetSession(w, r, u.ID); err != nil { // cov:ignore store-fault: creating the session row fails only on a broken database
 		http.Error(w, "could not start session", http.StatusInternalServerError)
 		return
 	}

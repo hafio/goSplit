@@ -231,7 +231,10 @@ func TestPollableCoversListPagesOnly(t *testing.T) {
 			t.Errorf("%s should be pollable", page)
 		}
 	}
-	for _, page := range []string{"expense_form", "convert", "settle_group", "collapse", "profile", "admin", "import", "bank", "login", "register", ""} {
+	// admin_activity swaps its feed region but is never polled: each poll would
+	// re-run an all-users query.
+	for _, page := range []string{"expense_form", "convert", "settle_group", "collapse", "profile", "admin",
+		"admin_activity", "admin_groups", "import", "bank", "login", "register", ""} {
 		if pollable(page) {
 			t.Errorf("%s must not be pollable", page)
 		}

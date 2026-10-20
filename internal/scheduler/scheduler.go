@@ -104,25 +104,25 @@ func (s *Scheduler) tick(ctx context.Context) {
 		return
 	}
 
-	if n, err := s.Svc.GenerateDueRecurrences(ctx); err != nil {
+	if n, err := s.Svc.GenerateDueRecurrences(ctx); err != nil { // cov:ignore log-only: the next tick tries again
 		slog.Warn("scheduler: recurrence generation", "err", err)
 	} else if n > 0 {
 		slog.Info("scheduler: generated recurring expenses", "count", n)
 	}
 
-	if err := st.DeleteExpiredSessions(ctx); err != nil {
+	if err := st.DeleteExpiredSessions(ctx); err != nil { // cov:ignore log-only: the next tick tries again
 		slog.Warn("scheduler: session cleanup", "err", err)
 	}
-	if err := st.DeleteExpiredTokens(ctx); err != nil {
+	if err := st.DeleteExpiredTokens(ctx); err != nil { // cov:ignore log-only: the next tick tries again
 		slog.Warn("scheduler: token cleanup", "err", err)
 	}
 	cutoff := time.Now().UTC().Add(-s.Svc.Config.CacheRetentionInterval).Format("2006-01-02")
-	if err := st.DeleteRatesBefore(ctx, cutoff); err != nil {
+	if err := st.DeleteRatesBefore(ctx, cutoff); err != nil { // cov:ignore log-only: the next tick tries again
 		slog.Warn("scheduler: rate cache cleanup", "err", err)
 	}
 	if err := st.DeleteNotificationsBefore(ctx,
 		store.FromNow(-readNotificationTTL), store.FromNow(-unreadNotificationTTL)); err != nil {
-		slog.Warn("scheduler: notification cleanup", "err", err)
+		slog.Warn("scheduler: notification cleanup", "err", err) // cov:ignore log-only: the next tick tries again
 	}
 
 	s.maybeBackup(ctx)
@@ -166,7 +166,7 @@ func (s *Scheduler) runBackup(ctx context.Context) {
 	}
 
 	leader, err := st.AcquireLock(ctx, backupLockID, holder, backupLockTTL)
-	if err != nil {
+	if err != nil { // cov:ignore log-only: the next tick tries again
 		slog.Warn("scheduler: backup lock error", "err", err)
 		return
 	}
@@ -186,9 +186,9 @@ func (s *Scheduler) runBackup(ctx context.Context) {
 			select {
 			case <-done:
 				return
-			case <-ctx.Done():
+			case <-ctx.Done(): // cov:ignore env: the lock heartbeat fires every 3m20s
 				return
-			case <-t.C:
+			case <-t.C: // cov:ignore env: the lock heartbeat fires every 3m20s
 				if _, err := st.AcquireLock(ctx, backupLockID, holder, backupLockTTL); err != nil {
 					slog.Warn("scheduler: backup lock renewal failed", "err", err)
 				}
@@ -209,14 +209,14 @@ func (s *Scheduler) runBackup(ctx context.Context) {
 		"uploads", man.UploadFileCount,
 		"took", time.Since(start).Round(time.Millisecond))
 
-	if n, err := backup.PruneOldArchives(cfg.BackupDir, backup.ArchivePrefix, cfg.BackupRetentionCount); err != nil {
+	if n, err := backup.PruneOldArchives(cfg.BackupDir, backup.ArchivePrefix, cfg.BackupRetentionCount); err != nil { // cov:ignore log-only: the next backup prunes again
 		slog.Warn("scheduler: pruning old archives", "removed", n, "err", err)
 	} else if n > 0 {
 		slog.Info("scheduler: pruned old archives", "removed", n, "kept", cfg.BackupRetentionCount)
 	}
 	// Pre-restore safety dumps are retained on the same count, so a series of
 	// restores cannot fill the volume.
-	if _, err := backup.PruneOldArchives(cfg.BackupDir, backup.SafetyDumpPrefix, cfg.BackupRetentionCount); err != nil {
+	if _, err := backup.PruneOldArchives(cfg.BackupDir, backup.SafetyDumpPrefix, cfg.BackupRetentionCount); err != nil { // cov:ignore log-only: the next backup prunes again
 		slog.Warn("scheduler: pruning old safety dumps", "err", err)
 	}
 }

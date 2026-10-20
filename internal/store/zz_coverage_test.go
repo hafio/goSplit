@@ -1087,6 +1087,19 @@ func TestCovModelFlags(t *testing.T) {
 	if (&User{Role: "USER"}).IsAdmin() {
 		t.Error("USER should not be admin")
 	}
+	// Only USER and ADMIN may create groups; LIMITED and anything unknown fail
+	// closed. ValidRole is the set the admin forms accept.
+	for role, want := range map[string]struct{ create, valid bool }{
+		RoleUser: {true, true}, RoleAdmin: {true, true}, RoleLimited: {false, true},
+		"": {false, false}, "SUPER": {false, false}, "limited": {false, false},
+	} {
+		if got := (&User{Role: role}).CanCreateGroups(); got != want.create {
+			t.Errorf("CanCreateGroups(%q) = %v, want %v", role, got, want.create)
+		}
+		if got := ValidRole(role); got != want.valid {
+			t.Errorf("ValidRole(%q) = %v, want %v", role, got, want.valid)
+		}
+	}
 	if !(&User{}).IsActive() {
 		t.Error("user without deactivated_at should be active")
 	}

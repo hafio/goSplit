@@ -42,7 +42,7 @@ func RecoverIncompleteSwap(cfg *config.Config) error {
 
 	if stagingExists && !oldExists {
 		// Pre-commit crash, or a validated restore that was never confirmed.
-		if err := os.RemoveAll(staging); err != nil {
+		if err := os.RemoveAll(staging); err != nil { // cov:ignore io-fault: needs a failing filesystem
 			return fmt.Errorf("backup: remove stale upload staging directory %s: %w", staging, err)
 		}
 	}
@@ -53,14 +53,14 @@ func RecoverIncompleteSwap(cfg *config.Config) error {
 
 	if liveExists {
 		// The swap completed; only the cleanup was interrupted.
-		if err := os.RemoveAll(old); err != nil {
+		if err := os.RemoveAll(old); err != nil { // cov:ignore io-fault: needs a failing filesystem
 			return fmt.Errorf("backup: remove leftover upload directory %s: %w", old, err)
 		}
 		return nil
 	}
 
 	// Interrupted between the two renames.
-	if err := os.Rename(old, live); err != nil {
+	if err := os.Rename(old, live); err != nil { // cov:ignore io-fault: needs a failing filesystem
 		return fmt.Errorf("backup: a restore was interrupted while swapping the upload directory, and %s could not be moved back to %s: %w -- restore the uploads by hand before starting again", old, live, err)
 	}
 	_ = os.RemoveAll(staging)

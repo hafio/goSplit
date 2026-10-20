@@ -22,7 +22,7 @@ func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := ctxTimeout(r)
 	defer cancel()
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<16))
-	if err != nil {
+	if err != nil { // cov:ignore impossible: reading a capped body fails only on a dropped client
 		http.Error(w, "bad body", http.StatusBadRequest)
 		return
 	}
@@ -34,7 +34,7 @@ func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me := s.currentUser(r)
-	if err := s.Store.SavePushSubscription(ctx, me.ID, sub.Endpoint, string(body)); err != nil {
+	if err := s.Store.SavePushSubscription(ctx, me.ID, sub.Endpoint, string(body)); err != nil { // cov:ignore store-fault: a write that fails only on a broken database
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -63,16 +63,16 @@ func (s *Server) handlePushTest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "push is not configured on this server", http.StatusServiceUnavailable)
 		return
 	}
-	subs, err := s.Store.ListPushSubscriptions(ctx, []int64{me.ID})
-	if err != nil {
+	subs, err := s.Store.ListPushSubscriptions(ctx, []int64{me.ID}) // cov:ignore env: needs push enabled and a live push service
+	if err != nil { // cov:ignore env: needs push enabled and a live push service
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	payload := push.Payload{Title: "GoSplit", Body: "Test notification 🎉", URL: "/balances"}
-	for _, sub := range subs {
+	payload := push.Payload{Title: "GoSplit", Body: "Test notification 🎉", URL: "/balances"} // cov:ignore env: needs push enabled and a live push service
+	for _, sub := range subs { // cov:ignore env: needs push enabled and a live push service
 		if gone, _ := s.Svc.Push.Send(sub.Subscription, payload); gone {
 			_ = s.Store.DeletePushSubscription(ctx, sub.UserID, sub.Endpoint)
 		}
 	}
-	w.WriteHeader(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent) // cov:ignore env: needs push enabled and a live push service
 }

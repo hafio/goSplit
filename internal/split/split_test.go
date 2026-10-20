@@ -176,6 +176,8 @@ func TestErrors(t *testing.T) {
 		{"share zero sum", SHARE, 100, []Line{{UserID: 1, ShareUnits: 0}, {UserID: 2, ShareUnits: 0}}, ErrShareUnits},
 		{"share negative", SHARE, 100, []Line{{UserID: 1, ShareUnits: -1}, {UserID: 2, ShareUnits: 2}}, ErrShareUnits},
 		{"unknown method", Method("BOGUS"), 100, []Line{{UserID: 1}}, ErrUnknownMethod},
+		// A netting entry is built directly; Compute must never produce one.
+		{"netting is not a split", NETTING, 100, []Line{{UserID: 1}, {UserID: 2}}, ErrUnknownMethod},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -246,7 +248,7 @@ func assertZeroSum(t *testing.T, m Method, total int64, lines []Line) {
 
 func TestDefaultSplitAllowed(t *testing.T) {
 	allowed := []Method{EQUAL, PERCENTAGE, SHARE}
-	denied := []Method{EXACT, ADJUSTMENT, SETTLEMENT, CURRENCY_CONVERSION}
+	denied := []Method{EXACT, ADJUSTMENT, SETTLEMENT, CURRENCY_CONVERSION, NETTING}
 	for _, m := range allowed {
 		if !DefaultSplitAllowed(m) {
 			t.Errorf("%s should be allowed for default splits", m)

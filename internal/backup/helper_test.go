@@ -98,7 +98,7 @@ func seedEverything(t *testing.T, st *store.Store) {
 		hidden_friend_ids, created_at, theme_color, email_expense_notify)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		2, "", "bob@example.com", nil, nil, nil,
-		"EUR", "EUR", "de", "USER", "2026-02-02T00:00:00.000Z", nil,
+		"EUR", "EUR", "de", "LIMITED", "2026-02-02T00:00:00.000Z", nil,
 		`[]`, "2026-01-02T00:00:00.000Z", "burgundy", false)
 
 	// One group with simplify_debts true, one false.

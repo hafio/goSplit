@@ -148,7 +148,7 @@ func decodeB64(field, v string, want int) ([]byte, error) {
 // validate checks the header's self-consistency before it is trusted for key
 // derivation. It does not touch the payload.
 func (h Header) validate() error {
-	if h.FormatVersion != FormatVersion {
+	if h.FormatVersion != FormatVersion { // cov:ignore redundant: the prefix byte rejects other format versions first
 		return fmt.Errorf("backup: archive format version %d is not supported by this build (which reads version %d); restore it with the build that wrote it", h.FormatVersion, FormatVersion)
 	}
 	if h.KDFAlgo != "scrypt" {
@@ -186,20 +186,20 @@ func (h Header) validate() error {
 // associated data.
 func WriteHeader(w io.Writer, h Header) ([]byte, error) {
 	raw, err := json.Marshal(h)
-	if err != nil {
+	if err != nil { // cov:ignore impossible: marshals a fixed struct
 		return nil, fmt.Errorf("backup: encode header: %w", err)
 	}
-	if len(raw) > maxHeaderLen {
+	if len(raw) > maxHeaderLen { // cov:ignore impossible: a header over 1 MiB needs ~17k migrations
 		return nil, fmt.Errorf("backup: header of %d bytes exceeds the %d-byte limit", len(raw), maxHeaderLen)
 	}
 	var prefix [8 + 1 + 4]byte
 	copy(prefix[:8], magic)
 	prefix[8] = FormatVersion
 	binary.BigEndian.PutUint32(prefix[9:], uint32(len(raw)))
-	if _, err := w.Write(prefix[:]); err != nil {
+	if _, err := w.Write(prefix[:]); err != nil { // cov:ignore io-fault: needs a failing writer
 		return nil, fmt.Errorf("backup: write header prefix: %w", err)
 	}
-	if _, err := w.Write(raw); err != nil {
+	if _, err := w.Write(raw); err != nil { // cov:ignore io-fault: needs a failing writer
 		return nil, fmt.Errorf("backup: write header: %w", err)
 	}
 	return raw, nil
@@ -224,7 +224,7 @@ func ReadHeader(r io.Reader) (Header, []byte, io.Reader, error) {
 		return Header{}, nil, nil, fmt.Errorf("backup: archive header declares an out-of-range length of %d bytes", n)
 	}
 	raw := make([]byte, n)
-	if _, err := io.ReadFull(r, raw); err != nil {
+	if _, err := io.ReadFull(r, raw); err != nil { // cov:ignore io-fault: a header cut short; truncation is tested in crypto_test
 		return Header{}, nil, nil, fmt.Errorf("backup: read archive header: %w", err)
 	}
 	var h Header
@@ -233,7 +233,7 @@ func ReadHeader(r io.Reader) (Header, []byte, io.Reader, error) {
 	if err := dec.Decode(&h); err != nil {
 		return Header{}, nil, nil, fmt.Errorf("backup: archive header is not valid: %w", err)
 	}
-	if err := h.validate(); err != nil {
+	if err := h.validate(); err != nil { // cov:ignore pass-through: validate is tested in container_test
 		return Header{}, nil, nil, err
 	}
 	return h, raw, r, nil

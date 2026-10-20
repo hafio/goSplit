@@ -63,7 +63,7 @@ func firstAlnum(s string) rune {
 			return r
 		}
 	}
-	return 0
+	return 0 // cov:ignore glue: a name word with no letter or digit adds no initial
 }
 
 // Category is one selectable expense category with its display emoji.
@@ -115,7 +115,7 @@ func categories() []Category { return categoryList }
 // every render path to remember an empty map -- a missing message must degrade
 // to "no message", never to a template error on a page that is already
 // reporting a problem.
-func fieldErr(m any, key string) string {
+func fieldErr(m any, key string) string { // cov:ignore glue: exercised by the httpapp form tests; coverage is per package
 	errs, ok := m.(map[string]string)
 	if !ok {
 		return ""

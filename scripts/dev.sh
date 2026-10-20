@@ -98,10 +98,13 @@ task_vet() { run vet go vet ./...; }
 task_test() { run test go test ./... -count=1; }
 
 task_cov() {
-  local prof="$LOG_DIR/coverage.out" html="$LOG_DIR/coverage.html"
+  local raw="$LOG_DIR/coverage.raw.out" prof="$LOG_DIR/coverage.out" html="$LOG_DIR/coverage.html"
   # -p 1 serializes package test binaries: on Windows, parallel runs race to
   # exec the shared covdata.exe and hit "file in use" locks (often Defender).
-  run cov go test -covermode=atomic -coverprofile="$prof" -p 1 -count=1 ./... || return $?
+  run cov go test -covermode=atomic -coverprofile="$raw" -p 1 -count=1 ./... || return $?
+  # Drop the code marked cov:ignore (docs/development.md, Testing). It prints
+  # the total before exclusions and what it removed, so neither goes unseen.
+  run cov go run ./scripts/covfilter -in="$raw" -out="$prof" || return $?
   run cov go tool cover -html="$prof" -o "$html" || return $?
   # The printed total is the floor for the next run; logs/cov.log keeps it.
   go tool cover -func="$prof" | tail -1 | tee -a "$LOG_DIR/cov.log"

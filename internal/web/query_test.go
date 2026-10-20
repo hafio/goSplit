@@ -22,4 +22,13 @@ func TestQueryWithout(t *testing.T) {
 	if got := queryWithout(map[string]string{"scope": "all"}, "/activity", "q"); got != "/activity" {
 		t.Errorf("empty = %q", got)
 	}
+	// The admin feed's user and group survive dropping another key, and drop on
+	// their own.
+	f3 := map[string]string{"q": "taxi", "user": "2", "group": "5"}
+	if got := queryWithout(f3, "/admin/activity", "q"); got != "/admin/activity?group=5&user=2" {
+		t.Errorf("drop q keeps user/group = %q", got)
+	}
+	if got := queryWithout(f3, "/admin/activity", "user"); got != "/admin/activity?group=5&q=taxi" {
+		t.Errorf("drop user = %q", got)
+	}
 }

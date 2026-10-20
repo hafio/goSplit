@@ -75,7 +75,7 @@ func EncodeInputs(m Method, lines []Line) (string, error) {
 		vals[strconv.FormatInt(l.UserID, 10)] = l.Input(m)
 	}
 	b, err := json.Marshal(Inputs{Version: InputsVersion, Method: m, Values: vals})
-	if err != nil {
+	if err != nil { // cov:ignore impossible: marshals a fixed struct
 		return "", err
 	}
 	return string(b), nil

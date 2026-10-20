@@ -317,6 +317,21 @@ func TestGroupSettleAllMinimizesAndZeroes(t *testing.T) {
 			if got := settlementGroups(t, h); len(got) != 1 {
 				t.Fatalf("%d settlements recorded, want exactly 1 (min-cash-flow set)", len(got))
 			}
+			// Paying Alice -> Carol alone would leave Alice owing Bob and Bob owing
+			// Carol pairwise; the settle-up rewires them with three netting
+			// entries, so every pairwise view reads settled too.
+			if n := countOf(t, h, `SELECT COUNT(*) FROM expenses WHERE split_type = 'NETTING'`); n != 3 {
+				t.Errorf("%d netting entries after the settle-up, want 3", n)
+			}
+			if b := body(t, h.get("/balances")); !strings.Contains(b, `class="empty"`) || strings.Contains(b, `class="l-row"`) {
+				t.Error("Balances still lists pairwise debts after the whole group settled")
+			}
+			if b := body(t, h.get("/friends/2")); !strings.Contains(b, `<span class="muted">settled up</span>`) {
+				t.Error("Alice's page for Bob does not read settled up")
+			}
+			if b := body(t, h.get("/groups/1")); !strings.Contains(b, "Everyone is settled up.") {
+				t.Error("group page does not read settled up after the settle-up")
+			}
 
 			// Every member now nets to zero, so the whole-group confirmation reports
 			// nothing outstanding — regardless of the display toggle.
@@ -328,6 +343,9 @@ func TestGroupSettleAllMinimizesAndZeroes(t *testing.T) {
 			_ = body(t, h.post("/groups/1/settle", url.Values{"date": {"2026-03-13"}}))
 			if got := settlementGroups(t, h); len(got) != 1 {
 				t.Errorf("second settle-group added rows (%d total), want still 1", len(got))
+			}
+			if n := countOf(t, h, `SELECT COUNT(*) FROM expenses WHERE split_type = 'NETTING'`); n != 3 {
+				t.Errorf("second settle-group changed the netting entries (%d), want still 3", n)
 			}
 		})
 	}

@@ -30,6 +30,11 @@ func (s *Service) CreateRecurrence(ctx context.Context, actor int64, templateExp
 	if tmpl.SplitType == "CURRENCY_CONVERSION" || tmpl.ConversionToID.Valid {
 		return nil, errors.New("currency-conversion expenses cannot recur")
 	}
+	// A history collapse or a netting entry carries rows that only balance
+	// together with others; cloning one on a schedule would corrupt balances.
+	if tmpl.SplitType == string(split.ARCHIVE) || Immutable(tmpl) {
+		return nil, errors.New("automatic entries (history collapses, simplified group debts) cannot recur")
+	}
 	next := sched.Next(time.Now().UTC())
 	jobName := fmt.Sprintf("rec-%s-%d", templateExpenseID, time.Now().UTC().UnixNano())
 	return s.Store.CreateRecurrence(ctx, &store.ExpenseRecurrence{
@@ -57,7 +62,7 @@ func (s *Service) DeleteRecurrence(ctx context.Context, id, userID int64) error 
 func (s *Service) GenerateDueRecurrences(ctx context.Context) (int, error) {
 	now := time.Now().UTC()
 	due, err := s.Store.ListDueRecurrences(ctx, toISO(now))
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return 0, err
 	}
 	count := 0
@@ -73,7 +78,7 @@ func (s *Service) GenerateDueRecurrences(ctx context.Context) (int, error) {
 		} else {
 			count++
 		}
-		if err := s.Store.AdvanceRecurrence(ctx, rec.ID, toISO(sched.Next(now))); err != nil {
+		if err := s.Store.AdvanceRecurrence(ctx, rec.ID, toISO(sched.Next(now))); err != nil { // cov:ignore store-fault: needs a failing database
 			return count, err
 		}
 	}
@@ -95,11 +100,17 @@ func (s *Service) GenerateDueRecurrences(ctx context.Context) (int, error) {
 // are already the zero-sum stored amounts).
 func (s *Service) generateOne(ctx context.Context, rec *store.ExpenseRecurrence) error {
 	tmpl, err := s.Store.GetExpense(ctx, rec.TemplateExpenseID)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return err
 	}
+	// CreateRecurrence refuses these templates now, but a recurrence scheduled
+	// before it did must not keep cloning a history collapse or a netting entry.
+	if tmpl.SplitType == string(split.ARCHIVE) || Immutable(tmpl) {
+		slog.Warn("recurrence skipped: its template is an automatic entry", "recurrence", rec.ID, "template", tmpl.ID)
+		return errors.New("automatic entries (history collapses, simplified group debts) cannot recur")
+	}
 	parts, err := s.Store.GetParticipants(ctx, tmpl.ID)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return err
 	}
 	date := todayISO()
@@ -114,7 +125,7 @@ func (s *Service) generateOne(ctx context.Context, rec *store.ExpenseRecurrence)
 			}
 		}
 		recomputed, cErr := split.Compute(method, tmpl.Amount, tmpl.PaidBy, date, lines)
-		if cErr != nil {
+		if cErr != nil { // cov:ignore pass-through: falls back to the stored split, tested via generateOne
 			// The template's inputs no longer produce a valid split (a
 			// participant left, say). Fall back to copying its rows rather than
 			// skipping the occurrence entirely.
@@ -133,11 +144,16 @@ func (s *Service) generateOne(ctx context.Context, rec *store.ExpenseRecurrence)
 		RecurrenceID: sql.NullInt64{Int64: rec.ID, Valid: true},
 	}
 	created, err := s.Store.CreateExpense(ctx, e, parts)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return err
 	}
 	if ok {
 		_ = s.Store.PutSplitInputs(ctx, created.ID, payload)
+	}
+	// A recurring group settlement is a settlement like any other: rewire the
+	// group's pairs the way Settle does.
+	if created.SplitType == string(split.SETTLEMENT) && created.GroupID.Valid {
+		s.renetIfSimplified(ctx, created.GroupID.Int64, created.ExpenseDate, rec.CreatedBy, created.ID)
 	}
 	return nil
 }

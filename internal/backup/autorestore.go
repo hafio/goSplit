@@ -73,12 +73,12 @@ func CheckAutoRestore(ctx context.Context, st *store.Store, cfg *config.Config) 
 	// Prove the marker can be written BEFORE restoring. Without this probe a
 	// read-only directory would mean a successful restore is never recorded,
 	// and the instance would wipe and re-restore on every single restart.
-	if err := EnsureWritableDir(dir, "AUTO_RESTORE_DIR"); err != nil {
+	if err := EnsureWritableDir(dir, "AUTO_RESTORE_DIR"); err != nil { // cov:ignore redundant: the safety dump into the same directory fails first
 		return fmt.Errorf("auto-restore: %s holds %s but the marker file cannot be written there: %w -- a restore would repeat on every restart, so it was not attempted. Make the directory writable, or unset AUTO_RESTORE_DIR, then restart", dir, filepath.Base(archive), err)
 	}
 
 	leader, release, err := acquireWithRenewal(ctx, st, autoRestoreLockID, autoRestoreLockTTL)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing scheduler_locks table
 		return fmt.Errorf("auto-restore: cannot take the %q lock: %w", autoRestoreLockID, err)
 	}
 	if !leader {
@@ -104,7 +104,7 @@ func CheckAutoRestore(ctx context.Context, st *store.Store, cfg *config.Config) 
 		return fmt.Errorf("auto-restore: restoring %s failed: %w -- the transaction was rolled back, so the database is unchanged. Remove %s from %s, or unset AUTO_RESTORE_DIR, then restart", filepath.Base(archive), err, filepath.Base(archive), dir)
 	}
 
-	if err := writeMarker(marker, archive, rep); err != nil {
+	if err := writeMarker(marker, archive, rep); err != nil { // cov:ignore io-fault: the directory was probed writable just before
 		// The restore succeeded but is unrecorded, so the next restart would
 		// wipe the freshly restored data and do it all again. Refusing to
 		// serve is the safer end of that trade.
@@ -189,7 +189,7 @@ func acquireWithRenewal(ctx context.Context, st *store.Store, id string, ttl tim
 	holder = fmt.Sprintf("%s-%d", holder, os.Getpid())
 
 	leader, err := st.AcquireLock(ctx, id, holder, ttl)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing scheduler_locks table
 		return false, nil, err
 	}
 	if !leader {
@@ -197,7 +197,7 @@ func acquireWithRenewal(ctx context.Context, st *store.Store, id string, ttl tim
 	}
 
 	done := make(chan struct{})
-	go func() {
+	go func() { // cov:ignore env: renews every ttl/3; only a restore that slow reaches it
 		t := time.NewTicker(ttl / 3)
 		defer t.Stop()
 		for {

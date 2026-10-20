@@ -4,7 +4,11 @@
 # --platform=$BUILDPLATFORM pins the compiler to the native architecture and
 # cross-compiles via GOARCH, so the linux/arm64 leg of a multi-arch build is
 # not compiled wholly under QEMU emulation.
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
+# Patch tag plus digest: a floating tag let a cached or re-pulled base build
+# with a different toolchain than go.mod pins (the golang image sets
+# GOTOOLCHAIN=local, so the go.mod toolchain line is not honoured here). Bump
+# both together with go.mod.
+FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS build
 WORKDIR /src
 
 # Both tag.yml and `dev.sh image` pass VERSION directly, so the `git describe`

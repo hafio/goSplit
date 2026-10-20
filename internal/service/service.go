@@ -43,7 +43,7 @@ func New(s *store.Store, m mail.Mailer, cfg *config.Config) *Service {
 	// localize a notification is still a service that can record one -- so warn
 	// and degrade rather than refuse to start.
 	bundle, err := i18n.Load()
-	if err != nil {
+	if err != nil { // cov:ignore impossible: the locales are embedded and tested in internal/i18n
 		slog.Warn("service: load locales, notification text falls back to keys", "err", err)
 	}
 	return &Service{

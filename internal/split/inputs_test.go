@@ -61,7 +61,7 @@ func TestUserSelectable(t *testing.T) {
 			t.Errorf("%s should be user-selectable", m)
 		}
 	}
-	for _, m := range []Method{SETTLEMENT, CURRENCY_CONVERSION, ARCHIVE, Method("")} {
+	for _, m := range []Method{SETTLEMENT, CURRENCY_CONVERSION, ARCHIVE, NETTING, Method("")} {
 		if UserSelectable(m) {
 			t.Errorf("%s should not be user-selectable", m)
 		}
@@ -91,7 +91,7 @@ func TestEncodeDecodeInputs(t *testing.T) {
 // TestEncodeInputsSkipsSystemMethods: SETTLEMENT and friends never run through
 // Compute, so there is nothing to record for them.
 func TestEncodeInputsSkipsSystemMethods(t *testing.T) {
-	for _, m := range []Method{SETTLEMENT, CURRENCY_CONVERSION, ARCHIVE} {
+	for _, m := range []Method{SETTLEMENT, CURRENCY_CONVERSION, ARCHIVE, NETTING} {
 		if p, err := EncodeInputs(m, []Line{{UserID: 1}}); err != nil || p != "" {
 			t.Errorf("%s: payload = %q, err = %v; want empty", m, p, err)
 		}

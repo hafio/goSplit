@@ -413,27 +413,27 @@ var tables = []Table{
 var byName = func() map[string]Table {
 	m := make(map[string]Table, len(tables))
 	for _, t := range tables {
-		if _, dup := m[t.Name]; dup {
+		if _, dup := m[t.Name]; dup { // cov:ignore impossible: a bad registry edit panics at init in every test
 			panic(fmt.Sprintf("backup: duplicate table %q in registry", t.Name))
 		}
-		if !isBareIdent(t.Name) {
+		if !isBareIdent(t.Name) { // cov:ignore impossible: a bad registry edit panics at init in every test
 			panic(fmt.Sprintf("backup: table name %q is not a bare identifier", t.Name))
 		}
-		if t.Sequence != "" && !isBareIdent(t.Sequence) {
+		if t.Sequence != "" && !isBareIdent(t.Sequence) { // cov:ignore impossible: a bad registry edit panics at init in every test
 			panic(fmt.Sprintf("backup: sequence name %q is not a bare identifier", t.Sequence))
 		}
-		if len(t.Columns) == 0 {
+		if len(t.Columns) == 0 { // cov:ignore impossible: a bad registry edit panics at init in every test
 			panic(fmt.Sprintf("backup: table %q has no columns", t.Name))
 		}
-		if t.PKLen < 1 || t.PKLen > len(t.Columns) {
+		if t.PKLen < 1 || t.PKLen > len(t.Columns) { // cov:ignore impossible: a bad registry edit panics at init in every test
 			panic(fmt.Sprintf("backup: table %q declares PKLen %d, which is not within its %d columns", t.Name, t.PKLen, len(t.Columns)))
 		}
 		seen := make(map[string]bool, len(t.Columns))
 		for _, c := range t.Columns {
-			if seen[c.Name] {
+			if seen[c.Name] { // cov:ignore impossible: a bad registry edit panics at init in every test
 				panic(fmt.Sprintf("backup: duplicate column %q in table %q", c.Name, t.Name))
 			}
-			if !isBareIdent(c.Name) {
+			if !isBareIdent(c.Name) { // cov:ignore impossible: a bad registry edit panics at init in every test
 				panic(fmt.Sprintf("backup: column name %q in table %q is not a bare identifier", c.Name, t.Name))
 			}
 			seen[c.Name] = true

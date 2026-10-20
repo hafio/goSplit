@@ -21,8 +21,8 @@ import (
 )
 
 // Method enumerates the split types. EQUAL, PERCENTAGE, EXACT, SHARE and
-// ADJUSTMENT are user-selectable; SETTLEMENT and CURRENCY_CONVERSION are system
-// methods handled elsewhere (they do not go through Compute).
+// ADJUSTMENT are user-selectable; SETTLEMENT, CURRENCY_CONVERSION, ARCHIVE and
+// NETTING are system methods handled elsewhere (they do not go through Compute).
 type Method string
 
 const (
@@ -37,6 +37,11 @@ const (
 	// collapse feature; its participant rows carry the net of the rows it
 	// replaced. System method, not user-selectable, does not go through Compute.
 	ARCHIVE Method = "ARCHIVE"
+	// NETTING marks an automatic "Group debts simplified" entry: two rows that
+	// move one pair's balance inside a group so the pair matches the group's
+	// simplified debts after a settlement. Each set of them nets to zero for
+	// every person. System method, immutable, does not go through Compute.
+	NETTING Method = "NETTING"
 )
 
 // BasisPointsFull is 100% expressed in basis points (used by PERCENTAGE).
@@ -69,7 +74,7 @@ var (
 )
 
 // UserSelectable reports whether a method is one a user picks on the expense
-// form. The system methods (SETTLEMENT, CURRENCY_CONVERSION, ARCHIVE) build
+// form. The system methods (SETTLEMENT, CURRENCY_CONVERSION, ARCHIVE, NETTING) build
 // their participant rows directly and never reach Compute, so they carry no
 // per-participant inputs to record or restore.
 func UserSelectable(m Method) bool {

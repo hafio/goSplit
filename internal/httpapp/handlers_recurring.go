@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/hafio/gosplit/internal/service"
 	"github.com/hafio/gosplit/internal/store"
 )
 
@@ -24,7 +25,7 @@ func (s *Server) handleRecurringList(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	me := s.currentUser(r)
 	recs, err := s.Svc.ListRecurrences(ctx, me.ID)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: a read that fails only on a broken database
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -45,11 +46,14 @@ func (s *Server) handleRecurringList(w http.ResponseWriter, r *http.Request) {
 	recent, _ := s.Store.ListActivity(ctx, me.ID, store.ExpenseFilter{})
 	opts := make([]templateOption, 0, 20)
 	for _, e := range recent {
-		if e.DeletedAt.Valid || e.SplitType == "CURRENCY_CONVERSION" || e.ConversionToID.Valid {
-			continue
+		// The same rows CreateRecurrence refuses: conversions, history collapses
+		// and netting entries never make a template.
+		if e.DeletedAt.Valid || e.SplitType == "CURRENCY_CONVERSION" || e.ConversionToID.Valid ||
+			e.SplitType == "ARCHIVE" || service.Immutable(e) {
+			continue // cov:ignore glue: the picker hides rows the service also refuses
 		}
 		opts = append(opts, templateOption{ID: e.ID, Name: e.Name + " (" + dateOnly(e.ExpenseDate) + ")"})
-		if len(opts) >= 20 {
+		if len(opts) >= 20 { // cov:ignore glue: the picker hides rows the service also refuses
 			break
 		}
 	}

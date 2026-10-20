@@ -10,7 +10,7 @@ import (
 // cross-engine portability).
 func NewUUID() string {
 	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
+	if _, err := rand.Read(b[:]); err != nil { // cov:ignore impossible: crypto/rand cannot fail since Go 1.24
 		panic("store: crypto/rand failed: " + err.Error())
 	}
 	b[6] = (b[6] & 0x0f) | 0x40 // version 4
@@ -37,7 +37,7 @@ func NewNanoID(n int) string {
 	buf := make([]byte, n)
 	i := 0
 	for i < n {
-		if _, err := rand.Read(buf); err != nil {
+		if _, err := rand.Read(buf); err != nil { // cov:ignore impossible: crypto/rand cannot fail since Go 1.24
 			panic("store: crypto/rand failed: " + err.Error())
 		}
 		for _, c := range buf {

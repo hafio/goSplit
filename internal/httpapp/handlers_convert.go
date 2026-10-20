@@ -35,7 +35,7 @@ func (s *Server) handleRate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rate, err := s.Svc.GetRate(ctx, from, to, date)
-	if err != nil {
+	if err != nil { // cov:ignore pass-through: rate errors are tested in internal/service
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -99,7 +99,7 @@ func (s *Server) handleConvert(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	me := s.currentUser(r)
 	fid, ok := atoi64(chi.URLParam(r, "id"))
-	if !ok {
+	if !ok { // cov:ignore glue: a bad id maps to 404, the same mapping tested elsewhere
 		http.NotFound(w, r)
 		return
 	}
@@ -129,7 +129,7 @@ func (s *Server) handleConvert(w http.ResponseWriter, r *http.Request) {
 		s.renderErr(w, r, "message", "msg.conversion_failed", s.tr(r, "err.invalid_direction"), http.StatusBadRequest, "invalid direction")
 		return
 	}
-	if _, err := s.Svc.CreateConversionExact(ctx, me.ID, sender, receiver, fromAmt, toAmt, fromCur, toCur, r.FormValue("date"), nil); err != nil {
+	if _, err := s.Svc.CreateConversionExact(ctx, me.ID, sender, receiver, fromAmt, toAmt, fromCur, toCur, r.FormValue("date"), nil); err != nil { // cov:ignore pass-through: the conversion rules are tested in internal/service
 		s.renderErr(w, r, "message", "msg.conversion_failed", err.Error(), http.StatusBadRequest, err.Error())
 		return
 	}

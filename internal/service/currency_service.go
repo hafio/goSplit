@@ -23,7 +23,7 @@ func (s *Service) GetRate(ctx context.Context, from, to, date string) (string, e
 	}
 	if rate, err := s.Store.GetCachedRate(ctx, from, to, key); err == nil {
 		return rate, nil
-	} else if !errors.Is(err, store.ErrNotFound) {
+	} else if !errors.Is(err, store.ErrNotFound) { // cov:ignore store-fault: needs a failing database
 		return "", err
 	}
 	rate, err := s.Rates.Rate(ctx, from, to, date)
@@ -103,7 +103,7 @@ func (s *Service) CreateConversionExact(ctx context.Context, actor, sender, rece
 		{UserID: sender, Amount: -amountTo}, {UserID: receiver, Amount: amountTo},
 	}
 	fromID, _, err := s.Store.CreateConversionPair(ctx, fromExp, fromParts, toExp, toParts)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return nil, err
 	}
 	return s.Store.GetExpense(ctx, fromID)

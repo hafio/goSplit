@@ -46,7 +46,7 @@ func (s *Server) handleBankLinkToken(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json") // cov:ignore env: needs a live Plaid provider
 	_ = json.NewEncoder(w).Encode(map[string]string{"linkToken": token})
 }
 
@@ -63,7 +63,7 @@ func (s *Server) handleBankExchange(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent) // cov:ignore env: needs a live Plaid provider
 }
 
 // handleBankSync fetches + caches recent transactions.
@@ -75,7 +75,7 @@ func (s *Server) handleBankSync(w http.ResponseWriter, r *http.Request) {
 		s.renderErr(w, r, "message", "msg.sync_failed", err.Error(), http.StatusBadRequest, err.Error())
 		return
 	}
-	s.redirectFlash(w, r, "/bank", "flash.tx_synced")
+	s.redirectFlash(w, r, "/bank", "flash.tx_synced") // cov:ignore env: needs a live Plaid provider
 }
 
 // handleBankConvert redirects a bank transaction into the prefilled add-expense

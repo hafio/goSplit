@@ -20,7 +20,7 @@ func scanBalances(rows interface {
 	var out []Balance
 	for rows.Next() {
 		var b Balance
-		if err := rows.Scan(&b.UserID, &b.FriendID, &b.GroupID, &b.Currency, &b.Amount); err != nil {
+		if err := rows.Scan(&b.UserID, &b.FriendID, &b.GroupID, &b.Currency, &b.Amount); err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 			return nil, err
 		}
 		out = append(out, b)
@@ -47,7 +47,7 @@ func (s *Store) CumulatedBalances(ctx context.Context, userID int64) ([]Cumulate
 	var out []CumulatedBalance
 	for rows.Next() {
 		var c CumulatedBalance
-		if err := rows.Scan(&c.FriendID, &c.Currency, &c.Amount); err != nil {
+		if err := rows.Scan(&c.FriendID, &c.Currency, &c.Amount); err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 			return nil, err
 		}
 		out = append(out, c)
@@ -72,7 +72,7 @@ func (s *Store) FriendBalance(ctx context.Context, userID, friendID int64) ([]Cu
 	var out []CumulatedBalance
 	for rows.Next() {
 		var c CumulatedBalance
-		if err := rows.Scan(&c.FriendID, &c.Currency, &c.Amount); err != nil {
+		if err := rows.Scan(&c.FriendID, &c.Currency, &c.Amount); err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 			return nil, err
 		}
 		out = append(out, c)
@@ -118,7 +118,27 @@ func (s *Store) GroupMemberCounts(ctx context.Context, userID int64) (map[int64]
 	for rows.Next() {
 		var gid int64
 		var n int
-		if err := rows.Scan(&gid, &n); err != nil {
+		if err := rows.Scan(&gid, &n); err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
+			return nil, err
+		}
+		out[gid] = n
+	}
+	return out, rows.Err()
+}
+
+// AllGroupMemberCounts returns the member count of every group, for the admin
+// console's group list.
+func (s *Store) AllGroupMemberCounts(ctx context.Context) (map[int64]int, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT group_id, COUNT(*) FROM group_users GROUP BY group_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]int{}
+	for rows.Next() {
+		var gid int64
+		var n int
+		if err := rows.Scan(&gid, &n); err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 			return nil, err
 		}
 		out[gid] = n
@@ -142,7 +162,7 @@ func (s *Store) UserGroupNets(ctx context.Context, userID int64) (map[int64]map[
 		var gid int64
 		var cur string
 		var amt int64
-		if err := rows.Scan(&gid, &cur, &amt); err != nil {
+		if err := rows.Scan(&gid, &cur, &amt); err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 			return nil, err
 		}
 		if out[gid] == nil {

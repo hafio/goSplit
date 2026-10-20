@@ -20,6 +20,7 @@
 {{end}}
 
 {{if .Data.Rows}}
+<div class="flash warn">{{.T "balances.not_simplified"}} <a href="/groups">{{.T "balances.simplified_link"}}</a></div>
 <div class="card">
   {{range .Data.Rows}}
   <a class="l-row" href="/friends/{{.FriendID}}">

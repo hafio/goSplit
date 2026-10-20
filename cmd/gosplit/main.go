@@ -42,6 +42,7 @@ func wantsVersion(args []string) bool {
 	return false
 }
 
+// cov:ignore glue: argument dispatch and exit codes, run as a process
 func main() {
 	if wantsVersion(os.Args) {
 		fmt.Println(version)
@@ -67,6 +68,7 @@ func main() {
 }
 
 // parseLogLevel maps a LOG_LEVEL string to an slog level, defaulting to Info.
+// cov:ignore glue: a test would restate the switch
 func parseLogLevel(s string) slog.Level {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "debug":

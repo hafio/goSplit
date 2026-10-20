@@ -34,7 +34,9 @@ internal/
   store              database/sql layer, embedded migrations, balance_view queries,
                      cross-engine "?" to "$n" rebinding, leader locks
   split              the split engine: EQUAL, PERCENTAGE, EXACT, SHARE, ADJUSTMENT
-  balance            debt simplification (min-cash-flow)
+                     (plus the system types SETTLEMENT, CURRENCY_CONVERSION, ARCHIVE, NETTING)
+  balance            debt simplification (min-cash-flow), pair folding and the netting
+                     rewire, shared by the group page and the netting writer
   money              int64 minor-unit parse and format; money is never a float
   auth               argon2id, sessions, CSRF, RequireUser/RequireAdmin middleware
   service            business logic; handlers stay thin
@@ -79,9 +81,31 @@ clause, which is how "archive" removes a group from your totals without touching
 The raw values a user typed (percentages, share weights, exact amounts, adjustments) are
 stored alongside in `expense_split_inputs`, purely so that editing restores the form as
 entered. Nothing reads that table to compute money, so it cannot affect a balance. An
-expense with no row there (one saved before the table existed, or a settlement, conversion
-or archive entry that never went through the split engine) falls back to reconstructing
-the form from the stored amounts.
+expense with no row there (one saved before the table existed, or a settlement, conversion,
+archive or netting entry that never went through the split engine) falls back to
+reconstructing the form from the stored amounts.
+
+### Netting entries
+
+A settlement moves only its own pair, so paying a group's simplified debts leaves the
+other pairs uneven (a cycle, with every net zero). After a settle-up (always) and after a
+single settlement, settlement edit or delete in a group whose simplify debts is on, the
+service rewires the group with `NETTING` expenses: `balance.Rewire` compares each pair with
+the target `balance.Simplify` derives from the same nets and emits one two-row entry
+(payer +d, other -d) per pair that differs, including a pair the target links but that has
+no balance yet. Each person's entries sum to zero, so no net changes, and a rerun on the
+result writes nothing.
+
+`Store.ReplanGroup` keeps it safe: the balances are read and the entries written in one
+transaction, and the whole set commits or none of it does, so no net can ever change. The
+transaction first touches the group row, which on Postgres (READ COMMITTED) serializes
+concurrent passes for one group; SQLite's single connection serializes everything. On
+Postgres an ordinary expense insert can still commit during a pass, in which case the
+pairs lag that write until the next pass (nets are unaffected). The
+pass is best-effort after a settlement (logged, never failing the settlement, which is
+already committed) and reported for the explicit tidy-up. Entries are immutable for
+everyone (`service.ErrImmutable`): a single one edited or deleted would break the zero-sum
+set. They need no migration -- `split_type` is free text -- and send no notifications.
 
 ### Optimistic concurrency on expenses
 
@@ -97,7 +121,8 @@ nothing and fails closed.
 request path before anything is pushed or emailed -- so "nothing is delivered that was not
 recorded" is an invariant rather than a hope. A failed insert is logged and does not fail
 the expense write: losing a bell entry is a smaller harm than refusing a change the user
-was entitled to make.
+was entitled to make. Netting entries record nothing: they are bookkeeping that follows a
+settlement, which is itself notified.
 
 The link to the subject is `entity_type` + `entity_id` with **no foreign key**, for the
 same reason the archive tables have none: a notification is a historical record decoupled
@@ -115,12 +140,25 @@ layout is the only thing that renders it; it costs one indexed `COUNT` per authe
 render, and it sits outside `#content`, so it carries its own poller instead of riding the
 page freshness poll.
 
+### Roles are a free-text column
+
+`users.role` is `TEXT NOT NULL DEFAULT 'USER'` with no CHECK constraint, and the backup
+registry carries it as plain text, so a new role value needs no migration and no archive
+change. The allowed set lives in one place, `store.ValidRole` (`USER`, `ADMIN`, `LIMITED`),
+which both the admin create and edit paths use; `User.CanCreateGroups` admits only USER and
+ADMIN, so an unknown value fails closed. `Store.CreateUser` keeps defaulting a blank role to
+USER (self sign-ups rely on it); the service sets LIMITED explicitly wherever an account is
+created on someone else's behalf (`inviteeRole`, the admin create default).
+`Service.CreateGroup` is the single gate in front of `Store.CreateGroup` for both the group
+page and the Splitwise import.
+
 ### Collapsing history
 
 Collapse moves the original rows into `archived_expenses` and
 `archived_expense_participants`, which have no read path in the application (they exist
 for audit and for backups), and inserts one balance-preserving "Historical Transactions"
-expense per currency with a CSV of the originals in its note.
+expense per currency with a CSV of the originals in its note. Netting entries collapse like
+any other row; because each set is zero-sum per person, the nets stay exact.
 
 ## Request handling
 
@@ -146,7 +184,11 @@ With JavaScript off, every flow falls back to plain navigation and POST-redirect
 link or form submit fetches the next page over XHR and **morphs** the existing DOM into it
 rather than replacing it. Open menus, focus and half-typed fields survive; page scripts
 re-run because htmx clones parsed `<script>` nodes before the swap. The `htmx-config`
-meta enables View Transitions, and `prefers-reduced-motion` disables the animation.
+meta enables View Transitions, and `prefers-reduced-motion` disables the animation. It also
+sets `responseHandling` so 4xx and 5xx responses are swapped like successes (htmx 2's
+default drops them): every handler that answers a boosted form with a 400 field-error
+re-render, a 409 conflict page or a 403 refusal relies on that page actually showing.
+204 is still never swapped, which is what keeps an unchanged poll from touching the DOM.
 
 Forms that change identity or download a file opt out with `hx-boost="false"`: login
 (both the password and the magic-link form), register, forgot and reset password, logout,
@@ -161,15 +203,17 @@ as `page -> HX-Target id -> block`; the registry is validated when the renderer 
 so a typo fails the process at startup rather than returning a 500 on the first swap.
 `Server.render` consults it, so handlers carry no fragment branches: a request whose
 `HX-Target` names a registered region gets that block, anything else (including a boosted
-navigation, which targets the body) gets the full page. Eight pages register a `content`
-region: balances, friends, friend, groups, group, activity, expense_detail and
-recurring. The three feeds add `#activity-feed`, `#friend-feed` and `#group-feed` so that
-filtering and paging swap only the feed. Form pages are deliberately absent, so nothing
-can re-render a form under the user.
+navigation, which targets the body) gets the full page. Nine pages register a `content`
+region: balances, friends, friend, groups, group, activity, notifications, expense_detail
+and recurring (notifications also registers the bell's two chrome blocks). The feeds add
+`#activity-feed`, `#friend-feed`, `#group-feed` and the admin feed's
+`#admin-activity-feed` so that filtering and paging swap only the feed; the admin feed has
+no `content` region, so it is never polled (every poll would re-run an all-users query).
+Form pages are deliberately absent, so nothing can re-render a form under the user.
 
 ### Freshness
 
-On the eight registered pages, the layout emits a poller that re-requests the page's
+On the nine registered pages, the layout emits a poller that re-requests the page's
 `content` block every 10 seconds, but only while the tab is visible and the user is not
 busy in it: no focused control and no open `<details>` inside `#content`. The server
 fingerprints the rendered block (first 8 bytes of a SHA-256), returns it in
@@ -214,7 +258,12 @@ session-required routes. The service worker precaches the shell (`/offline`, the
 stylesheet, the icon, the manifest) and serves fingerprinted `/static/*` cache-first.
 Navigations and other GETs are network-first with a ten-second cap; successful responses
 are copied into the worker's cache and used only when the network fails or times out,
-with `/offline` as the fallback for a page never cached. A push payload can carry
+with `/offline` as the fallback for a page never cached. Private responses are the
+exception: the admin area (`/admin`, `/admin/*`) is fetched live and never cached or
+served from the cache, and a response carrying `X-GoSplit-Private: 1` is not stored (an
+older copy is dropped). The server sets that header on the whole admin route group and on
+a group or expense page an admin opens through the override, so other people's data does
+not persist on the admin's device. A push payload can carry
 `refresh: false` to show a notification without nudging open tabs.
 
 ## Decisions worth keeping

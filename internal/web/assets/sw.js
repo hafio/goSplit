@@ -4,9 +4,14 @@
  * all other GETs are network-first with a NET_TIMEOUT cap: they always load live
  * from the server, cache a copy on success, and fall back to that cache only when
  * offline or when the network hangs past the timeout (navigations fall back to the
- * /offline shell if the page was never cached). Bump CACHE on any change to this
- * file so old caches are purged on activate. */
-const CACHE = 'gosplit-v5';
+ * /offline shell if the page was never cached). Private responses are the
+ * exception: the admin area (/admin, /admin/*) is never cached nor served from
+ * the cache, and any response the server marks X-GoSplit-Private (other people's
+ * data seen through the admin override) is never stored, so none of it outlives
+ * the visit on the admin's device. Bump CACHE on any change to this file so old
+ * caches are purged on activate. */
+const CACHE = 'gosplit-v6';
+const PRIVATE_HEADER = 'X-GoSplit-Private';
 const NET_TIMEOUT = 10000;
 const SHELL = ['/offline', '/static/app.css', '/static/icon.svg', '/manifest.webmanifest'];
 
@@ -74,11 +79,23 @@ self.addEventListener('fetch', (e) => {
     );
     return;
   }
+  if (url.origin === location.origin && (url.pathname === '/admin' || url.pathname.startsWith('/admin/'))) {
+    // The admin area: live only. Offline, a navigation gets the shell, never a
+    // stored copy of the user list or the all-users feed.
+    e.respondWith(fetch(req).catch(() =>
+      req.mode === 'navigate' ? caches.match('/offline') : Response.error()));
+    return;
+  }
   // Navigations and all other GETs: always load live from the server (capped at
   // NET_TIMEOUT); refresh the cached copy on success and fall back to cache only
   // when offline or timed out — navigations use the /offline shell if uncached.
+  // A private response is not stored, and drops any copy cached before.
   e.respondWith(
     networkWithTimeout(req, NET_TIMEOUT).then((res) => {
+      if (res.headers.get(PRIVATE_HEADER) === '1') {
+        caches.open(CACHE).then((c) => c.delete(req)).catch(() => {});
+        return res;
+      }
       const copy = res.clone();
       caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
       return res;

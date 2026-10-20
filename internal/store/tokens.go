@@ -26,7 +26,7 @@ func (s *Store) UseVerificationToken(ctx context.Context, token, purpose string)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return "", err
 	}
 	// Single-use: consume regardless of expiry.

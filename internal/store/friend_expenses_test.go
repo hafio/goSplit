@@ -74,4 +74,13 @@ func TestAdminUpdateUser(t *testing.T) {
 		got.Currency != "EUR" || got.PreferredLanguage != "es" {
 		t.Errorf("admin update not persisted: %+v", got)
 	}
+
+	// LIMITED round-trips like any other role: the column is free TEXT.
+	got.Role = RoleLimited
+	if err := st.AdminUpdateUser(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := st.GetUser(ctx, u.ID); again.Role != RoleLimited {
+		t.Errorf("role = %q after update, want LIMITED", again.Role)
+	}
 }

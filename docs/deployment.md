@@ -203,7 +203,9 @@ users who set a password are not blocked by a mail outage.
 Put your address in `ADMIN_EMAILS` before you register. Your account is promoted the
 first time you sign in, and stays admin. Admins get `/admin` (user management) and
 `/admin/backup`. Once you have an admin, consider `DISABLE_EMAIL_SIGNUP=true` and create
-further users from the admin console.
+further users from the admin console. Those start as LIMITED, which cannot create groups:
+pick USER in the Add user form for anyone who should (see
+[Roles](features.md#roles)).
 
 ## Upgrading
 
@@ -212,6 +214,16 @@ further users from the admin console.
 2. Pull the new image and recreate the container (with Compose: `git pull`, then
    `docker compose up -d --build`). Migrations run on start.
 3. Check `/healthz` shows the new version and the footer of any page shows it too.
+
+The LIMITED role needs no migration: `users.role` is free text, so upgrading changes no
+existing account. Everyone keeps their current role, including pending accounts invited
+before the upgrade (USER); only accounts created afterwards on someone else's behalf start
+as LIMITED.
+
+Netting entries (split type `NETTING`, see [architecture.md](architecture.md#netting-entries))
+are only protected from editing by this version: rolling back to an older image would show
+them as ordinary expenses that a participant could edit or delete, which breaks the
+zero-sum sets they belong to. Do not edit them after a rollback.
 
 If you need to roll back, restore the archive with the **old** image, then stay on it.
 An archive restores only into a database whose migrations match exactly; see

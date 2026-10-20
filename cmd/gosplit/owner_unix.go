@@ -12,7 +12,7 @@ import (
 // uid is the whole story behind a "permission denied" on a bind mount.
 func ownerOf(info fs.FileInfo) string {
 	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
+	if !ok { // cov:ignore impossible: on unix Sys() is always a *syscall.Stat_t
 		return ""
 	}
 	return fmt.Sprintf("%d:%d", st.Uid, st.Gid)

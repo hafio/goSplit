@@ -14,7 +14,9 @@ that work with JavaScript off, installable as a PWA. No external services requir
   never stored
 - Five split methods (equal, percentage, exact, shares, adjustment), categories, notes,
   soft delete, and edits that refuse to overwrite someone else's concurrent change
-- Settlements with a friend or inside a group, or settle a whole group in one action
+- Settlements with a friend or inside a group, or settle a whole group in one action;
+  automatic read-only entries keep each pair's balance in step with the group's simplified
+  debts, so a settled group reads settled everywhere
 - Filterable activity feed; move expenses between groups; archive groups; collapse old
   history into one balance-preserving entry
 - Currency conversion with live rates, recurring expenses on a cron rule
@@ -23,7 +25,10 @@ that work with JavaScript off, installable as a PWA. No external services requir
 - Import friends and groups from Splitwise; optional bank sync through Plaid
 - Encrypted whole-instance backups and restores, from the CLI, the admin page, a schedule
   or a watched directory
-- Admin console to create, edit, deactivate and sign in users
+- Admin console to create, edit, deactivate and sign in users, with three roles: user,
+  limited user (cannot create groups; the default for accounts you add, invite or import)
+  and admin; admins also get an all-users activity list (deleted rows included), can edit
+  or delete any transaction, and can view any group read-only
 
 Details in [docs/features.md](docs/features.md).
 
@@ -67,7 +72,7 @@ Production flags, including keeping the secret out of `docker inspect`:
 
 ### From source
 
-Requires Go 1.21 or newer on your PATH. `go.mod` pins `toolchain go1.27.0`, so an older Go
+Requires Go 1.21 or newer on your PATH. `go.mod` pins `toolchain go1.27.2`, so an older Go
 downloads and runs that toolchain automatically; Go 1.27 or newer builds with itself.
 
 ```sh

@@ -16,7 +16,7 @@ func (s *Store) GetCachedRate(ctx context.Context, from, to, date string) (strin
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return "", err
 	}
 	return rate, nil

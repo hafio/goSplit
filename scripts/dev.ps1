@@ -128,12 +128,17 @@ function Task-vet  { return (Invoke-Logged 'vet'  'go' @('vet','./...')) }
 function Task-test { return (Invoke-Logged 'test' 'go' @('test','./...','-count=1')) }
 
 function Task-cov {
+  $raw  = Join-Path $LogDir 'coverage.raw.out'
   $prof = Join-Path $LogDir 'coverage.out'
   $html = Join-Path $LogDir 'coverage.html'
   # -p 1 serializes package test binaries: on Windows, parallel runs race to
   # exec the shared covdata.exe and hit "file in use" locks (often Defender).
   $c = Invoke-Logged 'cov' 'go' @(
-    'test','-covermode=atomic',"-coverprofile=$prof",'-p','1','-count=1','./...')
+    'test','-covermode=atomic',"-coverprofile=$raw",'-p','1','-count=1','./...')
+  if ($c -ne 0) { return $c }
+  # Drop the code marked cov:ignore (docs/development.md, Testing). It prints
+  # the total before exclusions and what it removed, so neither goes unseen.
+  $c = Invoke-Logged 'cov' 'go' @('run','./scripts/covfilter',"-in=$raw","-out=$prof")
   if ($c -ne 0) { return $c }
   $c = Invoke-Logged 'cov' 'go' @('tool','cover',"-html=$prof","-o",$html)
   if ($c -ne 0) { return $c }

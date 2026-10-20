@@ -258,6 +258,16 @@ func TestCovImportBranches(t *testing.T) {
 	if err != nil || au.Role != "ADMIN" {
 		t.Errorf("imported admin role = %q err=%v, want ADMIN", au.Role, err)
 	}
+	// Everyone else the import creates was added on the actor's behalf: LIMITED.
+	for _, email := range []string{"pal@x.com", "mate@x.com"} {
+		if u, err := svc.Store.GetUserByEmail(ctx, email); err != nil || u.Role != store.RoleLimited {
+			t.Errorf("imported %s role = %v err=%v, want LIMITED", email, u, err)
+		}
+	}
+	// The group went through Service.CreateGroup, so the actor is its creator.
+	if g, err := svc.Store.GetGroupBySplitwiseID(ctx, "7"); err != nil || g.CreatedBy != actor.ID {
+		t.Errorf("imported group = %+v err=%v, want created by the actor %d", g, err, actor.ID)
+	}
 }
 
 // TestCovImportSwGetErrors covers the swGet failure branches and the empty-key

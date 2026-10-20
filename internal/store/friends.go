@@ -42,7 +42,7 @@ func (s *Store) ListFriends(ctx context.Context, ownerID int64) ([]*User, error)
 	var out []*User
 	for rows.Next() {
 		u, err := scanUser(rows)
-		if err != nil {
+		if err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 			return nil, err
 		}
 		out = append(out, u)

@@ -1,0 +1,2056 @@
+--
+-- PostgreSQL database dump
+--
+
+\restrict dTgxUU6GNTR3mgcG2TA8POBY3ZbsXmWTrjaKdIqmKaQdndGp3JGapMCae9phmko
+
+-- Dumped from database version 18.6
+-- Dumped by pg_dump version 18.4
+
+-- Started on 2026-10-19 21:34:17 +08
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- TOC entry 4 (class 2615 OID 2200)
+-- Name: public; Type: SCHEMA; Schema: -; Owner: pg_database_owner
+--
+
+CREATE SCHEMA public;
+
+
+ALTER SCHEMA public OWNER TO pg_database_owner;
+
+--
+-- TOC entry 3718 (class 0 OID 0)
+-- Dependencies: 4
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: pg_database_owner
+--
+
+COMMENT ON SCHEMA public IS 'standard public schema';
+
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- TOC entry 240 (class 1259 OID 16741)
+-- Name: app_metadata; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.app_metadata (
+    key text NOT NULL,
+    value text NOT NULL
+);
+
+
+ALTER TABLE public.app_metadata OWNER TO gosplit;
+
+--
+-- TOC entry 243 (class 1259 OID 16783)
+-- Name: archived_expense_participants; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.archived_expense_participants (
+    expense_id text NOT NULL,
+    user_id bigint NOT NULL,
+    amount bigint NOT NULL
+);
+
+
+ALTER TABLE public.archived_expense_participants OWNER TO gosplit;
+
+--
+-- TOC entry 242 (class 1259 OID 16760)
+-- Name: archived_expenses; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.archived_expenses (
+    id text NOT NULL,
+    name text NOT NULL,
+    category text NOT NULL,
+    amount bigint NOT NULL,
+    split_type text NOT NULL,
+    expense_date text NOT NULL,
+    currency text NOT NULL,
+    paid_by bigint NOT NULL,
+    added_by bigint NOT NULL,
+    updated_by bigint,
+    group_id bigint,
+    file_key text,
+    transaction_id text,
+    recurrence_id bigint,
+    conversion_to_id text,
+    moved_from_id text,
+    deleted_at text,
+    deleted_by bigint,
+    created_at text NOT NULL,
+    updated_at text NOT NULL,
+    note text DEFAULT ''::text NOT NULL,
+    archive_expense_id text NOT NULL,
+    archived_at text NOT NULL
+);
+
+
+ALTER TABLE public.archived_expenses OWNER TO gosplit;
+
+--
+-- TOC entry 231 (class 1259 OID 16612)
+-- Name: expense_participants; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.expense_participants (
+    expense_id text NOT NULL,
+    user_id bigint NOT NULL,
+    amount bigint NOT NULL
+);
+
+
+ALTER TABLE public.expense_participants OWNER TO gosplit;
+
+--
+-- TOC entry 230 (class 1259 OID 16562)
+-- Name: expenses; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.expenses (
+    id text NOT NULL,
+    name text NOT NULL,
+    category text DEFAULT 'general'::text NOT NULL,
+    amount bigint NOT NULL,
+    split_type text NOT NULL,
+    expense_date text NOT NULL,
+    currency text NOT NULL,
+    paid_by bigint NOT NULL,
+    added_by bigint NOT NULL,
+    updated_by bigint,
+    group_id bigint,
+    file_key text,
+    transaction_id text,
+    recurrence_id bigint,
+    conversion_to_id text,
+    moved_from_id text,
+    deleted_at text,
+    deleted_by bigint,
+    created_at text DEFAULT to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'::text) NOT NULL,
+    updated_at text DEFAULT to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'::text) NOT NULL,
+    note text DEFAULT ''::text NOT NULL,
+    version bigint DEFAULT 1 NOT NULL
+);
+
+
+ALTER TABLE public.expenses OWNER TO gosplit;
+
+--
+-- TOC entry 241 (class 1259 OID 16750)
+-- Name: balance_view; Type: VIEW; Schema: public; Owner: gosplit
+--
+
+CREATE VIEW public.balance_view AS
+ WITH pair AS (
+         SELECT
+                CASE
+                    WHEN (ep.user_id < e.paid_by) THEN ep.user_id
+                    ELSE e.paid_by
+                END AS a,
+                CASE
+                    WHEN (ep.user_id < e.paid_by) THEN e.paid_by
+                    ELSE ep.user_id
+                END AS b,
+            e.group_id,
+            e.currency,
+            (ep.amount *
+                CASE
+                    WHEN (ep.user_id < e.paid_by) THEN 1
+                    ELSE '-1'::integer
+                END) AS signed
+           FROM (public.expense_participants ep
+             JOIN public.expenses e ON ((e.id = ep.expense_id)))
+          WHERE ((ep.user_id <> e.paid_by) AND (e.deleted_at IS NULL))
+        )
+ SELECT pair.a AS user_id,
+    pair.b AS friend_id,
+    pair.group_id,
+    pair.currency,
+    sum(pair.signed) AS amount
+   FROM pair
+  GROUP BY pair.a, pair.b, pair.group_id, pair.currency
+UNION ALL
+ SELECT pair.b AS user_id,
+    pair.a AS friend_id,
+    pair.group_id,
+    pair.currency,
+    (- sum(pair.signed)) AS amount
+   FROM pair
+  GROUP BY pair.a, pair.b, pair.group_id, pair.currency;
+
+
+ALTER VIEW public.balance_view OWNER TO gosplit;
+
+--
+-- TOC entry 238 (class 1259 OID 16710)
+-- Name: cached_bank_data; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.cached_bank_data (
+    user_id bigint NOT NULL,
+    data text NOT NULL,
+    updated_at text DEFAULT to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'::text) NOT NULL
+);
+
+
+ALTER TABLE public.cached_bank_data OWNER TO gosplit;
+
+--
+-- TOC entry 237 (class 1259 OID 16699)
+-- Name: cached_currency_rates; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.cached_currency_rates (
+    from_currency text NOT NULL,
+    to_currency text NOT NULL,
+    rate_date text NOT NULL,
+    rate text NOT NULL
+);
+
+
+ALTER TABLE public.cached_currency_rates OWNER TO gosplit;
+
+--
+-- TOC entry 233 (class 1259 OID 16634)
+-- Name: expense_notes; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.expense_notes (
+    id bigint NOT NULL,
+    expense_id text NOT NULL,
+    user_id bigint NOT NULL,
+    note text NOT NULL,
+    created_at text DEFAULT to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'::text) NOT NULL
+);
+
+
+ALTER TABLE public.expense_notes OWNER TO gosplit;
+
+--
+-- TOC entry 232 (class 1259 OID 16633)
+-- Name: expense_notes_id_seq; Type: SEQUENCE; Schema: public; Owner: gosplit
+--
+
+CREATE SEQUENCE public.expense_notes_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.expense_notes_id_seq OWNER TO gosplit;
+
+--
+-- TOC entry 3719 (class 0 OID 0)
+-- Dependencies: 232
+-- Name: expense_notes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: gosplit
+--
+
+ALTER SEQUENCE public.expense_notes_id_seq OWNED BY public.expense_notes.id;
+
+
+--
+-- TOC entry 235 (class 1259 OID 16660)
+-- Name: expense_recurrences; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.expense_recurrences (
+    id bigint NOT NULL,
+    cron_expression text NOT NULL,
+    job_name text NOT NULL,
+    template_expense_id text NOT NULL,
+    notified boolean DEFAULT false NOT NULL,
+    created_by bigint NOT NULL,
+    created_at text DEFAULT to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'::text) NOT NULL,
+    next_run_at text
+);
+
+
+ALTER TABLE public.expense_recurrences OWNER TO gosplit;
+
+--
+-- TOC entry 234 (class 1259 OID 16659)
+-- Name: expense_recurrences_id_seq; Type: SEQUENCE; Schema: public; Owner: gosplit
+--
+
+CREATE SEQUENCE public.expense_recurrences_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.expense_recurrences_id_seq OWNER TO gosplit;
+
+--
+-- TOC entry 3720 (class 0 OID 0)
+-- Dependencies: 234
+-- Name: expense_recurrences_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: gosplit
+--
+
+ALTER SEQUENCE public.expense_recurrences_id_seq OWNED BY public.expense_recurrences.id;
+
+
+--
+-- TOC entry 244 (class 1259 OID 16793)
+-- Name: expense_split_inputs; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.expense_split_inputs (
+    expense_id text NOT NULL,
+    inputs text NOT NULL
+);
+
+
+ALTER TABLE public.expense_split_inputs OWNER TO gosplit;
+
+--
+-- TOC entry 229 (class 1259 OID 16540)
+-- Name: friend_default_splits; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.friend_default_splits (
+    owner_id bigint NOT NULL,
+    friend_id bigint NOT NULL,
+    split_type text NOT NULL,
+    shares text DEFAULT '{}'::text NOT NULL
+);
+
+
+ALTER TABLE public.friend_default_splits OWNER TO gosplit;
+
+--
+-- TOC entry 227 (class 1259 OID 16502)
+-- Name: friendships; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.friendships (
+    owner_id bigint NOT NULL,
+    friend_id bigint NOT NULL,
+    created_at text DEFAULT to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'::text) NOT NULL
+);
+
+
+ALTER TABLE public.friendships OWNER TO gosplit;
+
+--
+-- TOC entry 228 (class 1259 OID 16524)
+-- Name: group_default_splits; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.group_default_splits (
+    group_id bigint NOT NULL,
+    split_type text NOT NULL,
+    shares text DEFAULT '{}'::text NOT NULL
+);
+
+
+ALTER TABLE public.group_default_splits OWNER TO gosplit;
+
+--
+-- TOC entry 226 (class 1259 OID 16484)
+-- Name: group_users; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.group_users (
+    group_id bigint NOT NULL,
+    user_id bigint NOT NULL
+);
+
+
+ALTER TABLE public.group_users OWNER TO gosplit;
+
+--
+-- TOC entry 225 (class 1259 OID 16459)
+-- Name: groups; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.groups (
+    id bigint NOT NULL,
+    public_id text NOT NULL,
+    name text NOT NULL,
+    image text,
+    created_by bigint NOT NULL,
+    default_currency text DEFAULT 'USD'::text NOT NULL,
+    simplify_debts boolean DEFAULT false NOT NULL,
+    archived_at text,
+    splitwise_group_id text,
+    created_at text DEFAULT to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'::text) NOT NULL
+);
+
+
+ALTER TABLE public.groups OWNER TO gosplit;
+
+--
+-- TOC entry 224 (class 1259 OID 16458)
+-- Name: groups_id_seq; Type: SEQUENCE; Schema: public; Owner: gosplit
+--
+
+CREATE SEQUENCE public.groups_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.groups_id_seq OWNER TO gosplit;
+
+--
+-- TOC entry 3721 (class 0 OID 0)
+-- Dependencies: 224
+-- Name: groups_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: gosplit
+--
+
+ALTER SEQUENCE public.groups_id_seq OWNED BY public.groups.id;
+
+
+--
+-- TOC entry 246 (class 1259 OID 16814)
+-- Name: notifications; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.notifications (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    actor_id bigint NOT NULL,
+    kind text NOT NULL,
+    entity_type text NOT NULL,
+    entity_id text NOT NULL,
+    title text NOT NULL,
+    amount bigint DEFAULT 0 NOT NULL,
+    currency text DEFAULT ''::text NOT NULL,
+    read_at text,
+    created_at text DEFAULT to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'::text) NOT NULL
+);
+
+
+ALTER TABLE public.notifications OWNER TO gosplit;
+
+--
+-- TOC entry 245 (class 1259 OID 16813)
+-- Name: notifications_id_seq; Type: SEQUENCE; Schema: public; Owner: gosplit
+--
+
+CREATE SEQUENCE public.notifications_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.notifications_id_seq OWNER TO gosplit;
+
+--
+-- TOC entry 3722 (class 0 OID 0)
+-- Dependencies: 245
+-- Name: notifications_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: gosplit
+--
+
+ALTER SEQUENCE public.notifications_id_seq OWNED BY public.notifications.id;
+
+
+--
+-- TOC entry 239 (class 1259 OID 16726)
+-- Name: push_notifications; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.push_notifications (
+    user_id bigint NOT NULL,
+    endpoint text NOT NULL,
+    subscription text NOT NULL
+);
+
+
+ALTER TABLE public.push_notifications OWNER TO gosplit;
+
+--
+-- TOC entry 236 (class 1259 OID 16689)
+-- Name: scheduler_locks; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.scheduler_locks (
+    id text NOT NULL,
+    holder text NOT NULL,
+    expires_at text NOT NULL
+);
+
+
+ALTER TABLE public.scheduler_locks OWNER TO gosplit;
+
+--
+-- TOC entry 219 (class 1259 OID 16391)
+-- Name: schema_migrations; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.schema_migrations (
+    version text NOT NULL,
+    applied_at text NOT NULL
+);
+
+
+ALTER TABLE public.schema_migrations OWNER TO gosplit;
+
+--
+-- TOC entry 222 (class 1259 OID 16427)
+-- Name: sessions; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.sessions (
+    token text NOT NULL,
+    user_id bigint NOT NULL,
+    expires text NOT NULL,
+    created_at text DEFAULT to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'::text) NOT NULL
+);
+
+
+ALTER TABLE public.sessions OWNER TO gosplit;
+
+--
+-- TOC entry 221 (class 1259 OID 16401)
+-- Name: users; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.users (
+    id bigint NOT NULL,
+    name text DEFAULT ''::text NOT NULL,
+    email text NOT NULL,
+    email_verified text,
+    password_hash text,
+    image text,
+    currency text DEFAULT 'USD'::text NOT NULL,
+    default_currency text DEFAULT 'USD'::text NOT NULL,
+    preferred_language text DEFAULT 'en'::text NOT NULL,
+    role text DEFAULT 'USER'::text NOT NULL,
+    deactivated_at text,
+    banking_id text,
+    hidden_friend_ids text DEFAULT '[]'::text NOT NULL,
+    created_at text DEFAULT to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'::text) NOT NULL,
+    theme_color text DEFAULT 'burgundy'::text NOT NULL,
+    email_expense_notify boolean DEFAULT false NOT NULL
+);
+
+
+ALTER TABLE public.users OWNER TO gosplit;
+
+--
+-- TOC entry 220 (class 1259 OID 16400)
+-- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: gosplit
+--
+
+CREATE SEQUENCE public.users_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.users_id_seq OWNER TO gosplit;
+
+--
+-- TOC entry 3723 (class 0 OID 0)
+-- Dependencies: 220
+-- Name: users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: gosplit
+--
+
+ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
+
+
+--
+-- TOC entry 223 (class 1259 OID 16445)
+-- Name: verification_tokens; Type: TABLE; Schema: public; Owner: gosplit
+--
+
+CREATE TABLE public.verification_tokens (
+    identifier text NOT NULL,
+    token text NOT NULL,
+    purpose text DEFAULT 'magic'::text NOT NULL,
+    expires text NOT NULL
+);
+
+
+ALTER TABLE public.verification_tokens OWNER TO gosplit;
+
+--
+-- TOC entry 3439 (class 2604 OID 16637)
+-- Name: expense_notes id; Type: DEFAULT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expense_notes ALTER COLUMN id SET DEFAULT nextval('public.expense_notes_id_seq'::regclass);
+
+
+--
+-- TOC entry 3441 (class 2604 OID 16663)
+-- Name: expense_recurrences id; Type: DEFAULT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expense_recurrences ALTER COLUMN id SET DEFAULT nextval('public.expense_recurrences_id_seq'::regclass);
+
+
+--
+-- TOC entry 3427 (class 2604 OID 16462)
+-- Name: groups id; Type: DEFAULT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.groups ALTER COLUMN id SET DEFAULT nextval('public.groups_id_seq'::regclass);
+
+
+--
+-- TOC entry 3446 (class 2604 OID 16817)
+-- Name: notifications id; Type: DEFAULT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.notifications ALTER COLUMN id SET DEFAULT nextval('public.notifications_id_seq'::regclass);
+
+
+--
+-- TOC entry 3415 (class 2604 OID 16404)
+-- Name: users id; Type: DEFAULT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_id_seq'::regclass);
+
+
+--
+-- TOC entry 3707 (class 0 OID 16741)
+-- Dependencies: 240
+-- Data for Name: app_metadata; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.app_metadata (key, value) FROM stdin;
+\.
+
+
+--
+-- TOC entry 3709 (class 0 OID 16783)
+-- Dependencies: 243
+-- Data for Name: archived_expense_participants; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.archived_expense_participants (expense_id, user_id, amount) FROM stdin;
+adeaef51-fd35-4ff2-ad85-83c709b44583	1	57700
+adeaef51-fd35-4ff2-ad85-83c709b44583	2	-57700
+d936439c-0d54-42e2-b382-ba01990b970d	1	-7700
+d936439c-0d54-42e2-b382-ba01990b970d	2	7700
+\.
+
+
+--
+-- TOC entry 3708 (class 0 OID 16760)
+-- Dependencies: 242
+-- Data for Name: archived_expenses; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.archived_expenses (id, name, category, amount, split_type, expense_date, currency, paid_by, added_by, updated_by, group_id, file_key, transaction_id, recurrence_id, conversion_to_id, moved_from_id, deleted_at, deleted_by, created_at, updated_at, note, archive_expense_id, archived_at) FROM stdin;
+adeaef51-fd35-4ff2-ad85-83c709b44583	Tets	general	115400	EQUAL	2026-07-31	SGD	1	1	1	5	\N	\N	\N	\N	\N	\N	\N	2026-07-31T17:50:14.732Z	2026-07-31T17:51:55.531Z		817d7d54-693b-4116-a69c-2fd0c0d6562f	2026-07-31T17:52:22.302Z
+d936439c-0d54-42e2-b382-ba01990b970d	Haha	general	15400	EQUAL	2026-07-31	SGD	2	1	1	5	\N	\N	\N	\N	\N	\N	\N	2026-07-31T17:51:27.481Z	2026-07-31T17:51:38.187Z		817d7d54-693b-4116-a69c-2fd0c0d6562f	2026-07-31T17:52:22.302Z
+\.
+
+
+--
+-- TOC entry 3705 (class 0 OID 16710)
+-- Dependencies: 238
+-- Data for Name: cached_bank_data; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.cached_bank_data (user_id, data, updated_at) FROM stdin;
+\.
+
+
+--
+-- TOC entry 3704 (class 0 OID 16699)
+-- Dependencies: 237
+-- Data for Name: cached_currency_rates; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.cached_currency_rates (from_currency, to_currency, rate_date, rate) FROM stdin;
+\.
+
+
+--
+-- TOC entry 3700 (class 0 OID 16634)
+-- Dependencies: 233
+-- Data for Name: expense_notes; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.expense_notes (id, expense_id, user_id, note, created_at) FROM stdin;
+\.
+
+
+--
+-- TOC entry 3698 (class 0 OID 16612)
+-- Dependencies: 231
+-- Data for Name: expense_participants; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.expense_participants (expense_id, user_id, amount) FROM stdin;
+014d1e42-d65e-45ce-a36b-6f6344536be2	1	364
+014d1e42-d65e-45ce-a36b-6f6344536be2	2	-364
+01bdcc1b-1710-4d0f-99d9-d2987cd25e0b	1	1635
+01bdcc1b-1710-4d0f-99d9-d2987cd25e0b	2	-1635
+048ef1dc-2860-45d2-8d40-6d9d94d7e001	1	-10371
+048ef1dc-2860-45d2-8d40-6d9d94d7e001	2	10371
+090dc410-29f6-4887-baf6-29cc78ec80d1	1	4300
+090dc410-29f6-4887-baf6-29cc78ec80d1	2	-4300
+0aeb990a-5ec9-4ee8-a51e-dfc444ddc127	1	-16115
+0aeb990a-5ec9-4ee8-a51e-dfc444ddc127	2	16115
+11354179-5f88-4ad5-9f3b-3283e5d76481	1	-496
+11354179-5f88-4ad5-9f3b-3283e5d76481	2	496
+116e0ba5-bc3d-4c72-b00b-fa632192e5d3	1	-10650
+116e0ba5-bc3d-4c72-b00b-fa632192e5d3	2	10650
+1434dd64-641e-4422-a109-bae94e99b0ab	1	-4100
+1434dd64-641e-4422-a109-bae94e99b0ab	2	4100
+1635d64a-5aff-4a3b-b71a-4af72f183525	1	-30755
+1635d64a-5aff-4a3b-b71a-4af72f183525	2	30755
+17c96b25-6a27-4ff8-9d19-fa9e026b3c65	1	49175
+17c96b25-6a27-4ff8-9d19-fa9e026b3c65	2	-49175
+1a14e047-12a4-4950-9413-76a4edc6bc7e	1	1540
+1a14e047-12a4-4950-9413-76a4edc6bc7e	2	-1540
+1ddb7b56-9892-49b8-9c9b-6159f8a52203	1	10791
+1ddb7b56-9892-49b8-9c9b-6159f8a52203	2	-10791
+1de9ec0a-9f1b-4ab9-bb5c-7667f58afb49	1	49300
+1de9ec0a-9f1b-4ab9-bb5c-7667f58afb49	2	-49300
+205f07bc-096b-47f8-bfda-8c987287bdfa	1	32400
+205f07bc-096b-47f8-bfda-8c987287bdfa	2	-32400
+20af412a-9915-4077-875d-09a50a75b3a2	1	4500
+20af412a-9915-4077-875d-09a50a75b3a2	2	-4500
+2122f824-b22b-4a79-9495-52a835ac1d01	1	-2056
+2122f824-b22b-4a79-9495-52a835ac1d01	2	2056
+213e606e-9080-417e-bf5c-43953f3c83f3	1	6900
+213e606e-9080-417e-bf5c-43953f3c83f3	2	-6900
+256d7f9b-5a4e-4a19-a54a-30c71e2d1c39	1	14448
+256d7f9b-5a4e-4a19-a54a-30c71e2d1c39	2	-14448
+25c341f7-823c-4820-862b-9a2a5a42c55f	1	-11150
+25c341f7-823c-4820-862b-9a2a5a42c55f	2	11150
+26a74748-f0c4-4e48-ae03-9727fc28585f	1	-4551
+26a74748-f0c4-4e48-ae03-9727fc28585f	2	4551
+2b1184ee-a605-4db5-b7f1-f888c5197fb6	1	13000
+2b1184ee-a605-4db5-b7f1-f888c5197fb6	2	-13000
+2b84002c-b02f-4376-a929-fb9e14f878e9	1	782
+2b84002c-b02f-4376-a929-fb9e14f878e9	2	-782
+30f68ec8-62a3-4e5f-9859-5d710c9da48b	1	-32973
+30f68ec8-62a3-4e5f-9859-5d710c9da48b	2	32973
+31a00532-72da-4049-b0c0-1ba27bef1e32	1	-10000
+31a00532-72da-4049-b0c0-1ba27bef1e32	2	10000
+31d1b893-b038-4d52-80a2-06e9e4bb21e4	1	-10850
+31d1b893-b038-4d52-80a2-06e9e4bb21e4	2	10850
+332ea7de-b1ca-4bf5-b09b-7066874c9dd3	1	10900
+332ea7de-b1ca-4bf5-b09b-7066874c9dd3	2	-10900
+33dc05ad-e054-493b-9451-bba262241c77	1	5700
+33dc05ad-e054-493b-9451-bba262241c77	2	-5700
+34f48c5d-8ab6-416f-84dd-98480f9cc718	1	-38014
+34f48c5d-8ab6-416f-84dd-98480f9cc718	2	38014
+37803d92-78d8-463b-a3ab-66fe08e0978f	1	3040
+37803d92-78d8-463b-a3ab-66fe08e0978f	2	-3040
+3b92c71d-c29b-4515-b923-01720c418252	1	3400
+3b92c71d-c29b-4515-b923-01720c418252	2	-3400
+3c1fe266-38a1-4ab5-803a-27d5b0cb16b8	1	-8210
+3c1fe266-38a1-4ab5-803a-27d5b0cb16b8	2	8210
+3d1d15ad-3139-4880-a795-9112915f73ca	1	-5950
+3d1d15ad-3139-4880-a795-9112915f73ca	2	5950
+40274e87-94c2-4537-a12f-a60de6940386	1	-10026
+40274e87-94c2-4537-a12f-a60de6940386	2	10026
+4302bb43-bd46-4b88-b532-821fe2b8a0df	1	750
+4302bb43-bd46-4b88-b532-821fe2b8a0df	2	-750
+46997ae8-36fa-46a9-ac4e-8878ab859617	1	-1350
+46997ae8-36fa-46a9-ac4e-8878ab859617	2	1350
+4be7ff09-66f4-4e14-976f-31ccd1f59a9e	1	1000
+4be7ff09-66f4-4e14-976f-31ccd1f59a9e	2	-1000
+4edc8229-e609-4b5d-a009-7e17adb67e53	1	-5750
+4edc8229-e609-4b5d-a009-7e17adb67e53	2	5750
+5421594b-93bb-4a72-ade1-f6785dff69d5	1	-11440
+5421594b-93bb-4a72-ade1-f6785dff69d5	2	11440
+552d11ac-a00c-4aa3-bf46-069c6426638e	1	3573
+552d11ac-a00c-4aa3-bf46-069c6426638e	2	-3573
+56738120-6032-48da-9c13-e81f2ff5baa0	1	-33270
+56738120-6032-48da-9c13-e81f2ff5baa0	2	33270
+56ea100e-67eb-40e7-996c-307b96d614c8	2	0
+595041b4-22da-4a5a-a81a-22652462f15c	1	32800
+595041b4-22da-4a5a-a81a-22652462f15c	2	-32800
+5a11790c-b768-4c2a-aa5e-327e68f33d22	1	-78350
+5a11790c-b768-4c2a-aa5e-327e68f33d22	2	78350
+5bff96eb-340b-4547-ac48-e1ac5f905c8c	1	10000
+5bff96eb-340b-4547-ac48-e1ac5f905c8c	2	-10000
+5cfaeae9-2087-4e5b-aaa2-d8afd7ef2d7d	1	-26828
+5cfaeae9-2087-4e5b-aaa2-d8afd7ef2d7d	2	26828
+5dc294f9-2c3d-494c-ba49-686fe4758ae4	1	22000
+5dc294f9-2c3d-494c-ba49-686fe4758ae4	2	-22000
+635d5e10-29ea-476d-a7ee-9951c5c2a2dd	1	-3656
+635d5e10-29ea-476d-a7ee-9951c5c2a2dd	2	3656
+6503ed51-7ca1-4b3a-8892-3d2906fe0b49	1	-1150
+6503ed51-7ca1-4b3a-8892-3d2906fe0b49	2	1150
+6eda6428-4525-4c34-970a-4162c2c6b3b6	1	-12110
+6eda6428-4525-4c34-970a-4162c2c6b3b6	2	12110
+6ef60563-b8af-40cb-9078-944b357c4c94	1	-5500
+6ef60563-b8af-40cb-9078-944b357c4c94	2	5500
+6f1f1e2a-e6de-4790-87e0-6b1005820c4f	1	-1350
+6f1f1e2a-e6de-4790-87e0-6b1005820c4f	2	1350
+732b5dfc-29e5-4e06-a2ca-f9ea65c8058b	1	24600
+732b5dfc-29e5-4e06-a2ca-f9ea65c8058b	2	-24600
+740352d6-6204-4d7d-841a-b04db1a48fb0	1	12350
+740352d6-6204-4d7d-841a-b04db1a48fb0	2	-12350
+755dba85-2255-4cb1-87be-729b299cc7a2	1	-22991
+755dba85-2255-4cb1-87be-729b299cc7a2	2	22991
+7632542e-bcf3-4907-ac12-cf5d8facbe43	1	-14350
+7632542e-bcf3-4907-ac12-cf5d8facbe43	2	14350
+763960dd-1d93-4af7-9d45-7eb2c5578bd1	1	-8200
+763960dd-1d93-4af7-9d45-7eb2c5578bd1	2	8200
+7666483e-98a9-43eb-b92a-64aa606250c5	1	6800
+7666483e-98a9-43eb-b92a-64aa606250c5	2	-6800
+79a461e3-4cb9-4be5-8a32-74d5e1e108e9	1	-1032
+79a461e3-4cb9-4be5-8a32-74d5e1e108e9	2	1032
+7a11e79d-2d4e-447f-a307-e0856c65fcbb	1	-50000
+7a11e79d-2d4e-447f-a307-e0856c65fcbb	2	50000
+7b2d1cf1-9831-4552-bd01-3b9e6d28015a	1	71450
+7b2d1cf1-9831-4552-bd01-3b9e6d28015a	2	-71450
+809ab89b-8e50-4f05-9e94-0ba4a7aabda4	1	14800
+809ab89b-8e50-4f05-9e94-0ba4a7aabda4	2	-14800
+817d7d54-693b-4116-a69c-2fd0c0d6562f	1	50000
+817d7d54-693b-4116-a69c-2fd0c0d6562f	2	-50000
+830e4b98-a1e9-4c47-b552-bd7bcc567de1	1	50000
+830e4b98-a1e9-4c47-b552-bd7bcc567de1	2	-50000
+831f4901-fa54-451b-a5c3-82a88c85b824	1	-21168
+831f4901-fa54-451b-a5c3-82a88c85b824	2	21168
+842ac2ab-18bf-4082-86df-d5d7a13d2a3a	1	7000
+842ac2ab-18bf-4082-86df-d5d7a13d2a3a	2	-7000
+86965797-7620-4dd3-ab28-13353625dcf8	2	0
+89c3ed16-d0fb-44fa-a591-13dc8f4d7513	1	-12000
+89c3ed16-d0fb-44fa-a591-13dc8f4d7513	2	12000
+8a6a620b-e2b6-4dd5-b39f-2a0cca67fb27	1	8878
+8a6a620b-e2b6-4dd5-b39f-2a0cca67fb27	2	-8878
+8ade8eb9-7187-462f-8a0d-1eb9f2de807d	1	-7300
+8ade8eb9-7187-462f-8a0d-1eb9f2de807d	2	7300
+8cac67b5-e55b-4cc2-aabd-099ba42f92d6	1	41845
+8cac67b5-e55b-4cc2-aabd-099ba42f92d6	2	-41845
+8d5aaa0e-a9f9-4990-8518-e1b310948cf5	1	-1500
+8d5aaa0e-a9f9-4990-8518-e1b310948cf5	2	1500
+8e50e1eb-dea4-4b23-8c15-b1ed9593106b	1	37832
+8e50e1eb-dea4-4b23-8c15-b1ed9593106b	2	-37832
+9499dd2a-82e4-49d1-8ad8-ee6c5c3721e6	1	3150
+9499dd2a-82e4-49d1-8ad8-ee6c5c3721e6	2	-3150
+97f58215-f7f2-4af6-9a36-52dda2721efe	1	640
+97f58215-f7f2-4af6-9a36-52dda2721efe	2	-640
+98e7fa04-dbc5-4635-8d68-f9bcc36ac072	1	-1995
+98e7fa04-dbc5-4635-8d68-f9bcc36ac072	2	1995
+9ac96ea4-8141-41ee-994e-0fceef838b15	1	-500
+9ac96ea4-8141-41ee-994e-0fceef838b15	2	500
+9b02c519-9400-48a9-adee-78a7296a8d43	1	-11650
+9b02c519-9400-48a9-adee-78a7296a8d43	2	11650
+9bba5885-96d1-4548-9c2d-9a294edd1a75	1	33640
+9bba5885-96d1-4548-9c2d-9a294edd1a75	2	-33640
+a4a91b60-f48c-486d-b51f-e16d931ec7b8	1	6520
+a4a91b60-f48c-486d-b51f-e16d931ec7b8	2	-6520
+a84f6042-d265-4324-9f40-11f8a82fa7fc	1	-8100
+a84f6042-d265-4324-9f40-11f8a82fa7fc	2	8100
+ab0430be-2d3c-49f9-95a1-be7cb8fda83e	1	16600
+ab0430be-2d3c-49f9-95a1-be7cb8fda83e	2	-16600
+ab8316d4-352a-4ae2-9fcd-d0029d6f92a2	1	-24200
+ab8316d4-352a-4ae2-9fcd-d0029d6f92a2	2	24200
+ac4dbf23-e0a5-45cc-abfc-f4abdd36e5af	1	7250
+ac4dbf23-e0a5-45cc-abfc-f4abdd36e5af	2	-7250
+ad18cee4-61f3-4595-8300-63fd62553808	1	6850
+ad18cee4-61f3-4595-8300-63fd62553808	2	-6850
+ada63fb1-e843-404b-be5a-bc90585f7a65	1	3550
+ada63fb1-e843-404b-be5a-bc90585f7a65	2	-3550
+b43965d9-eefb-4217-b4cc-d20f008ed35f	1	17950
+b43965d9-eefb-4217-b4cc-d20f008ed35f	2	-17950
+b9c96fd4-9a61-461e-a63a-7288ae8250ac	1	-16066
+b9c96fd4-9a61-461e-a63a-7288ae8250ac	2	16066
+b9d0acf5-6ac0-4c45-bbc6-d5bc54e7fda3	1	7000
+b9d0acf5-6ac0-4c45-bbc6-d5bc54e7fda3	2	-7000
+be8c7f84-182a-4229-973b-91f0f644b578	1	-6450
+be8c7f84-182a-4229-973b-91f0f644b578	2	6450
+bfa280fe-0859-426b-81ce-6d418d83e69d	1	3045
+bfa280fe-0859-426b-81ce-6d418d83e69d	2	-3045
+c0d1312c-70f5-4799-83f8-b83ca6e71bf7	1	-3032
+c0d1312c-70f5-4799-83f8-b83ca6e71bf7	2	3032
+c16ce986-4774-4048-9dba-cdd0d3e3c4b1	1	-4400
+c16ce986-4774-4048-9dba-cdd0d3e3c4b1	2	4400
+c2ac2acd-bab9-4fef-baad-bb0c9fb891a1	1	-3512
+c2ac2acd-bab9-4fef-baad-bb0c9fb891a1	2	3512
+c35ec552-5fde-4f85-9d0e-0f6869d12036	1	7100
+c35ec552-5fde-4f85-9d0e-0f6869d12036	2	-7100
+c36131fc-9fe0-4c05-bb22-9a4508bbc7ec	1	-15652
+c36131fc-9fe0-4c05-bb22-9a4508bbc7ec	2	15652
+c36a9cf5-41ff-4bff-b8b2-c245c8c57a85	1	-56700
+c36a9cf5-41ff-4bff-b8b2-c245c8c57a85	2	56700
+c38b79aa-3632-47bc-bd55-5b99abf9e03c	1	-8380
+c38b79aa-3632-47bc-bd55-5b99abf9e03c	2	8380
+c3c9d795-780b-4059-8c45-bd1db809ccc3	1	1180
+c3c9d795-780b-4059-8c45-bd1db809ccc3	2	-1180
+c8e2a4cb-0ca0-417b-8693-67be896bc0f0	1	8600
+c8e2a4cb-0ca0-417b-8693-67be896bc0f0	2	-8600
+c9820a7b-46aa-4d8d-a986-0ecfb30c8142	1	9450
+c9820a7b-46aa-4d8d-a986-0ecfb30c8142	2	-9450
+cb8af199-e51d-415f-89e4-bdc991a7126a	1	-5670
+cb8af199-e51d-415f-89e4-bdc991a7126a	2	5670
+cdacd6d8-2a73-4b5d-848b-3018ea292f05	1	-21550
+cdacd6d8-2a73-4b5d-848b-3018ea292f05	2	21550
+d576c4eb-8f8c-40eb-953f-614506874316	1	1763
+d576c4eb-8f8c-40eb-953f-614506874316	2	-1763
+d5e8d564-4701-43a3-9ef9-23f83b6afef1	1	-4944
+d5e8d564-4701-43a3-9ef9-23f83b6afef1	2	4944
+d615ecfa-1702-47dd-a185-7b5a3f67b9b3	1	27150
+d615ecfa-1702-47dd-a185-7b5a3f67b9b3	2	-27150
+da153258-8ae5-4e5c-8304-883d0d53f448	1	-32600
+da153258-8ae5-4e5c-8304-883d0d53f448	2	32600
+df91e075-c17d-45ca-ab6c-475fe998f833	1	-11845
+df91e075-c17d-45ca-ab6c-475fe998f833	2	11845
+dfce5516-076a-4a41-8054-34b6b729f0df	1	4937
+dfce5516-076a-4a41-8054-34b6b729f0df	2	-4937
+e39cfa05-cad9-4443-bc73-5071c70f5ad9	1	-4300
+e39cfa05-cad9-4443-bc73-5071c70f5ad9	2	4300
+e4dbc0c1-20ee-43db-bc40-1feb7b398a9f	1	-1500
+e4dbc0c1-20ee-43db-bc40-1feb7b398a9f	2	1500
+e5eee7fe-647e-41d0-8145-410f67685547	1	13100
+e5eee7fe-647e-41d0-8145-410f67685547	2	-13100
+e6e9d8e7-e7a6-43ca-8290-0ada0be6febd	1	-14100
+e6e9d8e7-e7a6-43ca-8290-0ada0be6febd	2	14100
+ea30965a-330d-4f65-97b3-29ecc82d60c0	1	-550
+ea30965a-330d-4f65-97b3-29ecc82d60c0	2	550
+ebee9b17-5c94-4ad4-b90b-e927de9d9003	1	-35970
+ebee9b17-5c94-4ad4-b90b-e927de9d9003	2	35970
+f41d3fb4-3d79-410c-9a7e-a788e5e660b4	1	-17386
+f41d3fb4-3d79-410c-9a7e-a788e5e660b4	2	17386
+f422ad44-74ac-41fb-81f7-f3d172e9c9a6	1	-8618
+f422ad44-74ac-41fb-81f7-f3d172e9c9a6	2	8618
+f988a5af-23ea-4f9b-a49a-0f0e41c605f4	1	-2900
+f988a5af-23ea-4f9b-a49a-0f0e41c605f4	2	2900
+fb9473b2-a1d1-4e94-a67b-6504d1bca1b4	1	-23600
+fb9473b2-a1d1-4e94-a67b-6504d1bca1b4	2	23600
+2495598f-9344-43b5-9380-95afcbb59431	2	10000
+2495598f-9344-43b5-9380-95afcbb59431	1	-10000
+431cfd9b-904f-4e52-bcfd-aa28919619d8	2	10000
+431cfd9b-904f-4e52-bcfd-aa28919619d8	1	-10000
+e4880946-dd9a-4aee-98ce-d96a528ce998	2	25000
+e4880946-dd9a-4aee-98ce-d96a528ce998	1	-25000
+2b9c96e8-34e8-4a5f-a8ed-c06ab311fcbd	1	20250
+2b9c96e8-34e8-4a5f-a8ed-c06ab311fcbd	2	-20250
+a2356a71-dc2b-4410-86f8-d68e1be8e9d1	1	3150
+a2356a71-dc2b-4410-86f8-d68e1be8e9d1	2	-3150
+f9011c58-3a4e-4091-bb0a-a87e046f8eb5	2	1470
+f9011c58-3a4e-4091-bb0a-a87e046f8eb5	1	-1470
+b9c4bfde-7be5-4ade-828e-b34ba2886808	1	34750
+b9c4bfde-7be5-4ade-828e-b34ba2886808	2	-34750
+58cadfa3-7784-4ca1-a083-0b323b737504	2	3245
+58cadfa3-7784-4ca1-a083-0b323b737504	1	-3245
+64e0d3bc-4629-4918-a82b-4e4785fb6ce6	1	36550
+64e0d3bc-4629-4918-a82b-4e4785fb6ce6	2	-36550
+02ce7515-b6e2-4e0e-bd1a-4f56e001b45e	1	7800
+02ce7515-b6e2-4e0e-bd1a-4f56e001b45e	2	-7800
+78652be3-eb60-45f9-922c-48ac42e83f79	2	18185
+78652be3-eb60-45f9-922c-48ac42e83f79	1	-18185
+e7d1f61b-ae8d-43b3-b1f0-94ad470818a4	2	10000
+e7d1f61b-ae8d-43b3-b1f0-94ad470818a4	1	-10000
+2bf77eed-1c5d-440e-91e2-a718946fce47	2	89250
+2bf77eed-1c5d-440e-91e2-a718946fce47	1	-89250
+2f9d0ac7-7262-48a3-a4a3-cdf7b6d5fefd	2	40500
+2f9d0ac7-7262-48a3-a4a3-cdf7b6d5fefd	1	-40500
+e8b2eb1d-f7d3-4a1b-be2e-bf5ced8b31f5	1	64700
+e8b2eb1d-f7d3-4a1b-be2e-bf5ced8b31f5	2	-64700
+73a58c6a-8a7d-4e28-8d2f-d993666b7b29	1	34350
+73a58c6a-8a7d-4e28-8d2f-d993666b7b29	2	-34350
+7908a032-21bc-43b6-9e66-226d27b9f3d0	1	12500
+7908a032-21bc-43b6-9e66-226d27b9f3d0	2	-12500
+ed47fc03-7061-4372-b21f-17bd3726009b	1	4450
+ed47fc03-7061-4372-b21f-17bd3726009b	2	-4450
+f4c2c8f3-ca3b-4883-b21d-a6fcb634ca13	1	25087
+f4c2c8f3-ca3b-4883-b21d-a6fcb634ca13	2	-8362
+f4c2c8f3-ca3b-4883-b21d-a6fcb634ca13	5	-8362
+f4c2c8f3-ca3b-4883-b21d-a6fcb634ca13	6	-8363
+fa6d4a07-234d-4ff4-bc01-d31da0cb2f71	2	10000
+fa6d4a07-234d-4ff4-bc01-d31da0cb2f71	1	-10000
+8c880091-24c5-45de-9ac7-87ba4c0da807	1	12150
+8c880091-24c5-45de-9ac7-87ba4c0da807	2	-12150
+142fd968-5634-49d3-b153-3688caaeeaa0	2	10000
+142fd968-5634-49d3-b153-3688caaeeaa0	1	-10000
+614c7824-dc76-4bc1-9376-b19e1318b06e	1	16800
+614c7824-dc76-4bc1-9376-b19e1318b06e	2	-16800
+ffb10ca6-4590-4af7-b211-28d9657685e0	1	1226
+ffb10ca6-4590-4af7-b211-28d9657685e0	2	-409
+ffb10ca6-4590-4af7-b211-28d9657685e0	5	-409
+ffb10ca6-4590-4af7-b211-28d9657685e0	6	-408
+ef5e06ad-ab9f-4494-9c91-dfe2e7747ed5	1	75600
+ef5e06ad-ab9f-4494-9c91-dfe2e7747ed5	2	-25200
+ef5e06ad-ab9f-4494-9c91-dfe2e7747ed5	5	-25200
+ef5e06ad-ab9f-4494-9c91-dfe2e7747ed5	6	-25200
+159be6f4-7b39-4243-be7b-81401852454c	5	38550
+159be6f4-7b39-4243-be7b-81401852454c	1	-12850
+159be6f4-7b39-4243-be7b-81401852454c	2	-12850
+159be6f4-7b39-4243-be7b-81401852454c	6	-12850
+b0050012-8939-4ed7-9ab6-81e38abcd364	2	2988
+b0050012-8939-4ed7-9ab6-81e38abcd364	1	-2988
+762051e6-0d74-4d4a-bb3d-685520946504	5	2350
+762051e6-0d74-4d4a-bb3d-685520946504	2	-2350
+840acd68-0d88-434c-ba9b-e4624062fc3e	6	12850
+840acd68-0d88-434c-ba9b-e4624062fc3e	5	-12850
+91bf3a0c-c09b-4f29-bd9f-6bc7ae14e132	1	875
+91bf3a0c-c09b-4f29-bd9f-6bc7ae14e132	2	-292
+91bf3a0c-c09b-4f29-bd9f-6bc7ae14e132	5	-291
+91bf3a0c-c09b-4f29-bd9f-6bc7ae14e132	6	-292
+090294d3-ccdf-4d58-8a78-882679fea909	6	34000
+090294d3-ccdf-4d58-8a78-882679fea909	1	-34000
+\.
+
+
+--
+-- TOC entry 3702 (class 0 OID 16660)
+-- Dependencies: 235
+-- Data for Name: expense_recurrences; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.expense_recurrences (id, cron_expression, job_name, template_expense_id, notified, created_by, created_at, next_run_at) FROM stdin;
+\.
+
+
+--
+-- TOC entry 3710 (class 0 OID 16793)
+-- Dependencies: 244
+-- Data for Name: expense_split_inputs; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.expense_split_inputs (expense_id, inputs) FROM stdin;
+1434dd64-641e-4422-a109-bae94e99b0ab	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+c8e2a4cb-0ca0-417b-8693-67be896bc0f0	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+f41d3fb4-3d79-410c-9a7e-a788e5e660b4	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+2495598f-9344-43b5-9380-95afcbb59431	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+431cfd9b-904f-4e52-bcfd-aa28919619d8	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+e4880946-dd9a-4aee-98ce-d96a528ce998	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+2b9c96e8-34e8-4a5f-a8ed-c06ab311fcbd	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+a2356a71-dc2b-4410-86f8-d68e1be8e9d1	{"v":1,"method":"EQUAL","values":{"2":0}}
+f9011c58-3a4e-4091-bb0a-a87e046f8eb5	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+b9c4bfde-7be5-4ade-828e-b34ba2886808	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+58cadfa3-7784-4ca1-a083-0b323b737504	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+64e0d3bc-4629-4918-a82b-4e4785fb6ce6	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+02ce7515-b6e2-4e0e-bd1a-4f56e001b45e	{"v":1,"method":"EQUAL","values":{"2":0}}
+78652be3-eb60-45f9-922c-48ac42e83f79	{"v":1,"method":"EQUAL","values":{"1":0}}
+e7d1f61b-ae8d-43b3-b1f0-94ad470818a4	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+2bf77eed-1c5d-440e-91e2-a718946fce47	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+2f9d0ac7-7262-48a3-a4a3-cdf7b6d5fefd	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+e8b2eb1d-f7d3-4a1b-be2e-bf5ced8b31f5	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+73a58c6a-8a7d-4e28-8d2f-d993666b7b29	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+7908a032-21bc-43b6-9e66-226d27b9f3d0	{"v":1,"method":"EQUAL","values":{"2":0}}
+ed47fc03-7061-4372-b21f-17bd3726009b	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+f4c2c8f3-ca3b-4883-b21d-a6fcb634ca13	{"v":1,"method":"EQUAL","values":{"1":0,"2":0,"5":0,"6":0}}
+fa6d4a07-234d-4ff4-bc01-d31da0cb2f71	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+8c880091-24c5-45de-9ac7-87ba4c0da807	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+142fd968-5634-49d3-b153-3688caaeeaa0	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+614c7824-dc76-4bc1-9376-b19e1318b06e	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+ffb10ca6-4590-4af7-b211-28d9657685e0	{"v":1,"method":"EQUAL","values":{"1":0,"2":0,"5":0,"6":0}}
+ef5e06ad-ab9f-4494-9c91-dfe2e7747ed5	{"v":1,"method":"EQUAL","values":{"1":0,"2":0,"5":0,"6":0}}
+159be6f4-7b39-4243-be7b-81401852454c	{"v":1,"method":"EQUAL","values":{"1":0,"2":0,"5":0,"6":0}}
+b0050012-8939-4ed7-9ab6-81e38abcd364	{"v":1,"method":"EQUAL","values":{"1":0,"2":0}}
+762051e6-0d74-4d4a-bb3d-685520946504	{"v":1,"method":"EQUAL","values":{"2":0}}
+91bf3a0c-c09b-4f29-bd9f-6bc7ae14e132	{"v":1,"method":"EQUAL","values":{"1":0,"2":0,"5":0,"6":0}}
+\.
+
+
+--
+-- TOC entry 3697 (class 0 OID 16562)
+-- Dependencies: 230
+-- Data for Name: expenses; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.expenses (id, name, category, amount, split_type, expense_date, currency, paid_by, added_by, updated_by, group_id, file_key, transaction_id, recurrence_id, conversion_to_id, moved_from_id, deleted_at, deleted_by, created_at, updated_at, note, version) FROM stdin;
+014d1e42-d65e-45ce-a36b-6f6344536be2	Cab to salmon aquarium	Transport	728	EQUAL	2026-08-22	SGD	1	1	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-22T09:17:47.899Z	2026-08-23T04:17:05.399Z		1
+01bdcc1b-1710-4d0f-99d9-d2987cd25e0b	Sumire miso ramen lunch	general	3269	EQUAL	2026-08-25	SGD	1	1	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-25T04:32:27.637Z	2026-08-25T04:32:27.637Z		1
+048ef1dc-2860-45d2-8d40-6d9d94d7e001	Marcy's	general	20743	EQUAL	2026-04-26T10:30:57.544Z	SGD	2	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-04-26T10:31:57.692Z	2026-04-26T10:32:22.387Z		1
+090dc410-29f6-4887-baf6-29cc78ec80d1	Glitch coffee	general	8600	EQUAL	2026-08-27	SGD	1	1	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-27T01:54:12.794Z	2026-08-27T01:54:12.794Z		1
+0aeb990a-5ec9-4ee8-a51e-dfc444ddc127	Skewers	general	32230	EQUAL	2026-04-27T14:54:40.591Z	SGD	2	2	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-04-27T14:55:18.586Z	2026-04-27T14:55:18.586Z		1
+11354179-5f88-4ad5-9f3b-3283e5d76481	Uber from aquarium	Transport	992	EQUAL	2026-08-22	SGD	2	2	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-22T10:47:14.976Z	2026-08-23T04:15:50.969Z		1
+116e0ba5-bc3d-4c72-b00b-fa632192e5d3	SKOOL	Food & drink	21300	EQUAL	2026-07-24	SGD	2	2	2	4	\N	\N	\N	\N	\N	\N	\N	2026-07-24T16:53:37.937Z	2026-07-24T16:53:37.937Z		1
+1434dd64-641e-4422-a109-bae94e99b0ab	Summer hill	Food & drink	8200	EQUAL	2026-09-06	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-09-06T05:03:55.149Z	2026-09-06T05:03:55.149Z		1
+1635d64a-5aff-4a3b-b71a-4af72f183525	Hare	Food & drink	61510	EQUAL	2026-07-31	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-07-31T05:38:41.761Z	2026-07-31T05:38:41.761Z		1
+17c96b25-6a27-4ff8-9d19-fa9e026b3c65	Transfer from previous balance	general	49175	EQUAL	2026-04-26T05:51:08.66Z	SGD	1	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-04-26T05:52:34.509Z	2026-04-26T05:52:34.509Z		1
+1a14e047-12a4-4950-9413-76a4edc6bc7e	Breakfast snack at Haneda	Food & drink	3080	EQUAL	2026-08-22	SGD	1	1	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-22T09:18:29.948Z	2026-08-23T04:16:50.784Z		1
+1ddb7b56-9892-49b8-9c9b-6159f8a52203	Modu Ginseng Chicken	general	21582	EQUAL	2026-05-02T06:08:06.505Z	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-05-02T06:08:21.803Z	2026-05-02T06:08:46.509Z		1
+1de9ec0a-9f1b-4ab9-bb5c-7667f58afb49	Hashida	general	98600	EQUAL	2026-08-28	SGD	1	1	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-28T13:34:20.901Z	2026-08-28T13:34:20.901Z		1
+205f07bc-096b-47f8-bfda-8c987287bdfa	Fee birthday buffet	general	64800	EQUAL	2026-08-09	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-10T11:28:34.640Z	2026-08-10T11:28:34.640Z		1
+20af412a-9915-4077-875d-09a50a75b3a2	Old Seng Choon	general	9000	EQUAL	2026-05-22T16:00:00Z	SGD	1	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-05-24T01:30:57.519Z	2026-05-24T01:30:57.519Z		1
+2122f824-b22b-4a79-9495-52a835ac1d01	Ginza Fruits	Food & drink	4112	EQUAL	2026-08-26	SGD	2	2	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-26T12:38:29.794Z	2026-08-26T12:38:29.794Z		1
+213e606e-9080-417e-bf5c-43953f3c83f3	店小二	general	13800	EQUAL	2026-06-28T10:30:22.719Z	SGD	1	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-06-28T11:54:34.877Z	2026-06-28T11:54:34.877Z		1
+256d7f9b-5a4e-4a19-a54a-30c71e2d1c39	Le Bon Funk	general	28896	EQUAL	2026-08-15	SGD	1	1	2	1	\N	\N	\N	\N	\N	\N	\N	2026-08-15T05:20:59.725Z	2026-08-15T09:26:32.604Z		1
+25c341f7-823c-4820-862b-9a2a5a42c55f	Piu M	general	22300	EQUAL	2026-06-22T15:39:28.453Z	SGD	2	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-06-22T15:39:49.032Z	2026-06-22T15:39:49.032Z		1
+26a74748-f0c4-4e48-ae03-9727fc28585f	Omiyage	Gifts	11377	PERCENTAGE	2026-08-26	SGD	2	2	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-26T13:49:24.217Z	2026-08-26T13:49:24.217Z		1
+2b1184ee-a605-4db5-b7f1-f888c5197fb6	Woodear	general	13000	EQUAL	2026-09-01	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-09-01T02:20:08.466Z	2026-09-01T02:20:08.466Z		1
+2b84002c-b02f-4376-a929-fb9e14f878e9	Sumire Ramen goods	general	1564	EQUAL	2026-08-25	SGD	1	1	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-25T04:33:07.939Z	2026-08-25T04:33:07.939Z		1
+30f68ec8-62a3-4e5f-9859-5d710c9da48b	Suzuki	general	65945	EQUAL	2026-05-01T05:52:21.98Z	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-05-01T05:52:51.869Z	2026-05-01T05:53:49.006Z		1
+31a00532-72da-4049-b0c0-1ba27bef1e32	Mahjong	general	10000	EQUAL	2026-08-15	SGD	2	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-16T01:54:01.381Z	2026-08-16T01:54:01.381Z		1
+31d1b893-b038-4d52-80a2-06e9e4bb21e4	Casa mori	general	21700	EQUAL	2026-06-20	SGD	2	2	1	1	\N	\N	\N	\N	\N	\N	\N	2026-06-22T13:33:09.241Z	2026-07-13T06:16:15.940Z		1
+332ea7de-b1ca-4bf5-b09b-7066874c9dd3	Wagyu griller	Food & drink	21800	EQUAL	2026-08-07	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-07T23:05:47.760Z	2026-08-07T23:05:59.870Z		1
+33dc05ad-e054-493b-9451-bba262241c77	Soba Yu	general	11400	EQUAL	2026-08-29	SGD	1	1	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-30T07:51:26.882Z	2026-08-30T07:51:26.882Z		1
+34f48c5d-8ab6-416f-84dd-98480f9cc718	Drug store	general	49028	ADJUSTMENT	2026-08-27	SGD	2	1	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-27T07:03:52.157Z	2026-08-27T07:04:22.588Z		1
+37803d92-78d8-463b-a3ab-66fe08e0978f	Chicken rice	general	6080	EQUAL	2026-07-05T06:42:15.044Z	SGD	1	2	\N	1	\N	\N	\N	\N	\N	2026-07-14T13:18:29.201Z	2	2026-07-05T06:42:34.811Z	2026-07-14T13:18:29.201Z		1
+3b92c71d-c29b-4515-b923-01720c418252	Under dish rack water drainage trat	general	6800	EQUAL	2026-08-10	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-10T05:47:08.096Z	2026-08-10T05:47:08.096Z		1
+3c1fe266-38a1-4ab5-803a-27d5b0cb16b8	Airport taxes	general	16420	EQUAL	2026-05-16T16:00:00Z	SGD	2	2	\N	3	\N	\N	\N	\N	\N	\N	\N	2026-05-23T01:38:32.41Z	2026-05-23T01:38:32.41Z		1
+3d1d15ad-3139-4880-a795-9112915f73ca	Bincho	Food & drink	11900	EQUAL	2026-08-27	SGD	2	2	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-27T02:46:03.680Z	2026-08-27T02:46:03.680Z		1
+40274e87-94c2-4537-a12f-a60de6940386	SQ air ticket airport taxes	general	20052	EQUAL	2026-04-26T05:49:22.798Z	SGD	2	1	\N	2	\N	\N	\N	\N	\N	\N	\N	2026-04-26T05:51:08.277Z	2026-04-26T05:51:08.277Z		1
+4302bb43-bd46-4b88-b532-821fe2b8a0df	Babi Guling	general	1500	EQUAL	2026-07-25	SGD	1	1	1	4	\N	\N	\N	\N	\N	\N	\N	2026-07-25T10:27:54.703Z	2026-07-25T10:27:54.703Z		1
+46997ae8-36fa-46a9-ac4e-8878ab859617	Tea	Food & drink	2700	EQUAL	2026-07-25	SGD	2	2	2	4	\N	\N	\N	\N	\N	\N	\N	2026-07-25T10:25:48.508Z	2026-07-25T10:25:48.508Z		1
+4be7ff09-66f4-4e14-976f-31ccd1f59a9e	Smashed Burger	general	2000	EQUAL	2026-07-25	SGD	1	1	1	4	\N	\N	\N	\N	\N	\N	\N	2026-07-25T10:28:10.677Z	2026-07-25T10:28:10.677Z		1
+4edc8229-e609-4b5d-a009-7e17adb67e53	Reddot	general	11500	EQUAL	2026-06-20	SGD	2	2	1	1	\N	\N	\N	\N	\N	\N	\N	2026-06-22T13:32:16.879Z	2026-07-13T06:16:24.663Z		1
+5421594b-93bb-4a72-ade1-f6785dff69d5	FHGT	general	22880	EQUAL	2026-05-24T12:27:50.611Z	SGD	2	2	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-05-24T12:28:11.191Z	2026-05-24T12:28:11.191Z		1
+552d11ac-a00c-4aa3-bf46-069c6426638e	壹仟	general	7146	EQUAL	2026-05-17T06:29:53.47Z	SGD	1	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-05-17T06:30:11.312Z	2026-05-17T06:30:11.312Z		1
+56738120-6032-48da-9c13-e81f2ff5baa0	Settlement	settlement	33270	SETTLEMENT	2026-07-31	SGD	2	1	\N	4	\N	\N	\N	\N	\N	\N	\N	2026-07-31T15:58:03.682Z	2026-07-31T15:58:03.682Z		1
+56ea100e-67eb-40e7-996c-307b96d614c8	IB	general	100000	EQUAL	2026-01-31	SGD	2	2	2	6	\N	\N	\N	\N	\N	\N	\N	2026-08-10T10:54:20.417Z	2026-08-10T10:54:20.417Z		1
+595041b4-22da-4a5a-a81a-22652462f15c	Mamamoo Tickets	Entertainment	65600	EQUAL	2026-06-23	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-02T06:56:37.739Z	2026-08-02T06:56:45.651Z		1
+5a11790c-b768-4c2a-aa5e-327e68f33d22	Haha	general	156700	EQUAL	2026-07-31	SGD	2	1	1	\N	\N	\N	\N	\N	\N	2026-08-01T06:07:31.718Z	1	2026-07-31T17:50:26.425Z	2026-08-01T06:07:31.718Z		1
+5bff96eb-340b-4547-ac48-e1ac5f905c8c	Tentage	general	20000	EQUAL	2026-08-10	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-10T05:48:07.877Z	2026-08-10T05:48:07.877Z		1
+5cfaeae9-2087-4e5b-aaa2-d8afd7ef2d7d	Bedrock	Food & drink	53655	EQUAL	2026-08-16	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-08-16T13:06:41.899Z	2026-08-16T13:06:41.899Z		1
+5dc294f9-2c3d-494c-ba49-686fe4758ae4	Towa	general	44000	EQUAL	2026-08-05	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-05T14:43:44.090Z	2026-08-05T14:43:44.090Z		1
+635d5e10-29ea-476d-a7ee-9951c5c2a2dd	Poroto Mintar	Groceries	7311	EQUAL	2026-08-24	SGD	2	2	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-24T13:10:09.303Z	2026-08-24T13:10:09.303Z		1
+6503ed51-7ca1-4b3a-8892-3d2906fe0b49	Matcha stand	Food & drink	2300	EQUAL	2026-08-29	SGD	2	2	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-29T04:15:05.751Z	2026-08-29T04:15:05.751Z		1
+6eda6428-4525-4c34-970a-4162c2c6b3b6	Sushi Muni	Food & drink	24220	EQUAL	2026-07-03	SGD	2	1	2	1	\N	\N	\N	\N	\N	\N	\N	2026-07-03T05:24:45.673Z	2026-07-14T13:19:58.155Z		1
+6ef60563-b8af-40cb-9078-944b357c4c94	Dong Tai Fung @ PS	general	11000	EQUAL	2026-05-04T12:11:12.386Z	SGD	2	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-05-04T12:11:29.588Z	2026-05-04T12:11:34.547Z		1
+6f1f1e2a-e6de-4790-87e0-6b1005820c4f	One by one Coffee	Food & drink	2700	EQUAL	2026-08-29	SGD	2	2	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-29T04:14:40.780Z	2026-08-29T04:14:40.780Z		1
+732b5dfc-29e5-4e06-a2ca-f9ea65c8058b	Maroon 5 Tickets (12 Feb 2027)	general	49200	EQUAL	2026-08-13	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-13T00:43:15.681Z	2026-08-13T00:43:15.681Z		1
+740352d6-6204-4d7d-841a-b04db1a48fb0	Yakiniku dinner 2	general	24700	EQUAL	2026-08-26	SGD	1	1	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-26T12:21:22.435Z	2026-08-26T12:22:02.233Z		1
+755dba85-2255-4cb1-87be-729b299cc7a2	Omu	Food & drink	45982	EQUAL	2026-08-03	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-08-03T15:07:39.331Z	2026-08-03T15:07:39.331Z		1
+7632542e-bcf3-4907-ac12-cf5d8facbe43	Sandar x3	general	28700	EQUAL	2026-06-05T07:31:33.864Z	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-06-05T07:32:03.429Z	2026-06-05T09:55:33.787Z		1
+763960dd-1d93-4af7-9d45-7eb2c5578bd1	Skewers	Food & drink	16400	EQUAL	2026-08-08	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-08-10T10:13:20.812Z	2026-08-10T10:13:29.331Z		1
+7666483e-98a9-43eb-b92a-64aa606250c5	Haneda souvenirs	general	14900	EXACT	2026-08-29	SGD	1	1	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-30T11:48:20.898Z	2026-08-30T11:48:38.534Z		1
+79a461e3-4cb9-4be5-8a32-74d5e1e108e9	Dessert	Food & drink	2065	EQUAL	2026-08-23	SGD	2	2	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-23T04:15:12.683Z	2026-08-23T04:15:12.683Z		1
+7a11e79d-2d4e-447f-a307-e0856c65fcbb	Settlement	settlement	50000	SETTLEMENT	2026-07-31	SGD	2	1	\N	5	\N	\N	\N	\N	\N	\N	\N	2026-07-31T17:52:57.969Z	2026-07-31T17:52:57.969Z		1
+7b2d1cf1-9831-4552-bd01-3b9e6d28015a	Willow	general	142900	EQUAL	2026-05-22T16:00:00Z	SGD	1	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-05-24T02:22:56.607Z	2026-05-24T02:22:56.607Z		1
+809ab89b-8e50-4f05-9e94-0ba4a7aabda4	福慧根湯	general	29600	EQUAL	2026-05-17T06:30:15.233Z	SGD	1	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-05-17T06:31:24.039Z	2026-05-17T06:31:24.039Z		1
+817d7d54-693b-4116-a69c-2fd0c0d6562f	Historical Transactions	archive	50000	ARCHIVE	2026-07-31	SGD	1	1	1	5	\N	\N	\N	\N	\N	\N	\N	2026-07-31T17:52:22.302Z	2026-07-31T17:52:22.302Z	Date,Description,Paid by,Amount,Currency,Category,Shares\n2026-07-31,Haha,Cheryl,154.00,SGD,general,Hamlyn -77.00; Cheryl +77.00\n2026-07-31,Tets,Hamlyn,1154.00,SGD,general,Hamlyn +577.00; Cheryl -577.00\n	1
+830e4b98-a1e9-4c47-b552-bd7bcc567de1	Drim Gold @ Sentosa	general	100000	EQUAL	2026-05-02T16:00:00Z	SGD	1	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-05-05T00:20:08.873Z	2026-05-05T00:20:08.873Z		1
+831f4901-fa54-451b-a5c3-82a88c85b824	壹仟	general	42337	EQUAL	2026-05-24T12:18:42.722Z	SGD	2	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-05-24T12:19:20.793Z	2026-05-24T12:19:20.793Z		1
+842ac2ab-18bf-4082-86df-d5d7a13d2a3a	Haidilao with Dom & Juliet	Food & drink	14000	EQUAL	2026-08-01	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-01T06:09:38.155Z	2026-08-01T06:09:48.196Z		1
+86965797-7620-4dd3-ab28-13353625dcf8	iFAST	general	100000	EQUAL	2026-01-31	SGD	2	2	2	6	\N	\N	\N	\N	\N	\N	\N	2026-08-10T10:51:00.907Z	2026-08-10T10:52:14.086Z		1
+89c3ed16-d0fb-44fa-a591-13dc8f4d7513	Turkish food	general	24000	EQUAL	2026-06-20T12:32:54.327Z	SGD	2	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-06-20T12:33:24.003Z	2026-06-20T12:33:24.003Z		1
+8a6a620b-e2b6-4dd5-b39f-2a0cca67fb27	Salmon Aquarium 道の駅	Groceries	17755	EQUAL	2026-08-22	SGD	1	1	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-22T09:14:33.930Z	2026-08-23T04:16:05.355Z		1
+8ade8eb9-7187-462f-8a0d-1eb9f2de807d	Massage	general	14600	EQUAL	2026-06-19	SGD	2	2	1	1	\N	\N	\N	\N	\N	\N	\N	2026-06-22T13:32:38.516Z	2026-07-13T06:16:33.345Z		1
+8cac67b5-e55b-4cc2-aabd-099ba42f92d6	Kenshin	general	83690	EQUAL	2026-05-25T16:00:00Z	SGD	1	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-06-15T06:46:32.857Z	2026-06-15T06:46:32.857Z		1
+8d5aaa0e-a9f9-4990-8518-e1b310948cf5	Old Seng Choong	Gifts	3000	EQUAL	2026-08-21	SGD	2	2	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-21T21:26:23.619Z	2026-08-22T09:13:46.934Z		1
+8e50e1eb-dea4-4b23-8c15-b1ed9593106b	Slow	Travel	75663	EQUAL	2026-07-23	SGD	1	1	1	4	\N	\N	\N	\N	\N	\N	\N	2026-07-23T17:47:09.413Z	2026-07-23T17:47:32.744Z		1
+9499dd2a-82e4-49d1-8ad8-ee6c5c3721e6	Tentage weights	general	6300	EQUAL	2026-08-10	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-10T05:48:20.260Z	2026-08-10T05:48:20.260Z		1
+97f58215-f7f2-4af6-9a36-52dda2721efe	Salmon Aquarium Entry Tickets	Entertainment	1280	EQUAL	2026-08-22	SGD	1	1	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-22T09:15:28.546Z	2026-08-23T04:38:19.721Z		1
+98e7fa04-dbc5-4635-8d68-f9bcc36ac072	Morimoto	Gifts	3989	EQUAL	2026-08-25	SGD	2	2	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-25T09:06:02.140Z	2026-08-25T09:06:02.140Z		1
+9ac96ea4-8141-41ee-994e-0fceef838b15	Coffee	Food & drink	1000	EQUAL	2026-08-23	SGD	2	2	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-23T00:35:57.617Z	2026-08-23T00:35:57.617Z		1
+9b02c519-9400-48a9-adee-78a7296a8d43	Baipule Chinese Korean bbq	general	18300	ADJUSTMENT	2026-08-18	SGD	2	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-18T11:59:19.613Z	2026-08-18T11:59:19.613Z		1
+9bba5885-96d1-4548-9c2d-9a294edd1a75	Sushi Koike	general	84100	PERCENTAGE	2026-08-27	SGD	1	1	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-28T04:52:30.733Z	2026-08-28T04:52:30.733Z		1
+a4a91b60-f48c-486d-b51f-e16d931ec7b8	Sq tax from sg	general	13040	EQUAL	2026-06-15T16:00:00Z	SGD	1	1	1	4	\N	\N	\N	\N	\N	\N	\N	2026-06-18T02:09:17.906Z	2026-06-18T02:09:57.705Z		1
+a84f6042-d265-4324-9f40-11f8a82fa7fc	Korean Ginseng Chicken @ Chijmes	Food & drink	16200	EQUAL	2026-07-06	SGD	2	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-07-06T12:25:51.07Z	2026-07-13T07:27:48.928Z		1
+ab0430be-2d3c-49f9-95a1-be7cb8fda83e	Ushi Club	general	33200	EQUAL	2026-05-22T11:56:13.298Z	SGD	1	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-05-22T11:56:41.338Z	2026-05-22T11:56:41.338Z		1
+ab8316d4-352a-4ae2-9fcd-d0029d6f92a2	Ushi club	general	48400	EQUAL	2026-06-23	SGD	2	2	1	1	\N	\N	\N	\N	\N	\N	\N	2026-06-23T12:36:15.69Z	2026-07-13T06:14:49.649Z		1
+ac4dbf23-e0a5-45cc-abfc-f4abdd36e5af	Naked Finn	Food & drink	14500	EQUAL	2026-07-04	SGD	1	1	2	1	\N	\N	\N	\N	\N	\N	\N	2026-07-04T05:46:23.351Z	2026-07-14T13:19:44.529Z		1
+ad18cee4-61f3-4595-8300-63fd62553808	魚牛 dinner 1	general	13700	EQUAL	2026-08-26	SGD	1	1	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-26T10:37:25.155Z	2026-08-26T10:37:25.155Z		1
+ada63fb1-e843-404b-be5a-bc90585f7a65	Kitchen tap	general	7100	EQUAL	2026-08-10	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-10T05:48:38.743Z	2026-08-10T05:48:38.743Z		1
+b43965d9-eefb-4217-b4cc-d20f008ed35f	Cure bali	general	35900	EQUAL	2026-07-25	SGD	1	1	1	4	\N	\N	\N	\N	\N	\N	\N	2026-07-25T13:06:48.724Z	2026-07-25T13:06:48.724Z		1
+b9c96fd4-9a61-461e-a63a-7288ae8250ac	Piu M	Food & drink	32133	EQUAL	2026-07-07	SGD	2	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-07-07T13:21:25.082Z	2026-07-13T06:08:20.795Z		1
+b9d0acf5-6ac0-4c45-bbc6-d5bc54e7fda3	Satori Yakitori @ Amoy	general	14000	EQUAL	2026-05-25T12:14:21.511Z	SGD	1	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-05-25T12:14:37.345Z	2026-05-25T12:14:37.345Z		1
+be8c7f84-182a-4229-973b-91f0f644b578	Baipule	Food & drink	12900	EQUAL	2026-07-14	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-07-14T13:17:30.989Z	2026-07-14T13:19:16.022Z		1
+bfa280fe-0859-426b-81ce-6d418d83e69d	Cab to haneda	general	6091	EQUAL	2026-08-29	SGD	1	1	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-30T07:50:45.709Z	2026-08-30T07:50:45.709Z		1
+c0d1312c-70f5-4799-83f8-b83ca6e71bf7	Shoyu	Groceries	6064	EQUAL	2026-08-27	SGD	2	2	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-27T03:09:58.879Z	2026-08-27T03:09:58.879Z		1
+c16ce986-4774-4048-9dba-cdd0d3e3c4b1	Silk	general	8800	EQUAL	2026-06-28	SGD	2	2	1	1	\N	\N	\N	\N	\N	\N	\N	2026-06-28T10:42:48.778Z	2026-07-13T06:08:49.405Z		1
+c2ac2acd-bab9-4fef-baad-bb0c9fb891a1	Teamlabs	Entertainment	7024	EQUAL	2026-08-26	SGD	2	2	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-26T13:50:31.220Z	2026-08-26T13:50:31.220Z		1
+c35ec552-5fde-4f85-9d0e-0f6869d12036	Tonkatsu and drinks	general	7100	EQUAL	2026-06-12T12:02:16.044Z	SGD	1	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-06-12T12:03:18.784Z	2026-06-12T12:03:18.784Z		1
+c36131fc-9fe0-4c05-bb22-9a4508bbc7ec	Omu nomu	general	31305	EQUAL	2026-05-08T13:27:00.883Z	SGD	2	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-05-08T13:28:03.494Z	2026-05-08T13:28:03.494Z		1
+c36a9cf5-41ff-4bff-b8b2-c245c8c57a85	Willow	general	113400	EQUAL	2026-07-22	SGD	2	1	1	1	\N	\N	\N	\N	\N	2026-07-22T13:40:13.194Z	2	2026-07-22T12:49:36.959Z	2026-07-22T13:40:13.194Z		1
+c38b79aa-3632-47bc-bd55-5b99abf9e03c	Airport tax	Travel	16760	EQUAL	2026-08-15	SGD	2	2	2	7	\N	\N	\N	\N	\N	\N	\N	2026-08-15T09:26:00.039Z	2026-08-15T09:26:00.039Z		1
+c3c9d795-780b-4059-8c45-bd1db809ccc3	Seicomart @ Shiraoi	Groceries	2360	EQUAL	2026-08-24	SGD	1	1	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-24T13:11:56.644Z	2026-08-24T13:12:10.239Z		1
+c8e2a4cb-0ca0-417b-8693-67be896bc0f0	Piu m	general	17200	EQUAL	2026-09-03	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-09-04T03:36:07.179Z	2026-09-04T03:36:07.179Z		1
+c9820a7b-46aa-4d8d-a986-0ecfb30c8142	Loccitane	general	18900	EQUAL	2026-08-15	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-15T05:23:53.902Z	2026-08-15T05:23:53.902Z		1
+cb8af199-e51d-415f-89e4-bdc991a7126a	Insurance	Travel	11340	EQUAL	2026-08-21	SGD	2	2	1	8	\N	\N	\N	\N	\N	\N	\N	2026-08-21T00:53:06.408Z	2026-08-22T09:13:20.713Z		1
+cdacd6d8-2a73-4b5d-848b-3018ea292f05	Toriei	general	43100	EQUAL	2026-06-25T14:11:40.354Z	SGD	2	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-06-25T14:12:42.084Z	2026-06-25T14:12:42.084Z		1
+d576c4eb-8f8c-40eb-953f-614506874316	Sq tax from bali	general	3526	EQUAL	2026-06-15T16:00:00Z	SGD	1	1	1	4	\N	\N	\N	\N	\N	\N	\N	2026-06-18T02:09:40.469Z	2026-06-18T02:09:45.672Z		1
+d5e8d564-4701-43a3-9ef9-23f83b6afef1	Bear house	general	9889	EQUAL	2026-06-22	SGD	2	2	1	1	\N	\N	\N	\N	\N	\N	\N	2026-06-22T13:35:03.113Z	2026-07-13T06:15:49.840Z		1
+d615ecfa-1702-47dd-a185-7b5a3f67b9b3	旺大福chicken night	general	54300	EQUAL	2026-06-27T15:04:42.768Z	SGD	1	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-06-27T15:09:06.516Z	2026-06-27T15:09:06.516Z		1
+da153258-8ae5-4e5c-8304-883d0d53f448	Jay chou concert	general	32600	EQUAL	2026-05-19T12:47:48.195Z	SGD	2	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-05-19T12:48:45.853Z	2026-05-19T12:48:45.853Z		1
+df91e075-c17d-45ca-ab6c-475fe998f833	Santanera	Food & drink	23690	EQUAL	2026-07-24	SGD	2	2	2	4	\N	\N	\N	\N	\N	\N	\N	2026-07-24T06:08:17.225Z	2026-07-24T16:53:54.542Z		1
+dfce5516-076a-4a41-8054-34b6b729f0df	Lunch @ Chitose airport	Food & drink	9875	EQUAL	2026-08-22	SGD	1	1	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-22T09:16:27.412Z	2026-08-23T04:17:26.430Z		1
+e39cfa05-cad9-4443-bc73-5071c70f5ad9	Massage	general	8600	EQUAL	2026-07-25	SGD	2	2	2	4	\N	\N	\N	\N	\N	\N	\N	2026-07-25T10:26:04.784Z	2026-07-25T10:26:04.784Z		1
+e4dbc0c1-20ee-43db-bc40-1feb7b398a9f	Brunch	Food & drink	3000	EQUAL	2026-07-24	SGD	2	2	2	4	\N	\N	\N	\N	\N	\N	\N	2026-07-24T06:08:53.117Z	2026-07-24T16:54:11.001Z		1
+e5eee7fe-647e-41d0-8145-410f67685547	Temper snacks	general	26200	EQUAL	2026-07-30	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-07-30T11:22:15.825Z	2026-07-30T11:22:15.825Z		1
+e6e9d8e7-e7a6-43ca-8290-0ada0be6febd	Uouo	general	28200	EQUAL	2026-06-19T13:45:20.421Z	SGD	2	1	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-06-19T13:45:40.671Z	2026-06-19T13:45:40.671Z		1
+ea30965a-330d-4f65-97b3-29ecc82d60c0	Coffee	general	1100	EQUAL	2026-05-01T05:53:49.176Z	SGD	2	2	\N	1	\N	\N	\N	\N	\N	\N	\N	2026-05-01T05:54:08.669Z	2026-05-01T05:54:08.669Z		1
+ebee9b17-5c94-4ad4-b90b-e927de9d9003	Ishizawa	general	71940	EQUAL	2026-08-14	SGD	2	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-14T05:52:32.448Z	2026-08-14T05:52:32.448Z		1
+f41d3fb4-3d79-410c-9a7e-a788e5e660b4	Omu nomu	general	34771	EQUAL	2026-09-03	SGD	2	1	2	1	\N	\N	\N	\N	\N	\N	\N	2026-09-03T13:46:58.300Z	2026-09-04T03:34:59.121Z		2
+f422ad44-74ac-41fb-81f7-f3d172e9c9a6	Totoya	Food & drink	17237	EQUAL	2026-08-22	SGD	2	2	2	8	\N	\N	\N	\N	\N	\N	\N	2026-08-22T12:36:19.312Z	2026-08-22T12:36:19.312Z		1
+f988a5af-23ea-4f9b-a49a-0f0e41c605f4	Foot massage	general	5800	EQUAL	2026-07-24	SGD	2	2	2	4	\N	\N	\N	\N	\N	\N	\N	2026-07-24T10:34:25.218Z	2026-07-24T10:34:25.218Z		1
+fb9473b2-a1d1-4e94-a67b-6504d1bca1b4	PiuM	general	23600	EQUAL	2026-08-17	SGD	2	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-08-17T14:26:15.618Z	2026-08-17T14:26:15.618Z		1
+2495598f-9344-43b5-9380-95afcbb59431	Sandar	Home	20000	EQUAL	2026-09-04	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-09-07T09:23:25.522Z	2026-09-07T09:23:25.522Z		1
+431cfd9b-904f-4e52-bcfd-aa28919619d8	Sandar	Home	20000	EQUAL	2026-09-11	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-09-11T10:29:27.470Z	2026-09-11T10:29:27.470Z		1
+e4880946-dd9a-4aee-98ce-d96a528ce998	Lei Garden	Food & drink	50000	EQUAL	2026-09-11	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-09-12T02:25:26.055Z	2026-09-12T02:25:32.083Z		2
+2b9c96e8-34e8-4a5f-a8ed-c06ab311fcbd	Restaurant Fiz lunch	general	40500	EQUAL	2026-09-12	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-09-12T05:17:48.625Z	2026-09-12T05:17:48.625Z		1
+a2356a71-dc2b-4410-86f8-d68e1be8e9d1	Kiap kiap fried chicken	general	3150	EQUAL	2026-09-12	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-09-12T16:45:46.618Z	2026-09-12T16:45:46.618Z		1
+f9011c58-3a4e-4091-bb0a-a87e046f8eb5	Tiramisu for towa	Gifts	2940	EQUAL	2026-09-14	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-09-14T10:29:32.901Z	2026-09-14T10:29:32.901Z		1
+b9c4bfde-7be5-4ade-828e-b34ba2886808	Towa	general	69500	EQUAL	2026-09-14	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-09-14T13:42:08.883Z	2026-09-14T13:42:08.883Z		1
+58cadfa3-7784-4ca1-a083-0b323b737504	Paitan	Food & drink	6490	EQUAL	2026-09-19	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-09-19T04:33:32.375Z	2026-09-19T04:33:32.375Z		1
+64e0d3bc-4629-4918-a82b-4e4785fb6ce6	Sofitel Foshan	general	73100	EQUAL	2026-09-19	SGD	1	1	1	3	\N	\N	\N	\N	\N	\N	\N	2026-09-19T04:35:35.394Z	2026-09-19T04:35:35.394Z		1
+02ce7515-b6e2-4e0e-bd1a-4f56e001b45e	Summerhill	general	7800	EQUAL	2026-09-19	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-09-19T16:54:36.217Z	2026-09-19T16:54:36.217Z		1
+78652be3-eb60-45f9-922c-48ac42e83f79	Joong San	Food & drink	18185	EQUAL	2026-09-20	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-09-21T01:26:11.168Z	2026-09-21T01:26:21.287Z		2
+e7d1f61b-ae8d-43b3-b1f0-94ad470818a4	Sandar	Home	20000	EQUAL	2026-10-02	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-10-02T04:09:01.357Z	2026-10-02T04:09:01.357Z		1
+2bf77eed-1c5d-440e-91e2-a718946fce47	Sakuta	general	178500	EQUAL	2026-10-04	SGD	2	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-10-04T13:30:46.875Z	2026-10-04T13:30:46.875Z		1
+2f9d0ac7-7262-48a3-a4a3-cdf7b6d5fefd	Piu M	general	81000	EQUAL	2026-10-09	SGD	2	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-10-09T14:24:02.010Z	2026-10-09T14:24:02.010Z		1
+e8b2eb1d-f7d3-4a1b-be2e-bf5ced8b31f5	Ruroc Helmets	general	129400	EQUAL	2026-10-10	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-10-10T09:44:45.589Z	2026-10-10T09:44:45.589Z		1
+73a58c6a-8a7d-4e28-8d2f-d993666b7b29	bYu	general	68700	EQUAL	2026-10-11	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-10-11T06:30:26.808Z	2026-10-11T06:30:26.808Z		1
+7908a032-21bc-43b6-9e66-226d27b9f3d0	Eat Hum	general	12500	EQUAL	2026-10-11	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-10-11T06:31:28.365Z	2026-10-11T06:31:28.365Z		1
+ed47fc03-7061-4372-b21f-17bd3726009b	百鋪樂	general	8900	EQUAL	2026-10-13	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-10-13T13:15:59.187Z	2026-10-13T13:15:59.187Z		1
+f4c2c8f3-ca3b-4883-b21d-a6fcb634ca13	Lyf Hotel	Home	33450	EQUAL	2026-10-14	SGD	1	1	1	7	\N	\N	\N	\N	\N	\N	\N	2026-10-14T01:32:50.535Z	2026-10-14T01:33:06.265Z		2
+fa6d4a07-234d-4ff4-bc01-d31da0cb2f71	Fat cow	Food & drink	20000	EQUAL	2026-10-08	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-10-15T05:37:46.060Z	2026-10-15T05:37:46.060Z		1
+8c880091-24c5-45de-9ac7-87ba4c0da807	PiuM	Food & drink	24300	EQUAL	2026-10-15	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-10-15T14:03:40.814Z	2026-10-15T14:03:40.814Z		1
+142fd968-5634-49d3-b153-3688caaeeaa0	Sandar	Home	20000	EQUAL	2026-10-16	SGD	2	2	2	1	\N	\N	\N	\N	\N	\N	\N	2026-10-16T08:36:45.645Z	2026-10-16T08:36:45.645Z		1
+614c7824-dc76-4bc1-9376-b19e1318b06e	Suiraku	Food & drink	33600	EQUAL	2026-10-16	SGD	1	1	1	1	\N	\N	\N	\N	\N	\N	\N	2026-10-16T12:47:55.744Z	2026-10-16T12:47:55.744Z		1
+ffb10ca6-4590-4af7-b211-28d9657685e0	Afternoon tea	general	1635	EQUAL	2026-10-17	SGD	1	1	1	7	\N	\N	\N	\N	\N	\N	\N	2026-10-17T08:40:59.724Z	2026-10-17T08:40:59.724Z		1
+ef5e06ad-ab9f-4494-9c91-dfe2e7747ed5	Au Jardin Lunch	general	100800	EQUAL	2026-10-17	SGD	1	1	1	7	\N	\N	\N	\N	\N	\N	\N	2026-10-17T08:50:24.810Z	2026-10-17T08:51:55.220Z		2
+159be6f4-7b39-4243-be7b-81401852454c	Firewood	general	51400	EQUAL	2026-10-17	SGD	5	5	5	7	\N	\N	\N	\N	\N	\N	\N	2026-10-17T12:55:48.242Z	2026-10-17T12:55:48.242Z		1
+b0050012-8939-4ed7-9ab6-81e38abcd364	Massage	general	5976	EQUAL	2026-10-18	SGD	2	1	1	7	\N	\N	\N	\N	\N	\N	\N	2026-10-18T13:55:08.799Z	2026-10-18T13:55:08.799Z		1
+762051e6-0d74-4d4a-bb3d-685520946504	Massage	general	2350	EQUAL	2026-10-19	SGD	5	5	5	7	\N	\N	\N	\N	\N	\N	\N	2026-10-19T05:35:17.130Z	2026-10-19T05:35:17.130Z		1
+840acd68-0d88-434c-ba9b-e4624062fc3e	Settlement	settlement	12850	SETTLEMENT	2026-10-19	SGD	6	6	\N	\N	\N	\N	\N	\N	\N	\N	\N	2026-10-19T12:41:01.252Z	2026-10-19T12:41:01.252Z		1
+91bf3a0c-c09b-4f29-bd9f-6bc7ae14e132	Grab	general	1167	EQUAL	2026-10-19	SGD	1	1	1	7	\N	\N	\N	\N	\N	\N	\N	2026-10-19T12:51:26.174Z	2026-10-19T12:51:26.174Z		1
+090294d3-ccdf-4d58-8a78-882679fea909	Settlement	settlement	34000	SETTLEMENT	2026-10-19	SGD	6	6	1	7	\N	\N	\N	\N	\N	\N	\N	2026-10-19T12:39:34.312Z	2026-10-19T12:55:52.738Z		3
+\.
+
+
+--
+-- TOC entry 3696 (class 0 OID 16540)
+-- Dependencies: 229
+-- Data for Name: friend_default_splits; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.friend_default_splits (owner_id, friend_id, split_type, shares) FROM stdin;
+\.
+
+
+--
+-- TOC entry 3694 (class 0 OID 16502)
+-- Dependencies: 227
+-- Data for Name: friendships; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.friendships (owner_id, friend_id, created_at) FROM stdin;
+1	2	2026-04-26T05:48:46.601Z
+1	3	2026-08-25T11:20:56.897Z
+1	4	2026-08-25T11:20:36.914Z
+2	1	2026-04-26T05:48:46.601Z
+3	1	2026-08-25T11:20:56.899Z
+4	1	2026-08-25T11:20:36.917Z
+\.
+
+
+--
+-- TOC entry 3695 (class 0 OID 16524)
+-- Dependencies: 228
+-- Data for Name: group_default_splits; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.group_default_splits (group_id, split_type, shares) FROM stdin;
+\.
+
+
+--
+-- TOC entry 3693 (class 0 OID 16484)
+-- Dependencies: 226
+-- Data for Name: group_users; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.group_users (group_id, user_id) FROM stdin;
+1	1
+1	2
+2	1
+2	2
+3	1
+3	2
+4	1
+4	2
+5	1
+5	2
+6	2
+7	1
+7	2
+8	1
+8	2
+8	3
+8	4
+7	5
+7	6
+\.
+
+
+--
+-- TOC entry 3692 (class 0 OID 16459)
+-- Dependencies: 225
+-- Data for Name: groups; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.groups (id, public_id, name, image, created_by, default_currency, simplify_debts, archived_at, splitwise_group_id, created_at) FROM stdin;
+1	WUFLIFjbWadV0mJ5ibG0W	Honey Bunny Monthly 2026	\N	1	USD	t	\N	\N	2026-04-26T05:49:47.863Z
+2	FMxYOdkjA4RocNADCJBxP	2027-02 Japan	\N	1	USD	t	\N	\N	2026-04-26T05:50:12.589Z
+3	qZwFhNVFoMz63ZtyWHtD2	2026 Xmas Guangzhou	\N	2	USD	t	\N	\N	2026-05-23T01:37:28.676Z
+4	MtSm3qVFrdKM3LdD7DICU	2026-07 Bali	\N	1	USD	t	2026-07-31T16:53:57.285Z	\N	2026-06-18T01:29:06.545Z
+5	S1ypZo2mMC2H	Test	\N	1	Sgd	t	2026-07-31T17:53:28.773Z	\N	2026-07-31T17:19:58.483Z
+6	6dT34R83ay90	Cheryl’s portfolio	\N	2	SGD	t	2026-08-10T16:04:06.807Z	\N	2026-08-10T10:50:15.120Z
+7	5EtEIUaCdE2m	2026-10 Penang	\N	2	SGD	t	\N	\N	2026-08-15T09:25:35.900Z
+8	nvP6Sa4odbxb	2026-08 Summer in Japan	\N	1	SGD	t	\N	\N	2026-08-22T09:12:35.957Z
+\.
+
+
+--
+-- TOC entry 3712 (class 0 OID 16814)
+-- Dependencies: 246
+-- Data for Name: notifications; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.notifications (id, user_id, actor_id, kind, entity_type, entity_id, title, amount, currency, read_at, created_at) FROM stdin;
+4	2	1	expense_added	expense	2b9c96e8-34e8-4a5f-a8ed-c06ab311fcbd	Restaurant Fiz lunch	-20250	SGD	\N	2026-09-12T05:17:48.629Z
+5	2	1	expense_added	expense	a2356a71-dc2b-4410-86f8-d68e1be8e9d1	Kiap kiap fried chicken	-3150	SGD	\N	2026-09-12T16:45:46.621Z
+7	2	1	expense_added	expense	b9c4bfde-7be5-4ade-828e-b34ba2886808	Towa	-34750	SGD	\N	2026-09-14T13:42:08.886Z
+9	2	1	expense_added	expense	64e0d3bc-4629-4918-a82b-4e4785fb6ce6	Sofitel Foshan	-36550	SGD	\N	2026-09-19T04:35:35.400Z
+10	2	1	expense_added	expense	02ce7515-b6e2-4e0e-bd1a-4f56e001b45e	Summerhill	-7800	SGD	\N	2026-09-19T16:54:36.225Z
+12	1	2	expense_updated	expense	78652be3-eb60-45f9-922c-48ac42e83f79	Joong San	-18185	SGD	2026-09-26T08:49:17.600Z	2026-09-21T01:26:21.292Z
+11	1	2	expense_added	expense	78652be3-eb60-45f9-922c-48ac42e83f79	Joong San	-18185	SGD	2026-09-26T08:49:17.600Z	2026-09-21T01:26:11.171Z
+8	1	2	expense_added	expense	58cadfa3-7784-4ca1-a083-0b323b737504	Paitan	-3245	SGD	2026-09-26T08:49:17.600Z	2026-09-19T04:33:32.384Z
+6	1	2	expense_added	expense	f9011c58-3a4e-4091-bb0a-a87e046f8eb5	Tiramisu for towa	-1470	SGD	2026-09-26T08:49:17.600Z	2026-09-14T10:29:32.906Z
+3	1	2	expense_updated	expense	e4880946-dd9a-4aee-98ce-d96a528ce998	Lei Garden	-25000	SGD	2026-09-26T08:49:17.600Z	2026-09-12T02:25:32.086Z
+2	1	2	expense_added	expense	e4880946-dd9a-4aee-98ce-d96a528ce998	Lei Garden	-25000	SGD	2026-09-26T08:49:17.600Z	2026-09-12T02:25:26.058Z
+1	1	2	expense_added	expense	431cfd9b-904f-4e52-bcfd-aa28919619d8	Sandar	-10000	SGD	2026-09-26T08:49:17.600Z	2026-09-11T10:29:27.477Z
+13	1	2	expense_added	expense	e7d1f61b-ae8d-43b3-b1f0-94ad470818a4	Sandar	-10000	SGD	\N	2026-10-02T04:09:01.367Z
+14	2	1	expense_added	expense	2bf77eed-1c5d-440e-91e2-a718946fce47	Sakuta	89250	SGD	\N	2026-10-04T13:30:46.878Z
+15	2	1	expense_added	expense	2f9d0ac7-7262-48a3-a4a3-cdf7b6d5fefd	Piu M	40500	SGD	\N	2026-10-09T14:24:02.025Z
+16	2	1	expense_added	expense	e8b2eb1d-f7d3-4a1b-be2e-bf5ced8b31f5	Ruroc Helmets	-64700	SGD	\N	2026-10-10T09:44:45.593Z
+17	2	1	expense_added	expense	73a58c6a-8a7d-4e28-8d2f-d993666b7b29	bYu	-34350	SGD	\N	2026-10-11T06:30:26.814Z
+18	2	1	expense_added	expense	7908a032-21bc-43b6-9e66-226d27b9f3d0	Eat Hum	-12500	SGD	\N	2026-10-11T06:31:28.368Z
+19	2	1	expense_added	expense	ed47fc03-7061-4372-b21f-17bd3726009b	百鋪樂	-4450	SGD	\N	2026-10-13T13:15:59.191Z
+20	2	1	expense_added	expense	f4c2c8f3-ca3b-4883-b21d-a6fcb634ca13	Lyf Hotel	-8362	SGD	\N	2026-10-14T01:32:50.539Z
+21	5	1	expense_added	expense	f4c2c8f3-ca3b-4883-b21d-a6fcb634ca13	Lyf Hotel	-8362	SGD	\N	2026-10-14T01:32:50.539Z
+22	6	1	expense_added	expense	f4c2c8f3-ca3b-4883-b21d-a6fcb634ca13	Lyf Hotel	-8363	SGD	\N	2026-10-14T01:32:50.539Z
+23	2	1	expense_updated	expense	f4c2c8f3-ca3b-4883-b21d-a6fcb634ca13	Lyf Hotel	-8362	SGD	\N	2026-10-14T01:33:06.269Z
+24	5	1	expense_updated	expense	f4c2c8f3-ca3b-4883-b21d-a6fcb634ca13	Lyf Hotel	-8362	SGD	\N	2026-10-14T01:33:06.269Z
+25	6	1	expense_updated	expense	f4c2c8f3-ca3b-4883-b21d-a6fcb634ca13	Lyf Hotel	-8363	SGD	\N	2026-10-14T01:33:06.269Z
+26	1	2	expense_added	expense	fa6d4a07-234d-4ff4-bc01-d31da0cb2f71	Fat cow	-10000	SGD	\N	2026-10-15T05:37:46.066Z
+27	2	1	expense_added	expense	8c880091-24c5-45de-9ac7-87ba4c0da807	PiuM	-12150	SGD	\N	2026-10-15T14:03:40.817Z
+28	1	2	expense_added	expense	142fd968-5634-49d3-b153-3688caaeeaa0	Sandar	-10000	SGD	\N	2026-10-16T08:36:45.650Z
+29	2	1	expense_added	expense	614c7824-dc76-4bc1-9376-b19e1318b06e	Suiraku	-16800	SGD	\N	2026-10-16T12:47:55.750Z
+30	2	1	expense_added	expense	ffb10ca6-4590-4af7-b211-28d9657685e0	Afternoon tea	-409	SGD	\N	2026-10-17T08:40:59.729Z
+31	5	1	expense_added	expense	ffb10ca6-4590-4af7-b211-28d9657685e0	Afternoon tea	-409	SGD	\N	2026-10-17T08:40:59.729Z
+32	6	1	expense_added	expense	ffb10ca6-4590-4af7-b211-28d9657685e0	Afternoon tea	-408	SGD	\N	2026-10-17T08:40:59.729Z
+33	2	1	expense_added	expense	ef5e06ad-ab9f-4494-9c91-dfe2e7747ed5	Au Jardin Lunch	-29900	SGD	\N	2026-10-17T08:50:24.813Z
+34	5	1	expense_added	expense	ef5e06ad-ab9f-4494-9c91-dfe2e7747ed5	Au Jardin Lunch	-29900	SGD	\N	2026-10-17T08:50:24.813Z
+35	6	1	expense_added	expense	ef5e06ad-ab9f-4494-9c91-dfe2e7747ed5	Au Jardin Lunch	-29900	SGD	\N	2026-10-17T08:50:24.813Z
+36	2	1	expense_updated	expense	ef5e06ad-ab9f-4494-9c91-dfe2e7747ed5	Au Jardin Lunch	-25200	SGD	\N	2026-10-17T08:51:55.224Z
+37	5	1	expense_updated	expense	ef5e06ad-ab9f-4494-9c91-dfe2e7747ed5	Au Jardin Lunch	-25200	SGD	\N	2026-10-17T08:51:55.224Z
+38	6	1	expense_updated	expense	ef5e06ad-ab9f-4494-9c91-dfe2e7747ed5	Au Jardin Lunch	-25200	SGD	\N	2026-10-17T08:51:55.224Z
+39	1	5	expense_added	expense	159be6f4-7b39-4243-be7b-81401852454c	Firewood	-12850	SGD	\N	2026-10-17T12:55:48.245Z
+40	2	5	expense_added	expense	159be6f4-7b39-4243-be7b-81401852454c	Firewood	-12850	SGD	\N	2026-10-17T12:55:48.245Z
+41	6	5	expense_added	expense	159be6f4-7b39-4243-be7b-81401852454c	Firewood	-12850	SGD	\N	2026-10-17T12:55:48.245Z
+42	2	1	expense_added	expense	b0050012-8939-4ed7-9ab6-81e38abcd364	Massage	2988	SGD	\N	2026-10-18T13:55:08.808Z
+43	2	5	expense_added	expense	762051e6-0d74-4d4a-bb3d-685520946504	Massage	-2350	SGD	\N	2026-10-19T05:35:17.136Z
+44	1	6	settlement_added	expense	090294d3-ccdf-4d58-8a78-882679fea909	Settlement	-33971	SGD	\N	2026-10-19T12:39:34.314Z
+45	5	6	settlement_added	expense	840acd68-0d88-434c-ba9b-e4624062fc3e	Settlement	-12850	SGD	\N	2026-10-19T12:41:01.254Z
+46	2	1	expense_added	expense	91bf3a0c-c09b-4f29-bd9f-6bc7ae14e132	Grab	-292	SGD	\N	2026-10-19T12:51:26.178Z
+47	5	1	expense_added	expense	91bf3a0c-c09b-4f29-bd9f-6bc7ae14e132	Grab	-291	SGD	\N	2026-10-19T12:51:26.178Z
+48	6	1	expense_added	expense	91bf3a0c-c09b-4f29-bd9f-6bc7ae14e132	Grab	-292	SGD	\N	2026-10-19T12:51:26.178Z
+49	6	1	settlement_updated	expense	090294d3-ccdf-4d58-8a78-882679fea909	Settlement	33971	SGD	\N	2026-10-19T12:54:28.909Z
+50	6	1	settlement_updated	expense	090294d3-ccdf-4d58-8a78-882679fea909	Settlement	34000	SGD	\N	2026-10-19T12:55:52.741Z
+\.
+
+
+--
+-- TOC entry 3706 (class 0 OID 16726)
+-- Dependencies: 239
+-- Data for Name: push_notifications; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.push_notifications (user_id, endpoint, subscription) FROM stdin;
+1	https://fcm.googleapis.com/fcm/send/d5Nm2uK1g08:APA91bGYuYNiceJGfeEbY0Bdj8A6v_KH_vwuJd-oXNyIYCWxmQ8FU_N9L1cMPi43qSx5OVpWk99A87snDJTdxviSVJxsqA3JUf_7UllgfRWd1Q4r2AAiFlEL3cJG3QdHcS6mbk5serRq	{"endpoint":"https://fcm.googleapis.com/fcm/send/d5Nm2uK1g08:APA91bGYuYNiceJGfeEbY0Bdj8A6v_KH_vwuJd-oXNyIYCWxmQ8FU_N9L1cMPi43qSx5OVpWk99A87snDJTdxviSVJxsqA3JUf_7UllgfRWd1Q4r2AAiFlEL3cJG3QdHcS6mbk5serRq","expirationTime":null,"keys":{"p256dh":"BJUxeVdeLMBh4Bg4R20l5_dK7pfraTzrm8hYacn3YQAJauhOX3LvaTZIzMdIb-tahlJFpcdbPDeYWDvNpWQZuUk","auth":"icKkku4yJiZp6aTvG2Chhg"}}
+2	https://web.push.apple.com/QDu2xetvGnfoN_PbDxkekLfTgziZmzDdbEDTxJ7ty4XDxMUDcmWkIOUJvhl__1SG78uWKebRpHOnjVCaADEFVAnyL4w7vGA1Q1YdOGeVmDDQ0_WmlCkDZtj1cdNhxDJDn4IErV39vzEUpN0F2wM_FSIlcB9noyODMnVWjZ6Bg2M	{"endpoint":"https://web.push.apple.com/QDu2xetvGnfoN_PbDxkekLfTgziZmzDdbEDTxJ7ty4XDxMUDcmWkIOUJvhl__1SG78uWKebRpHOnjVCaADEFVAnyL4w7vGA1Q1YdOGeVmDDQ0_WmlCkDZtj1cdNhxDJDn4IErV39vzEUpN0F2wM_FSIlcB9noyODMnVWjZ6Bg2M","keys":{"p256dh":"BOjD9NWDA-l9spG7zuy6t29q-__CSvTWe0AsXsAIHAeogTxQfC4NBNJepN17CORgLINtq5u0a8vI5shnqI3ynoo","auth":"9ojvV3dJcNSEhLntKfXMmg"}}
+\.
+
+
+--
+-- TOC entry 3703 (class 0 OID 16689)
+-- Dependencies: 236
+-- Data for Name: scheduler_locks; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.scheduler_locks (id, holder, expires_at) FROM stdin;
+auto-restore	ba7f062655c4-1	2026-09-07T06:28:18.746Z
+cleanup	4c40c1215341-092829	2026-10-19T13:38:29.195Z
+\.
+
+
+--
+-- TOC entry 3686 (class 0 OID 16391)
+-- Dependencies: 219
+-- Data for Name: schema_migrations; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.schema_migrations (version, applied_at) FROM stdin;
+0001_init.sql	2026-07-13T06:06:52.062Z
+0002_recurrence_next_run.sql	2026-07-13T06:06:52.103Z
+0003_theme_color.sql	2026-07-13T06:06:52.107Z
+0004_notes_and_archive.sql	2026-07-13T06:06:52.127Z
+0005_simplify_debts_default.sql	2026-07-31T15:57:38.187Z
+0006_split_inputs.sql	2026-09-02T14:57:51.072Z
+0007_notifications.sql	2026-09-07T11:41:59.434Z
+\.
+
+
+--
+-- TOC entry 3689 (class 0 OID 16427)
+-- Dependencies: 222
+-- Data for Name: sessions; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.sessions (token, user_id, expires, created_at) FROM stdin;
+EPk9bOalsnGr_eyEQ2HCXEUPDcR0lRcfPGdSGX-Syrg	1	2026-11-12T13:15:28.902Z	2026-10-13T13:15:28.904Z
+5ZIQZG1BkxZTWffw78aNJpivnmK0jtzJrwnZ5V6lZR4	5	2026-11-16T08:38:39.919Z	2026-10-17T08:38:39.920Z
+uPl29NbQTLtUWNwYxlkVxFlybqCstf5jHW0SvKvuqAA	6	2026-11-16T08:38:45.276Z	2026-10-17T08:38:45.277Z
+\.
+
+
+--
+-- TOC entry 3688 (class 0 OID 16401)
+-- Dependencies: 221
+-- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.users (id, name, email, email_verified, password_hash, image, currency, default_currency, preferred_language, role, deactivated_at, banking_id, hidden_friend_ids, created_at, theme_color, email_expense_notify) FROM stdin;
+1	Hamlyn	gosplit@hafio.tv	2026-07-12T11:37:38.522Z	$argon2id$v=19$m=65536,t=1,p=4$hjyT8JVmE2QApxH+ID6HyA$Suf0NAO7JI0blnirPAiaT2QUuloa/55VGiaTU6cMzc4	\N	SGD	SGD	en	ADMIN	\N	\N	[]	2026-04-26T05:48:46.601Z	burgundy	f
+2	Cheryl	sim.cheryl@gmail.com	2026-05-22T16:55:14.528Z	$argon2id$v=19$m=65536,t=1,p=4$h2la12bo1rNF2g9+QT+f3g$g0LIQPDzeOhuJGW6Sh8yp8Sy4I1WgBeEPsY9eQrb4/Q	\N	SGD	SGD	en	USER	\N	\N	[]	2026-04-26T05:48:46.601Z	slate	f
+3	Masako	monster777marcia@icloud.com	2026-08-25T09:33:34.673Z	$argon2id$v=19$m=65536,t=1,p=4$JfEgzAnDxBUpnFhd4LFXog$eYmKwnuYJAGFC5+/O8fUyBjGsHdxaxt/KaSGjava+74	\N	SGD	SGD	ja	USER	\N	\N	[]	2026-08-24T10:58:46.787Z	burgundy	f
+4	Jun	jun@hafio.tv	\N	\N	\N	SGD	SGD	ja	USER	\N	\N	[]	2026-08-24T13:08:23.479Z	burgundy	f
+5	Ben	benxsiah@gmail.com	\N	$argon2id$v=19$m=65536,t=1,p=4$C+gM6zsG9c69wcr3RUw8lw$jkOaNEWcqQi+LPqYFyvy+18XedjIY8Y1je4gCkZqvUA	\N	SGD	USD	en	USER	\N	\N	[]	2026-10-14T01:32:06.190Z	burgundy	f
+6	Cas	caslyn.loh@gmail.com	\N	$argon2id$v=19$m=65536,t=1,p=4$MHVNTZwViK0oDOAgHcxbPA$CZ4KwfSzonyjKw7q8FCvG2v8rj5sbEyJvoN/rJQxRNQ	\N	SGD	USD	en	USER	\N	\N	[]	2026-10-14T01:32:27.695Z	burgundy	f
+\.
+
+
+--
+-- TOC entry 3690 (class 0 OID 16445)
+-- Dependencies: 223
+-- Data for Name: verification_tokens; Type: TABLE DATA; Schema: public; Owner: gosplit
+--
+
+COPY public.verification_tokens (identifier, token, purpose, expires) FROM stdin;
+\.
+
+
+--
+-- TOC entry 3724 (class 0 OID 0)
+-- Dependencies: 232
+-- Name: expense_notes_id_seq; Type: SEQUENCE SET; Schema: public; Owner: gosplit
+--
+
+SELECT pg_catalog.setval('public.expense_notes_id_seq', 1, false);
+
+
+--
+-- TOC entry 3725 (class 0 OID 0)
+-- Dependencies: 234
+-- Name: expense_recurrences_id_seq; Type: SEQUENCE SET; Schema: public; Owner: gosplit
+--
+
+SELECT pg_catalog.setval('public.expense_recurrences_id_seq', 1, false);
+
+
+--
+-- TOC entry 3726 (class 0 OID 0)
+-- Dependencies: 224
+-- Name: groups_id_seq; Type: SEQUENCE SET; Schema: public; Owner: gosplit
+--
+
+SELECT pg_catalog.setval('public.groups_id_seq', 9, false);
+
+
+--
+-- TOC entry 3727 (class 0 OID 0)
+-- Dependencies: 245
+-- Name: notifications_id_seq; Type: SEQUENCE SET; Schema: public; Owner: gosplit
+--
+
+SELECT pg_catalog.setval('public.notifications_id_seq', 50, true);
+
+
+--
+-- TOC entry 3728 (class 0 OID 0)
+-- Dependencies: 220
+-- Name: users_id_seq; Type: SEQUENCE SET; Schema: public; Owner: gosplit
+--
+
+SELECT pg_catalog.setval('public.users_id_seq', 6, true);
+
+
+--
+-- TOC entry 3502 (class 2606 OID 16749)
+-- Name: app_metadata app_metadata_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.app_metadata
+    ADD CONSTRAINT app_metadata_pkey PRIMARY KEY (key);
+
+
+--
+-- TOC entry 3507 (class 2606 OID 16792)
+-- Name: archived_expense_participants archived_expense_participants_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.archived_expense_participants
+    ADD CONSTRAINT archived_expense_participants_pkey PRIMARY KEY (expense_id, user_id);
+
+
+--
+-- TOC entry 3504 (class 2606 OID 16781)
+-- Name: archived_expenses archived_expenses_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.archived_expenses
+    ADD CONSTRAINT archived_expenses_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3498 (class 2606 OID 16720)
+-- Name: cached_bank_data cached_bank_data_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.cached_bank_data
+    ADD CONSTRAINT cached_bank_data_pkey PRIMARY KEY (user_id);
+
+
+--
+-- TOC entry 3496 (class 2606 OID 16709)
+-- Name: cached_currency_rates cached_currency_rates_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.cached_currency_rates
+    ADD CONSTRAINT cached_currency_rates_pkey PRIMARY KEY (from_currency, to_currency, rate_date);
+
+
+--
+-- TOC entry 3486 (class 2606 OID 16647)
+-- Name: expense_notes expense_notes_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expense_notes
+    ADD CONSTRAINT expense_notes_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3483 (class 2606 OID 16621)
+-- Name: expense_participants expense_participants_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expense_participants
+    ADD CONSTRAINT expense_participants_pkey PRIMARY KEY (expense_id, user_id);
+
+
+--
+-- TOC entry 3489 (class 2606 OID 16678)
+-- Name: expense_recurrences expense_recurrences_job_name_key; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expense_recurrences
+    ADD CONSTRAINT expense_recurrences_job_name_key UNIQUE (job_name);
+
+
+--
+-- TOC entry 3491 (class 2606 OID 16676)
+-- Name: expense_recurrences expense_recurrences_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expense_recurrences
+    ADD CONSTRAINT expense_recurrences_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3509 (class 2606 OID 16801)
+-- Name: expense_split_inputs expense_split_inputs_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expense_split_inputs
+    ADD CONSTRAINT expense_split_inputs_pkey PRIMARY KEY (expense_id);
+
+
+--
+-- TOC entry 3477 (class 2606 OID 16582)
+-- Name: expenses expenses_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expenses
+    ADD CONSTRAINT expenses_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3475 (class 2606 OID 16551)
+-- Name: friend_default_splits friend_default_splits_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.friend_default_splits
+    ADD CONSTRAINT friend_default_splits_pkey PRIMARY KEY (owner_id, friend_id);
+
+
+--
+-- TOC entry 3470 (class 2606 OID 16512)
+-- Name: friendships friendships_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.friendships
+    ADD CONSTRAINT friendships_pkey PRIMARY KEY (owner_id, friend_id);
+
+
+--
+-- TOC entry 3473 (class 2606 OID 16534)
+-- Name: group_default_splits group_default_splits_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.group_default_splits
+    ADD CONSTRAINT group_default_splits_pkey PRIMARY KEY (group_id);
+
+
+--
+-- TOC entry 3467 (class 2606 OID 16490)
+-- Name: group_users group_users_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.group_users
+    ADD CONSTRAINT group_users_pkey PRIMARY KEY (group_id, user_id);
+
+
+--
+-- TOC entry 3463 (class 2606 OID 16476)
+-- Name: groups groups_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.groups
+    ADD CONSTRAINT groups_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3465 (class 2606 OID 16478)
+-- Name: groups groups_public_id_key; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.groups
+    ADD CONSTRAINT groups_public_id_key UNIQUE (public_id);
+
+
+--
+-- TOC entry 3513 (class 2606 OID 16834)
+-- Name: notifications notifications_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT notifications_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3500 (class 2606 OID 16735)
+-- Name: push_notifications push_notifications_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.push_notifications
+    ADD CONSTRAINT push_notifications_pkey PRIMARY KEY (user_id, endpoint);
+
+
+--
+-- TOC entry 3494 (class 2606 OID 16698)
+-- Name: scheduler_locks scheduler_locks_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.scheduler_locks
+    ADD CONSTRAINT scheduler_locks_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3451 (class 2606 OID 16399)
+-- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.schema_migrations
+    ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (version);
+
+
+--
+-- TOC entry 3458 (class 2606 OID 16438)
+-- Name: sessions sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.sessions
+    ADD CONSTRAINT sessions_pkey PRIMARY KEY (token);
+
+
+--
+-- TOC entry 3453 (class 2606 OID 16426)
+-- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_email_key UNIQUE (email);
+
+
+--
+-- TOC entry 3455 (class 2606 OID 16424)
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 3461 (class 2606 OID 16456)
+-- Name: verification_tokens verification_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.verification_tokens
+    ADD CONSTRAINT verification_tokens_pkey PRIMARY KEY (identifier, token);
+
+
+--
+-- TOC entry 3505 (class 1259 OID 16782)
+-- Name: idx_archived_expenses_archive; Type: INDEX; Schema: public; Owner: gosplit
+--
+
+CREATE INDEX idx_archived_expenses_archive ON public.archived_expenses USING btree (archive_expense_id);
+
+
+--
+-- TOC entry 3484 (class 1259 OID 16632)
+-- Name: idx_ep_user; Type: INDEX; Schema: public; Owner: gosplit
+--
+
+CREATE INDEX idx_ep_user ON public.expense_participants USING btree (user_id);
+
+
+--
+-- TOC entry 3478 (class 1259 OID 16611)
+-- Name: idx_expenses_date; Type: INDEX; Schema: public; Owner: gosplit
+--
+
+CREATE INDEX idx_expenses_date ON public.expenses USING btree (expense_date);
+
+
+--
+-- TOC entry 3479 (class 1259 OID 16610)
+-- Name: idx_expenses_deleted; Type: INDEX; Schema: public; Owner: gosplit
+--
+
+CREATE INDEX idx_expenses_deleted ON public.expenses USING btree (deleted_at);
+
+
+--
+-- TOC entry 3480 (class 1259 OID 16609)
+-- Name: idx_expenses_group; Type: INDEX; Schema: public; Owner: gosplit
+--
+
+CREATE INDEX idx_expenses_group ON public.expenses USING btree (group_id);
+
+
+--
+-- TOC entry 3481 (class 1259 OID 16608)
+-- Name: idx_expenses_paidby; Type: INDEX; Schema: public; Owner: gosplit
+--
+
+CREATE INDEX idx_expenses_paidby ON public.expenses USING btree (paid_by);
+
+
+--
+-- TOC entry 3471 (class 1259 OID 16523)
+-- Name: idx_friendships_friend; Type: INDEX; Schema: public; Owner: gosplit
+--
+
+CREATE INDEX idx_friendships_friend ON public.friendships USING btree (friend_id);
+
+
+--
+-- TOC entry 3468 (class 1259 OID 16501)
+-- Name: idx_group_users_user; Type: INDEX; Schema: public; Owner: gosplit
+--
+
+CREATE INDEX idx_group_users_user ON public.group_users USING btree (user_id);
+
+
+--
+-- TOC entry 3487 (class 1259 OID 16658)
+-- Name: idx_notes_expense; Type: INDEX; Schema: public; Owner: gosplit
+--
+
+CREATE INDEX idx_notes_expense ON public.expense_notes USING btree (expense_id);
+
+
+--
+-- TOC entry 3510 (class 1259 OID 16840)
+-- Name: idx_notifications_user_created; Type: INDEX; Schema: public; Owner: gosplit
+--
+
+CREATE INDEX idx_notifications_user_created ON public.notifications USING btree (user_id, created_at DESC);
+
+
+--
+-- TOC entry 3511 (class 1259 OID 16841)
+-- Name: idx_notifications_user_read; Type: INDEX; Schema: public; Owner: gosplit
+--
+
+CREATE INDEX idx_notifications_user_read ON public.notifications USING btree (user_id, read_at);
+
+
+--
+-- TOC entry 3492 (class 1259 OID 16755)
+-- Name: idx_recurrences_next; Type: INDEX; Schema: public; Owner: gosplit
+--
+
+CREATE INDEX idx_recurrences_next ON public.expense_recurrences USING btree (next_run_at);
+
+
+--
+-- TOC entry 3456 (class 1259 OID 16444)
+-- Name: idx_sessions_user; Type: INDEX; Schema: public; Owner: gosplit
+--
+
+CREATE INDEX idx_sessions_user ON public.sessions USING btree (user_id);
+
+
+--
+-- TOC entry 3459 (class 1259 OID 16457)
+-- Name: idx_vtokens_token; Type: INDEX; Schema: public; Owner: gosplit
+--
+
+CREATE INDEX idx_vtokens_token ON public.verification_tokens USING btree (token);
+
+
+--
+-- TOC entry 3534 (class 2606 OID 16721)
+-- Name: cached_bank_data cached_bank_data_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.cached_bank_data
+    ADD CONSTRAINT cached_bank_data_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3530 (class 2606 OID 16648)
+-- Name: expense_notes expense_notes_expense_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expense_notes
+    ADD CONSTRAINT expense_notes_expense_id_fkey FOREIGN KEY (expense_id) REFERENCES public.expenses(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3531 (class 2606 OID 16653)
+-- Name: expense_notes expense_notes_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expense_notes
+    ADD CONSTRAINT expense_notes_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- TOC entry 3528 (class 2606 OID 16622)
+-- Name: expense_participants expense_participants_expense_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expense_participants
+    ADD CONSTRAINT expense_participants_expense_id_fkey FOREIGN KEY (expense_id) REFERENCES public.expenses(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3529 (class 2606 OID 16627)
+-- Name: expense_participants expense_participants_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expense_participants
+    ADD CONSTRAINT expense_participants_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- TOC entry 3532 (class 2606 OID 16684)
+-- Name: expense_recurrences expense_recurrences_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expense_recurrences
+    ADD CONSTRAINT expense_recurrences_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+
+--
+-- TOC entry 3533 (class 2606 OID 16679)
+-- Name: expense_recurrences expense_recurrences_template_expense_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expense_recurrences
+    ADD CONSTRAINT expense_recurrences_template_expense_id_fkey FOREIGN KEY (template_expense_id) REFERENCES public.expenses(id);
+
+
+--
+-- TOC entry 3536 (class 2606 OID 16802)
+-- Name: expense_split_inputs expense_split_inputs_expense_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expense_split_inputs
+    ADD CONSTRAINT expense_split_inputs_expense_id_fkey FOREIGN KEY (expense_id) REFERENCES public.expenses(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3523 (class 2606 OID 16588)
+-- Name: expenses expenses_added_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expenses
+    ADD CONSTRAINT expenses_added_by_fkey FOREIGN KEY (added_by) REFERENCES public.users(id);
+
+
+--
+-- TOC entry 3524 (class 2606 OID 16603)
+-- Name: expenses expenses_deleted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expenses
+    ADD CONSTRAINT expenses_deleted_by_fkey FOREIGN KEY (deleted_by) REFERENCES public.users(id);
+
+
+--
+-- TOC entry 3525 (class 2606 OID 16598)
+-- Name: expenses expenses_group_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expenses
+    ADD CONSTRAINT expenses_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.groups(id);
+
+
+--
+-- TOC entry 3526 (class 2606 OID 16583)
+-- Name: expenses expenses_paid_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expenses
+    ADD CONSTRAINT expenses_paid_by_fkey FOREIGN KEY (paid_by) REFERENCES public.users(id);
+
+
+--
+-- TOC entry 3527 (class 2606 OID 16593)
+-- Name: expenses expenses_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.expenses
+    ADD CONSTRAINT expenses_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id);
+
+
+--
+-- TOC entry 3521 (class 2606 OID 16557)
+-- Name: friend_default_splits friend_default_splits_friend_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.friend_default_splits
+    ADD CONSTRAINT friend_default_splits_friend_id_fkey FOREIGN KEY (friend_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3522 (class 2606 OID 16552)
+-- Name: friend_default_splits friend_default_splits_owner_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.friend_default_splits
+    ADD CONSTRAINT friend_default_splits_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3518 (class 2606 OID 16518)
+-- Name: friendships friendships_friend_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.friendships
+    ADD CONSTRAINT friendships_friend_id_fkey FOREIGN KEY (friend_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3519 (class 2606 OID 16513)
+-- Name: friendships friendships_owner_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.friendships
+    ADD CONSTRAINT friendships_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3520 (class 2606 OID 16535)
+-- Name: group_default_splits group_default_splits_group_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.group_default_splits
+    ADD CONSTRAINT group_default_splits_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.groups(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3516 (class 2606 OID 16491)
+-- Name: group_users group_users_group_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.group_users
+    ADD CONSTRAINT group_users_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.groups(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3517 (class 2606 OID 16496)
+-- Name: group_users group_users_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.group_users
+    ADD CONSTRAINT group_users_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3515 (class 2606 OID 16479)
+-- Name: groups groups_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.groups
+    ADD CONSTRAINT groups_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+
+--
+-- TOC entry 3537 (class 2606 OID 16835)
+-- Name: notifications notifications_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3535 (class 2606 OID 16736)
+-- Name: push_notifications push_notifications_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.push_notifications
+    ADD CONSTRAINT push_notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 3514 (class 2606 OID 16439)
+-- Name: sessions sessions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gosplit
+--
+
+ALTER TABLE ONLY public.sessions
+    ADD CONSTRAINT sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+-- Completed on 2026-10-19 21:34:17 +08
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict dTgxUU6GNTR3mgcG2TA8POBY3ZbsXmWTrjaKdIqmKaQdndGp3JGapMCae9phmko
+

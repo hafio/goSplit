@@ -59,7 +59,7 @@ const unknownActor = "Someone"
 func (s *Service) notifyExpense(ctx context.Context, e *store.Expense,
 	parts []store.ExpenseParticipant, actorID int64, kind string) {
 	rows := notificationsFor(e, parts, actorID, kind)
-	if len(rows) == 0 {
+	if len(rows) == 0 { // cov:ignore glue: nobody else to notify
 		return
 	}
 	if err := s.Store.CreateNotifications(ctx, rows); err != nil {
@@ -80,10 +80,10 @@ func (s *Service) notifySettleBatch(ctx context.Context, settled []*store.Expens
 	for _, e := range settled {
 		rows = append(rows, notificationsFor(e, partsByID[e.ID], actorID, KindSettlementAdded)...)
 	}
-	if len(rows) == 0 {
+	if len(rows) == 0 { // cov:ignore glue: nobody else to notify
 		return
 	}
-	if err := s.Store.CreateNotifications(ctx, rows); err != nil {
+	if err := s.Store.CreateNotifications(ctx, rows); err != nil { // cov:ignore log-only: the settle batch stands without notifications
 		slog.Warn("notify: record settle batch", "group", groupID, "err", err)
 		return
 	}
@@ -142,7 +142,7 @@ func (s *Service) deliver(rows []*store.Notification, actorID int64, url string,
 		}
 		users := make(map[int64]*store.User, len(rows))
 		for _, n := range rows {
-			if _, ok := users[n.UserID]; ok {
+			if _, ok := users[n.UserID]; ok { // cov:ignore glue: skips a repeat lookup; no observable difference
 				continue
 			}
 			if u, err := s.Store.GetUser(ctx, n.UserID); err == nil {
@@ -170,7 +170,7 @@ func (s *Service) pushNotifications(ctx context.Context, rows []*store.Notificat
 		ids = append(ids, id)
 	}
 	subs, err := s.Store.ListPushSubscriptions(ctx, ids)
-	if err != nil {
+	if err != nil { // cov:ignore log-only: push is skipped, the in-app rows stand
 		slog.Warn("notify: list subscriptions", "err", err)
 		return
 	}

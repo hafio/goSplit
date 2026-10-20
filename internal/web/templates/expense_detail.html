@@ -1,10 +1,11 @@
 {{define "content"}}
 {{with .Data}}
 <div class="m-head">
-  <span class="cat cat-lg">{{if eq .SplitType "SETTLEMENT"}}💸{{else if .IsArchive}}🗂️{{else}}{{categoryEmoji .Category}}{{end}}</span>
+  <span class="cat cat-lg">{{if eq .SplitType "SETTLEMENT"}}💸{{else if .IsArchive}}🗂️{{else if .IsNetting}}&#9878;&#65039;{{else}}{{categoryEmoji .Category}}{{end}}</span>
   <div style="flex:1;min-width:0">
-    <h1>{{.Name}} {{if .Deleted}}<span class="tag danger">{{$.T "feed.deleted"}}</span>{{end}}</h1>
+    <h1>{{if .IsNetting}}{{$.T "feed.netting"}}{{else}}{{.Name}}{{end}} {{if .Deleted}}<span class="tag danger">{{$.T "feed.deleted"}}</span>{{end}}</h1>
     <div class="l-sub">{{money .Amount .Currency}} {{.Currency}} · {{.Date}}</div>
+    {{if and .Deleted .DeletedByName}}<div class="l-sub">{{$.T "detail.deleted_by"}} {{.DeletedByName}}{{if .DeletedAt}} &middot; {{.DeletedAt}}{{end}}</div>{{end}}
   </div>
   {{if and (not .Deleted) .CanEdit}}
   <div class="m-actions">
@@ -18,10 +19,16 @@
   {{end}}
 </div>
 
+{{if and .AdminOverride .CanEdit (not .Deleted)}}<p class="muted small">{{$.T "detail.admin_override"}}</p>{{end}}
+
 <div class="card receipt">
+  {{/* A netting entry has no payer, category or split in any meaningful sense:
+       only its group and the two people it moves are worth showing. */}}
+  {{if not .IsNetting}}
   <div class="l-row"><div class="l-main"><div class="l-sub">{{$.T "form.paid_by"}}</div></div><div class="l-end"><span class="amt">{{.PaidByName}}</span></div></div>
   <div class="l-row"><div class="l-main"><div class="l-sub">{{$.T "detail.category"}}</div></div><div class="l-end">{{categoryEmoji .Category}} {{.Category}}</div></div>
   <div class="l-row"><div class="l-main"><div class="l-sub">{{$.T "form.split"}}</div></div><div class="l-end">{{.SplitType}}</div></div>
+  {{end}}
   <div class="l-row"><div class="l-main"><div class="l-sub">{{$.T "detail.group"}}</div></div><div class="l-end">{{if .GroupName}}{{.GroupName}}{{else}}<span class="muted">{{$.T "detail.direct"}}</span>{{end}}</div></div>
 </div>
 
@@ -36,6 +43,9 @@
   {{end}}
 </div>
 
+{{if .IsNetting}}
+<p class="muted">{{$.T "detail.netting_explain"}}</p>
+{{else}}
 <h2>{{$.T "detail.note"}}</h2>
 {{if .IsArchive}}
 {{$rows := csvRows .Note}}
@@ -49,6 +59,7 @@
 {{else}}<p class="muted">{{$.T "detail.note_empty"}}</p>{{end}}
 {{else}}
 {{if .Note}}<div class="card note-body">{{.Note}}</div>{{else}}<p class="muted">{{$.T "detail.note_empty"}}</p>{{end}}
+{{end}}
 {{end}}
 {{end}}
 {{end}}

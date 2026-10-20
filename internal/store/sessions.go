@@ -12,7 +12,7 @@ func (s *Store) CreateSession(ctx context.Context, token string, userID int64, t
 	exp := FromNow(ttl)
 	_, err := s.DB.ExecContext(ctx, s.rebind(
 		`INSERT INTO sessions (token, user_id, expires) VALUES (?, ?, ?)`), token, userID, exp)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return nil, err
 	}
 	return &Session{Token: token, UserID: userID, Expires: exp}, nil
@@ -27,7 +27,7 @@ func (s *Store) GetSession(ctx context.Context, token string) (*Session, error) 
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return nil, err
 	}
 	if sess.Expires < nowISO() {

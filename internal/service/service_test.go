@@ -56,6 +56,11 @@ func TestRegisterAndLogin(t *testing.T) {
 	if u.Email != "alice@example.com" {
 		t.Fatalf("email not normalized: %q", u.Email)
 	}
+	// A self sign-up is a full account; only accounts made on someone else's
+	// behalf start LIMITED.
+	if u.Role != store.RoleUser {
+		t.Fatalf("self-registered role = %q, want USER", u.Role)
+	}
 	// Duplicate registration fails.
 	if _, err := svc.Register(ctx, "Alice2", "alice@example.com", "other"); !errors.Is(err, ErrEmailTaken) {
 		t.Fatalf("want ErrEmailTaken, got %v", err)
@@ -86,6 +91,25 @@ func TestAdminAutoPromotion(t *testing.T) {
 	}
 }
 
+// TestAdminEmailPromotesLimited covers ADMIN_EMAILS winning over LIMITED: an
+// account an admin created as LIMITED, whose address is later listed, becomes
+// ADMIN at its next sign-in.
+func TestAdminEmailPromotesLimited(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	if _, err := svc.AdminCreateUser(ctx, "Late", "late@example.com", store.RoleLimited, "", "", "password12"); err != nil {
+		t.Fatal(err)
+	}
+	svc.Config.AdminEmails = append(svc.Config.AdminEmails, "late@example.com")
+	u, err := svc.LoginPassword(ctx, "late@example.com", "password12")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Role != store.RoleAdmin {
+		t.Fatalf("listed LIMITED account role = %q after sign-in, want ADMIN", u.Role)
+	}
+}
+
 func TestMagicLinkFlow(t *testing.T) {
 	svc, mailer := newTestService(t)
 	ctx := context.Background()
@@ -103,6 +127,10 @@ func TestMagicLinkFlow(t *testing.T) {
 	}
 	if u.Email != "bob@example.com" {
 		t.Fatalf("wrong user: %q", u.Email)
+	}
+	// The first magic-link request for an unknown address is a self sign-up too.
+	if u.Role != store.RoleUser {
+		t.Fatalf("magic-link sign-up role = %q, want USER", u.Role)
 	}
 	// Token is single-use.
 	if _, err := svc.ConsumeMagicLink(ctx, token); err == nil {

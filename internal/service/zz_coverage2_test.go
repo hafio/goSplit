@@ -223,8 +223,17 @@ func TestCovInviteSendsPendingInvites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("invited user not created: %v", err)
 	}
-	if invited.Role != "USER" {
-		t.Errorf("invited role = %q, want USER", invited.Role)
+	if invited.Role != store.RoleLimited {
+		t.Errorf("invited role = %q, want LIMITED", invited.Role)
+	}
+
+	// Friending an account that already exists leaves its role alone.
+	full := covUser(t, svc, "Full", "full@x.com") // store default: USER
+	if err := svc.AddFriendByEmail(ctx, owner.ID, "full@x.com"); err != nil {
+		t.Fatalf("AddFriendByEmail (existing): %v", err)
+	}
+	if again, _ := svc.Store.GetUser(ctx, full.ID); again.Role != store.RoleUser {
+		t.Errorf("existing friend role = %q, want USER kept", again.Role)
 	}
 
 	// Admin-listed email is created with the ADMIN role.
@@ -251,6 +260,9 @@ func TestCovInviteSendsPendingInvites(t *testing.T) {
 	}
 	if ok, _ := svc.Store.IsGroupMember(ctx, g.ID, member.ID); !ok {
 		t.Error("group invitee should be a member")
+	}
+	if member.Role != store.RoleLimited {
+		t.Errorf("group invitee role = %q, want LIMITED", member.Role)
 	}
 }
 

@@ -11,9 +11,20 @@ import (
 	"github.com/hafio/gosplit/internal/store"
 )
 
+// inviteeRole is the role of an account created on someone else's behalf (a
+// friend or group invite, a Splitwise import): LIMITED, which cannot create
+// groups, unless the address is in ADMIN_EMAILS. Self sign-ups stay USER.
+func (s *Service) inviteeRole(email string) string {
+	if s.Config.IsAdminEmail(email) {
+		return store.RoleAdmin
+	}
+	return store.RoleLimited
+}
+
 // findOrCreateUser returns an existing user by email, or creates a pending one
-// (name-less, password-less) so they can be invited. Creating pending users is
-// gated by ENABLE_SENDING_INVITES.
+// (name-less, password-less, LIMITED -- see inviteeRole) so they can be invited.
+// Creating pending users is gated by ENABLE_SENDING_INVITES. An existing user
+// keeps their role.
 func (s *Service) findOrCreateUser(ctx context.Context, email string) (*store.User, bool, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" {
@@ -23,18 +34,14 @@ func (s *Service) findOrCreateUser(ctx context.Context, email string) (*store.Us
 	if err == nil {
 		return u, false, nil
 	}
-	if !errors.Is(err, store.ErrNotFound) {
+	if !errors.Is(err, store.ErrNotFound) { // cov:ignore store-fault: needs a failing database
 		return nil, false, err
 	}
 	if !s.Config.EnableSendingInvites {
 		return nil, false, errors.New("that person doesn't have an account and invites are disabled")
 	}
-	role := "USER"
-	if s.Config.IsAdminEmail(email) {
-		role = "ADMIN"
-	}
-	created, err := s.Store.CreateUser(ctx, &store.User{Email: email, Role: role})
-	if err != nil {
+	created, err := s.Store.CreateUser(ctx, &store.User{Email: email, Role: s.inviteeRole(email)})
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return nil, false, err
 	}
 	return created, true, nil
@@ -50,7 +57,7 @@ func (s *Service) AddFriendByEmail(ctx context.Context, ownerID int64, email str
 	if friend.ID == ownerID {
 		return errors.New("you can't add yourself")
 	}
-	if err := s.Store.AddFriend(ctx, ownerID, friend.ID); err != nil {
+	if err := s.Store.AddFriend(ctx, ownerID, friend.ID); err != nil { // cov:ignore store-fault: needs a failing database
 		return err
 	}
 	if created {
@@ -80,17 +87,17 @@ func (s *Service) ToggleHiddenFriend(ctx context.Context, u *store.User, friendI
 // InviteToGroup adds a user (existing or newly-invited) to a group.
 func (s *Service) InviteToGroup(ctx context.Context, actor *store.User, groupID int64, email string) error {
 	member, err := s.Store.IsGroupMember(ctx, groupID, actor.ID)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return err
 	}
 	if !member {
 		return errors.New("only members can invite others")
 	}
 	invitee, created, err := s.findOrCreateUser(ctx, email)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return err
 	}
-	if err := s.Store.AddGroupMember(ctx, groupID, invitee.ID); err != nil {
+	if err := s.Store.AddGroupMember(ctx, groupID, invitee.ID); err != nil { // cov:ignore store-fault: needs a failing database
 		return err
 	}
 	if created {
@@ -111,14 +118,14 @@ func (s *Service) InviteToGroup(ctx context.Context, actor *store.User, groupID 
 // friends, but a hand-crafted POST must not add an arbitrary user.
 func (s *Service) AddFriendToGroup(ctx context.Context, actor *store.User, groupID, friendID int64) error {
 	member, err := s.Store.IsGroupMember(ctx, groupID, actor.ID)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return err
 	}
 	if !member {
 		return errors.New("only members can invite others")
 	}
 	ok, err := s.Store.AreFriends(ctx, actor.ID, friendID)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return err
 	}
 	if !ok {
@@ -137,7 +144,7 @@ func (s *Service) sendInvite(_ context.Context, email, body string) {
 	s.sendMailAsync(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		if err := s.Mail.Send(ctx, email, "You've been invited to GoSplit", body); err != nil {
+		if err := s.Mail.Send(ctx, email, "You've been invited to GoSplit", body); err != nil { // cov:ignore log-only: the invitee is added either way
 			slog.Warn("invite email failed", "to", email, "err", err)
 		}
 	})

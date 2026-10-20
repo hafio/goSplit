@@ -27,7 +27,7 @@ func (s *Store) AcquireLock(ctx context.Context, id, holder string, ttl time.Dur
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return false, err
 	}
 	return current == holder, nil

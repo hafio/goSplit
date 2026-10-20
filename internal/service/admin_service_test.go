@@ -12,7 +12,8 @@ func TestAdminCreateUser(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newTestService(t)
 
-	// Password-less account: NULL hash, currency/lang defaults applied.
+	// Password-less account: NULL hash, currency/lang defaults applied, and a
+	// blank role is LIMITED like every account made on someone else's behalf.
 	u, err := svc.AdminCreateUser(ctx, "Ann", "ANN@x.com", "", "", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -20,7 +21,7 @@ func TestAdminCreateUser(t *testing.T) {
 	if u.Email != "ann@x.com" {
 		t.Errorf("email not normalized: %q", u.Email)
 	}
-	if u.Role != "USER" || u.Currency != "USD" || u.PreferredLanguage != "en" {
+	if u.Role != store.RoleLimited || u.Currency != "USD" || u.PreferredLanguage != "en" {
 		t.Errorf("defaults not applied: %+v", u)
 	}
 	if u.PasswordHash.Valid {
@@ -33,6 +34,14 @@ func TestAdminCreateUser(t *testing.T) {
 	}
 	if _, err := svc.LoginPassword(ctx, "bo@x.com", "password12"); err != nil {
 		t.Errorf("login with set password failed: %v", err)
+	}
+
+	// An explicit role is kept as given: LIMITED and USER alike.
+	for email, role := range map[string]string{"lim@x.com": store.RoleLimited, "full@x.com": store.RoleUser} {
+		got, err := svc.AdminCreateUser(ctx, "", email, role, "", "", "")
+		if err != nil || got.Role != role {
+			t.Errorf("AdminCreateUser(%s, %s) role = %v, err %v", email, role, got, err)
+		}
 	}
 
 	// Duplicate email, bad role, short password all rejected.

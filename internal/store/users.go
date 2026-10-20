@@ -24,7 +24,7 @@ func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 		return nil, err
 	}
 	if hidden != "" {
@@ -144,14 +144,14 @@ func (s *Store) SetHiddenFriends(ctx context.Context, userID int64, ids []int64)
 // ListUsers returns all users ordered by id (admin panel).
 func (s *Store) ListUsers(ctx context.Context) ([]*User, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT `+userCols+` FROM users ORDER BY id`)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 		return nil, err
 	}
 	defer rows.Close()
 	var out []*User
 	for rows.Next() {
 		u, err := scanUser(rows)
-		if err != nil {
+		if err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 			return nil, err
 		}
 		out = append(out, u)

@@ -35,7 +35,7 @@ func (s *Store) CreateGroup(ctx context.Context, g *Group) (*Group, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := s.AddGroupMember(ctx, id, g.CreatedBy); err != nil {
+	if err := s.AddGroupMember(ctx, id, g.CreatedBy); err != nil { // cov:ignore store-fault: the creator FK already passed on the group insert
 		return nil, err
 	}
 	return s.GetGroup(ctx, id)
@@ -99,7 +99,7 @@ func (s *Store) GroupMembers(ctx context.Context, groupID int64) ([]*User, error
 	var out []*User
 	for rows.Next() {
 		u, err := scanUser(rows)
-		if err != nil {
+		if err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 			return nil, err
 		}
 		out = append(out, u)
@@ -125,7 +125,31 @@ func (s *Store) ListGroupsForUser(ctx context.Context, userID int64, includeArch
 	var out []*Group
 	for rows.Next() {
 		g, err := scanGroup(rows)
-		if err != nil {
+		if err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+// ListAllGroups returns every group on the instance by name, for the admin
+// console. When includeArchived is false, archived groups are omitted.
+func (s *Store) ListAllGroups(ctx context.Context, includeArchived bool) ([]*Group, error) {
+	q := `SELECT ` + groupCols + ` FROM groups`
+	if !includeArchived {
+		q += ` WHERE archived_at IS NULL`
+	}
+	q += ` ORDER BY name, id`
+	rows, err := s.DB.QueryContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Group
+	for rows.Next() {
+		g, err := scanGroup(rows)
+		if err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 			return nil, err
 		}
 		out = append(out, g)

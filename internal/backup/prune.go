@@ -36,12 +36,12 @@ func PruneOldArchives(dir, prefix string, keep int) (int, error) {
 		if os.IsNotExist(err) {
 			return 0, nil
 		}
-		return 0, fmt.Errorf("backup: read %s: %w", dir, err)
+		return 0, fmt.Errorf("backup: read %s: %w", dir, err) // cov:ignore io-fault: BACKUP_DIR cannot be listed
 	}
 
 	var names []string
 	for _, e := range entries {
-		if e.IsDir() {
+		if e.IsDir() { // cov:ignore defensive: a directory is never an archive
 			continue
 		}
 		n := e.Name()
@@ -59,7 +59,7 @@ func PruneOldArchives(dir, prefix string, keep int) (int, error) {
 	// Oldest first, keeping the tail.
 	for _, n := range names[:len(names)-keep] {
 		p := filepath.Join(dir, n)
-		if err := os.Remove(p); err != nil {
+		if err := os.Remove(p); err != nil { // cov:ignore io-fault: an archive that cannot be removed
 			// One stubborn file should not abort the sweep, but it is not
 			// swallowed either.
 			slog.Warn("backup: could not prune archive", "path", p, "err", err)
@@ -70,7 +70,7 @@ func PruneOldArchives(dir, prefix string, keep int) (int, error) {
 		}
 		removed++
 	}
-	if firstErr != nil {
+	if firstErr != nil { // cov:ignore io-fault: an archive that cannot be removed
 		return removed, fmt.Errorf("backup: pruned %d archive(s) but at least one could not be removed: %w", removed, firstErr)
 	}
 	return removed, nil
@@ -80,11 +80,11 @@ func PruneOldArchives(dir, prefix string, keep int) (int, error) {
 // left behind only when a dump is killed mid-write; nothing reads them, so
 // without a sweep they would accumulate silently.
 func SweepStalePartials(dir string, now time.Time) int {
-	if dir == "" {
+	if dir == "" { // cov:ignore defensive: config never leaves the directory empty
 		return 0
 	}
 	entries, err := os.ReadDir(dir)
-	if err != nil {
+	if err != nil { // cov:ignore io-fault: BACKUP_DIR cannot be listed
 		return 0
 	}
 	removed := 0

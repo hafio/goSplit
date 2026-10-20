@@ -58,7 +58,7 @@ func (p *FrankfurterProvider) Rate(ctx context.Context, from, to, date string) (
 	}
 	url := fmt.Sprintf("https://api.frankfurter.app/%s?from=%s&to=%s", when, from, to)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
+	if err != nil { // cov:ignore impossible: NewRequestWithContext fails only on a malformed constant URL
 		return "", err
 	}
 	resp, err := p.HTTP.Do(req)
@@ -105,7 +105,7 @@ func (p *OpenExchangeRatesProvider) Rate(ctx context.Context, from, to, date str
 	}
 	url := fmt.Sprintf("%s?app_id=%s", endpoint, p.AppID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
+	if err != nil { // cov:ignore impossible: NewRequestWithContext fails only on a malformed constant URL
 		return "", err
 	}
 	resp, err := p.HTTP.Do(req)

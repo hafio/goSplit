@@ -26,8 +26,30 @@ type User struct {
 	EmailExpenseNotify bool
 }
 
+// Role values stored in users.role. The column is free TEXT with no CHECK
+// constraint, so ValidRole is the one place the allowed set is defined.
+const (
+	RoleUser    = "USER"    // full account: self sign-ups
+	RoleAdmin   = "ADMIN"   // full account plus the admin console
+	RoleLimited = "LIMITED" // added on someone else's behalf; cannot create groups
+)
+
+// ValidRole reports whether role is one of the values above.
+func ValidRole(role string) bool {
+	switch role {
+	case RoleUser, RoleAdmin, RoleLimited:
+		return true
+	}
+	return false
+}
+
 // IsAdmin reports whether the user has the ADMIN role.
-func (u *User) IsAdmin() bool { return u.Role == "ADMIN" }
+func (u *User) IsAdmin() bool { return u.Role == RoleAdmin }
+
+// CanCreateGroups reports whether the user may create groups, directly or through
+// a Splitwise import (which creates them). Only USER and ADMIN may: LIMITED is
+// refused, and so is any value outside ValidRole, so the check fails closed.
+func (u *User) CanCreateGroups() bool { return u.Role == RoleUser || u.Role == RoleAdmin }
 
 // IsActive reports whether the account is not deactivated.
 func (u *User) IsActive() bool { return !u.DeactivatedAt.Valid }

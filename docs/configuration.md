@@ -148,9 +148,9 @@ meaning unlimited. They exist because an archive is a file that could come from 
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `ADMIN_EMAILS` | none | Comma-separated. A user whose address matches (case-insensitive) is promoted to admin when they register or sign in. Users are never demoted automatically. |
-| `DISABLE_EMAIL_SIGNUP` | `false` | `true` closes self-service registration. The register page returns 403 and a magic-link request for an unknown address reports success without creating an account. Admins can still create users. |
-| `ENABLE_SENDING_INVITES` | `true` | `false` stops users from adding a friend or group member by an email address that has no account yet. Picking an existing user still works. |
+| `ADMIN_EMAILS` | none | Comma-separated. A user whose address matches (case-insensitive) is promoted to admin when they register or sign in. A matching address is created as an admin directly when it is invited or imported, and wins over the LIMITED default anywhere else. Users are never demoted automatically. |
+| `DISABLE_EMAIL_SIGNUP` | `false` | `true` closes self-service registration. The register page returns 403 and a magic-link request for an unknown address reports success without creating an account. Admins can still create users. With sign-up closed every new account comes from the admin console, an invite or an import, and all of those start as LIMITED (no group creation, see [Roles](features.md#roles)); pick USER in the console for people who should create groups. While sign-up stays open, LIMITED is advisory: anyone can register another address as a full user. |
+| `ENABLE_SENDING_INVITES` | `true` | `false` stops users from adding a friend or group member by an email address that has no account yet. Picking an existing user still works. Accounts created by an invite are LIMITED. |
 | `DEFAULT_HOMEPAGE` | `/balances` | Where a signed-in user lands. |
 | `FEEDBACK_EMAIL` | none | Accepted for compatibility with SplitPro configs. Not used by any feature yet. |
 | `DISCORD_WEBHOOK_URL` | none | Accepted for compatibility with SplitPro configs. Not used by any feature yet. |
@@ -177,6 +177,8 @@ EMAIL_SERVER_USER=gosplit
 EMAIL_SERVER_PASSWORD=...
 FROM_EMAIL=gosplit@example.com
 ADMIN_EMAILS=you@example.com
+# Closed sign-up: users you add in /admin start as LIMITED (no group creation)
+# unless you pick USER.
 DISABLE_EMAIL_SIGNUP=true
 BACKUP_DIR=/data/backups
 BACKUP_CRON=0 4 * * *

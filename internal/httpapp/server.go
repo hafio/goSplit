@@ -123,6 +123,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/groups/{id}/collapse", s.handleGroupCollapsePage)
 			r.Post("/groups/{id}/collapse", s.handleGroupCollapse)
 			r.Post("/groups/{id}/simplify", s.handleGroupSimplify)
+			r.Post("/groups/{id}/tidy", s.handleGroupTidy)
 			r.Get("/groups/{id}/settle", s.handleGroupSettleAllPage)
 			r.Post("/groups/{id}/settle", s.handleGroupSettleAll)
 			r.Get("/groups/{id}/settle/{to}", s.handleGroupSettlePage)
@@ -170,10 +171,13 @@ func (s *Server) Router() http.Handler {
 			r.Get("/profile/export", s.handleExport)
 		})
 
-		// Admin area.
+		// Admin area. Every response is marked private so the service worker
+		// never keeps a copy of the user list or anyone else's transactions.
 		r.Group(func(r chi.Router) {
-			r.Use(s.Auth.RequireUser, s.Auth.RequireAdmin)
+			r.Use(s.Auth.RequireUser, s.Auth.RequireAdmin, privateResponses)
 			r.Get("/admin", s.handleAdmin)
+			r.Get("/admin/activity", s.handleAdminActivity)
+			r.Get("/admin/groups", s.handleAdminGroups)
 			r.Post("/admin/users/create", s.handleAdminCreate)
 			r.Post("/admin/users/{id}", s.handleAdminUpdate)
 			r.Post("/admin/users/{id}/password", s.handleAdminSetPassword)
@@ -192,7 +196,7 @@ func (s *Server) Router() http.Handler {
 		// falls back to r.FormValue, which parses the whole multipart body.
 		// On the shared chain it would buffer an unbounded upload before the
 		// handler's own cap could apply.
-		r.With(maxUploadBytes(s.Cfg.RestoreMaxUploadMB), s.Auth.RequireUser, s.Auth.RequireAdmin, s.Auth.VerifyCSRF).
+		r.With(maxUploadBytes(s.Cfg.RestoreMaxUploadMB), s.Auth.RequireUser, s.Auth.RequireAdmin, privateResponses, s.Auth.VerifyCSRF).
 			Post("/admin/backup/restore/upload", s.handleRestoreUpload)
 	})
 
@@ -366,7 +370,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	// Built with encoding/json rather than a literal so the version cannot
 	// break the response if it ever contains a quote.
 	body, err := json.Marshal(map[string]string{"status": "ok", "version": s.Cfg.AppVersion})
-	if err != nil {
+	if err != nil { // cov:ignore impossible: marshals a fixed map
 		http.Error(w, "unhealthy", http.StatusInternalServerError)
 		return
 	}
@@ -388,7 +392,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 func (s *Server) serveAsset(name, contentType, cache string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		b, err := web.Asset(name)
-		if err != nil {
+		if err != nil { // cov:ignore impossible: only embedded asset names reach this
 			http.NotFound(w, r)
 			return
 		}

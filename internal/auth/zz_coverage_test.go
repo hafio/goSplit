@@ -336,17 +336,19 @@ func TestCovRequireAdmin(t *testing.T) {
 		t.Fatalf("Location = %q, want /login", loc)
 	}
 
-	// Non-admin -> 403.
-	called = false
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/admin", nil)
-	req = req.WithContext(context.WithValue(req.Context(), userKey, &store.User{ID: 2, Role: "USER"}))
-	m.RequireAdmin(covOKHandler(&called)).ServeHTTP(rec, req)
-	if called {
-		t.Fatal("non-admin should not reach handler")
-	}
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("code = %d, want 403", rec.Code)
+	// Non-admin (a full USER or a LIMITED account) -> 403.
+	for _, role := range []string{store.RoleUser, store.RoleLimited} {
+		called = false
+		rec = httptest.NewRecorder()
+		req = httptest.NewRequest(http.MethodGet, "/admin", nil)
+		req = req.WithContext(context.WithValue(req.Context(), userKey, &store.User{ID: 2, Role: role}))
+		m.RequireAdmin(covOKHandler(&called)).ServeHTTP(rec, req)
+		if called {
+			t.Fatalf("%s should not reach handler", role)
+		}
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("%s code = %d, want 403", role, rec.Code)
+		}
 	}
 
 	// Admin -> passes.

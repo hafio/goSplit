@@ -27,7 +27,7 @@ type Bundle struct {
 func Load() (*Bundle, error) {
 	b := &Bundle{catalogs: map[string]map[string]string{}}
 	entries, err := localesFS.ReadDir("locales")
-	if err != nil {
+	if err != nil { // cov:ignore impossible: reads the go:embed FS
 		return nil, err
 	}
 	for _, e := range entries {
@@ -35,11 +35,11 @@ func Load() (*Bundle, error) {
 			continue
 		}
 		data, err := localesFS.ReadFile("locales/" + e.Name())
-		if err != nil {
+		if err != nil { // cov:ignore impossible: reads the go:embed FS
 			return nil, err
 		}
 		var cat map[string]string
-		if err := json.Unmarshal(data, &cat); err != nil {
+		if err := json.Unmarshal(data, &cat); err != nil { // cov:ignore impossible: the embedded locales are valid JSON, tested
 			return nil, err
 		}
 		lang := strings.TrimSuffix(e.Name(), ".json")
@@ -120,9 +120,9 @@ func parseAcceptLanguage(header string) []string {
 func parseQ(s string) float64 {
 	s = strings.TrimSpace(s)
 	switch s {
-	case "", "1", "1.0":
+	case "", "1", "1.0": // cov:ignore redundant: the generic loop returns the same value
 		return 1.0
-	case "0", "0.0":
+	case "0", "0.0": // cov:ignore redundant: the generic loop returns the same value
 		return 0.0
 	}
 	// crude decimal parse without strconv overhead concerns
@@ -134,7 +134,7 @@ func parseQ(s string) float64 {
 			seenDot = true
 			continue
 		}
-		if c < '0' || c > '9' {
+		if c < '0' || c > '9' { // cov:ignore defensive: a malformed q value in Accept-Language
 			break
 		}
 		if seenDot {

@@ -10,7 +10,7 @@
 @media (prefers-color-scheme: dark) {
   :root { --bg:#0f1211; --panel:#181b1a; --ink:#e6e7e8; --muted:#9aa1a8; --line:#2a2f2d;
           --accent:#d98d98; --accent-ink:#2e1016; --accent-soft:#382028; --pos:#34d399; --neg:#f87171;
-          --pos-bg:#0d2b21; --neg-bg:#331717; --warn-bg:#3f2d0a; }
+          --pos-bg:#0d2b21; --neg-bg:#331717; --warn:#fbbf24; --warn-bg:#3f2d0a; }
 }
 /* Named accent themes (see internal/web/theme.go). :root defaults to burgundy;
    data-accent selects another. Each non-default theme sets its light values here
@@ -409,6 +409,7 @@ label.check input { width: auto; margin: 0; }
 
 /* admin user directory: collapsed rows expanding to an editor */
 .tag.role { background: var(--accent-soft); color: var(--accent); }
+.adm-head { flex-wrap: wrap; } /* title plus up to four buttons must fit a phone */
 .adm-exp { border-bottom: 1px solid var(--line); }
 .adm-exp:last-child { border-bottom: none; }
 .adm-exp.dim > summary { opacity: .55; }

@@ -20,6 +20,10 @@ func TestLayoutClientWiring(t *testing.T) {
 		"idiomorph-ext.min.js",
 		`name="htmx-config"`,
 		"globalViewTransitions",
+		// 4xx/5xx must be swapped too, or a boosted form's field-error, conflict
+		// and refusal pages are silently dropped by htmx 2's default.
+		`{"code":"[45]..","swap":true,"error":true}`,
+		`{"code":"204","swap":false}`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("layout missing %q", want)

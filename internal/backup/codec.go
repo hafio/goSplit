@@ -46,7 +46,7 @@ func EncodeColumn(kind ColumnKind, scanned any) (json.RawMessage, error) {
 	switch kind {
 	case KindInt64, KindNullInt64:
 		v, ok := scanned.(*sql.NullInt64)
-		if !ok {
+		if !ok { // cov:ignore impossible: ScanDest always pairs the destination with its kind
 			return nil, fmt.Errorf("expected *sql.NullInt64 scan destination, got %T", scanned)
 		}
 		if !v.Valid {
@@ -59,17 +59,17 @@ func EncodeColumn(kind ColumnKind, scanned any) (json.RawMessage, error) {
 
 	case KindBool:
 		v, ok := scanned.(*sql.NullBool)
-		if !ok {
+		if !ok { // cov:ignore impossible: ScanDest always pairs the destination with its kind
 			return nil, fmt.Errorf("expected *sql.NullBool scan destination, got %T", scanned)
 		}
-		if !v.Valid {
+		if !v.Valid { // cov:ignore impossible: a NOT NULL bool column cannot scan NULL
 			return nil, errUnexpectedNull
 		}
 		return json.Marshal(v.Bool)
 
 	case KindText, KindNullText, KindJSONText:
 		v, ok := scanned.(*sql.NullString)
-		if !ok {
+		if !ok { // cov:ignore impossible: ScanDest always pairs the destination with its kind
 			return nil, fmt.Errorf("expected *sql.NullString scan destination, got %T", scanned)
 		}
 		if !v.Valid {
@@ -80,7 +80,7 @@ func EncodeColumn(kind ColumnKind, scanned any) (json.RawMessage, error) {
 		}
 		return json.Marshal(v.String)
 
-	default:
+	default: // cov:ignore impossible: ColumnKind is a closed set of constants
 		return nil, fmt.Errorf("unknown column kind %d", kind)
 	}
 }
@@ -146,7 +146,7 @@ func DecodeColumn(engine config.Engine, kind ColumnKind, raw json.RawMessage) (a
 		}
 		return s, nil
 
-	default:
+	default: // cov:ignore impossible: ColumnKind is a closed set of constants
 		return nil, fmt.Errorf("unknown column kind %d", kind)
 	}
 }

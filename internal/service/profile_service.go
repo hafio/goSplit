@@ -37,28 +37,75 @@ func (s *Service) UpdateAvatar(ctx context.Context, u *store.User, r *http.Reque
 	if !allowedImageExt[ext] {
 		return fmt.Errorf("unsupported image type %q", ext)
 	}
-	if err := os.MkdirAll(s.Config.UploadDir, 0o755); err != nil {
+	if err := os.MkdirAll(s.Config.UploadDir, 0o755); err != nil { // cov:ignore env: needs a read-only or full UPLOAD_DIR volume
 		return err
 	}
 	name := store.NewUUID() + ext
 	dst := filepath.Join(s.Config.UploadDir, name)
 	out, err := os.Create(dst)
-	if err != nil {
+	if err != nil { // cov:ignore env: needs a read-only or full UPLOAD_DIR volume
 		return err
 	}
 	defer func() { _ = out.Close() }()
-	if _, err := io.Copy(out, io.LimitReader(file, maxBytes)); err != nil {
+	if _, err := io.Copy(out, io.LimitReader(file, maxBytes)); err != nil { // cov:ignore env: needs a read-only or full UPLOAD_DIR volume
 		return err
 	}
 	u.Image = sql.NullString{String: "/uploads/" + name, Valid: true}
 	return nil
 }
 
+// userExport is the caller's own account as exported. Fields are listed
+// explicitly: store.User has no json tags and carries credentials and internal
+// state (PasswordHash, BankingID, HiddenFriendIDs) that must never leave the
+// server, so marshalling it whole leaked them.
+type userExport struct {
+	ID                 int64   `json:"id"`
+	Name               string  `json:"name"`
+	Email              string  `json:"email"`
+	Image              *string `json:"image"`
+	Currency           string  `json:"currency"`
+	DefaultCurrency    string  `json:"default_currency"`
+	PreferredLanguage  string  `json:"preferred_language"`
+	ThemeColor         string  `json:"theme_color"`
+	Role               string  `json:"role"`
+	CreatedAt          string  `json:"created_at"`
+	EmailExpenseNotify bool    `json:"email_expense_notify"`
+}
+
+// friendExport is another account as it appears in the caller's export: enough
+// to tell who a balance is with, nothing about their account.
+type friendExport struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// groupExport leaves out PublicID, the group's join capability (anyone holding
+// it can join), and the creator and Splitwise ids, which only mean something
+// inside this server.
+type groupExport struct {
+	ID              int64   `json:"id"`
+	Name            string  `json:"name"`
+	DefaultCurrency string  `json:"default_currency"`
+	SimplifyDebts   bool    `json:"simplify_debts"`
+	ArchivedAt      *string `json:"archived_at"`
+	CreatedAt       string  `json:"created_at"`
+}
+
+// nullableString maps a NULL column to JSON null rather than to sql.NullString's
+// {"String":...,"Valid":...} shape.
+func nullableString(ns sql.NullString) *string {
+	if !ns.Valid {
+		return nil
+	}
+	return &ns.String
+}
+
 // ExportUserData returns a JSON blob of the user's account, friends, groups and
 // expenses (account data export/download).
 func (s *Service) ExportUserData(ctx context.Context, userID int64) ([]byte, error) {
 	u, err := s.Store.GetUser(ctx, userID)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return nil, err
 	}
 	friends, _ := s.Store.ListFriends(ctx, userID)
@@ -75,10 +122,27 @@ func (s *Service) ExportUserData(ctx context.Context, userID int64) ([]byte, err
 		exps = append(exps, expenseExport{Expense: e, Participants: parts})
 	}
 
+	friendsOut := make([]friendExport, 0, len(friends))
+	for _, f := range friends {
+		friendsOut = append(friendsOut, friendExport{ID: f.ID, Name: f.Name, Email: f.Email})
+	}
+	groupsOut := make([]groupExport, 0, len(groups))
+	for _, g := range groups {
+		groupsOut = append(groupsOut, groupExport{
+			ID: g.ID, Name: g.Name, DefaultCurrency: g.DefaultCurrency,
+			SimplifyDebts: g.SimplifyDebts, ArchivedAt: nullableString(g.ArchivedAt), CreatedAt: g.CreatedAt,
+		})
+	}
+
 	payload := map[string]any{
-		"user":     u,
-		"friends":  friends,
-		"groups":   groups,
+		"user": userExport{
+			ID: u.ID, Name: u.Name, Email: u.Email, Image: nullableString(u.Image),
+			Currency: u.Currency, DefaultCurrency: u.DefaultCurrency,
+			PreferredLanguage: u.PreferredLanguage, ThemeColor: u.ThemeColor, Role: u.Role,
+			CreatedAt: u.CreatedAt, EmailExpenseNotify: u.EmailExpenseNotify,
+		},
+		"friends":  friendsOut,
+		"groups":   groupsOut,
 		"expenses": exps,
 	}
 	return json.MarshalIndent(payload, "", "  ")

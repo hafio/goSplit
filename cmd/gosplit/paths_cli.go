@@ -31,11 +31,11 @@ type dirStatus struct {
 func runPathsCLI(args []string) error {
 	fs := flag.NewFlagSet("paths", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	fs.Usage = func() {
+	fs.Usage = func() { // cov:ignore usage text, nothing to check
 		fmt.Fprintf(os.Stderr, "usage: gosplit paths\n\nReports every directory this instance writes to, whether it exists and is\nwritable, and the archives found in each. Reads nothing from the database.\n\n")
 		fs.PrintDefaults()
 	}
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(args); err != nil { // cov:ignore pass-through: flag already prints the bad flag
 		return err
 	}
 	if fs.NArg() > 0 {
@@ -43,7 +43,7 @@ func runPathsCLI(args []string) error {
 	}
 
 	cfg, err := loadCLIConfig()
-	if err != nil {
+	if err != nil { // cov:ignore pass-through: config.Load errors are tested in internal/config
 		return err
 	}
 
@@ -99,7 +99,7 @@ func inspectDir(setting, path string) dirStatus {
 			d.Problem = fmt.Sprintf("does not exist, and its parent %s is not writable: %v", filepath.Dir(path), perr)
 		}
 		return d
-	case err != nil:
+	case err != nil: // cov:ignore io-fault: a stat error other than not-exist needs a permission failure root ignores
 		d.Problem = err.Error()
 		return d
 	case !info.IsDir():
@@ -160,7 +160,7 @@ func printDirStatus(d dirStatus) {
 // operator is actually looking for -- not a full directory listing.
 func printDirContents(path string) {
 	entries, err := os.ReadDir(path)
-	if err != nil {
+	if err != nil { // cov:ignore io-fault: listing an existing directory fails only on a permission or I/O error
 		fmt.Printf("%-17s   cannot list: %v\n", "", err)
 		return
 	}
@@ -179,7 +179,7 @@ func printDirContents(path string) {
 			continue
 		}
 		info, err := e.Info()
-		if err != nil {
+		if err != nil { // cov:ignore io-fault: the entry vanished between ReadDir and Info
 			lines = append(lines, fmt.Sprintf("%s  (cannot stat)", name))
 			continue
 		}
@@ -195,7 +195,7 @@ func printDirContents(path string) {
 		fmt.Printf("%-17s   %s present -- a startup restore has already run here\n", "", backup.MarkerName)
 	}
 	if len(lines) == 0 && !marker {
-		if others > 0 {
+		if others > 0 { // cov:ignore print-only: the count of non-archive entries
 			fmt.Printf("%-17s   no archives (%d other entries)\n", "", others)
 		} else {
 			fmt.Printf("%-17s   empty\n", "")

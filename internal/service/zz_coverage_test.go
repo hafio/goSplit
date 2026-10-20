@@ -413,13 +413,27 @@ func TestAdminMagicLinkForUser(t *testing.T) {
 }
 
 // TestExportUserData covers ExportUserData producing valid JSON that includes the
-// account's email.
+// account's email, the friend's identity and the group, and never the
+// credentials, banking id or join token those rows carry in the database.
 func TestExportUserData(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newTestService(t)
 	a := covUser(t, svc, "A", "a@x.com")
 	b := covUser(t, svc, "B", "b@x.com")
 	_ = svc.Store.AddFriend(ctx, a.ID, b.ID)
+	for _, id := range []int64{a.ID, b.ID} {
+		if err := svc.Store.SetPassword(ctx, id, "$argon2id$v=19$m=65536,t=1,p=4$c2FsdA$aGFzaA"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.Store.DB.ExecContext(ctx,
+			svc.Store.Rebind(`UPDATE users SET banking_id = ? WHERE id = ?`), "bank-token-secret", id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	g, err := svc.Store.CreateGroup(ctx, &store.Group{Name: "Trip", CreatedBy: a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	blob, err := svc.ExportUserData(ctx, a.ID)
 	if err != nil {
@@ -437,6 +451,16 @@ func TestExportUserData(t *testing.T) {
 	}
 	if !strings.Contains(string(blob), "a@x.com") {
 		t.Error("export should contain the account email")
+	}
+	for _, want := range []string{"b@x.com", `"name": "Trip"`} {
+		if !strings.Contains(string(blob), want) {
+			t.Errorf("export missing %q", want)
+		}
+	}
+	for _, leak := range []string{"argon2id", "PasswordHash", "BankingID", "bank-token-secret", g.PublicID, "PublicID"} {
+		if strings.Contains(string(blob), leak) {
+			t.Errorf("export leaks %q", leak)
+		}
 	}
 }
 

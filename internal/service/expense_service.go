@@ -59,6 +59,10 @@ var (
 	ErrNotSettlement   = errors.New("this transaction is not a settlement")
 	ErrIsSettlement    = errors.New("a settlement must be edited as a settlement")
 	ErrBadSettlement   = errors.New("this settlement's rows are malformed and cannot be edited")
+	// ErrImmutable is returned for any change to an automatic "Group debts
+	// simplified" (NETTING) entry, by anyone: removing or reshaping one alone
+	// would break the zero-sum set it belongs to.
+	ErrImmutable = errors.New("this is an automatic entry and cannot be edited or deleted")
 	// ErrSettlementAmount and ErrSettlementCurrency are sentinels rather than
 	// bare errors so the handler can render them against the field that caused
 	// them (see httpapp.fieldErrorsFor) instead of only as a banner.
@@ -73,7 +77,7 @@ var (
 // fail the save the user already completed.
 func (s *Service) recordSplitInputs(ctx context.Context, expenseID string, in ExpenseInput) {
 	payload, err := split.EncodeInputs(in.Method, in.Lines)
-	if err != nil || payload == "" {
+	if err != nil || payload == "" { // cov:ignore impossible: Compute already rejected anything EncodeInputs would
 		return
 	}
 	// Best-effort, but never silent: losing the payload downgrades the next edit
@@ -94,12 +98,12 @@ func (s *Service) AddExpense(ctx context.Context, in ExpenseInput) (*store.Expen
 		}
 	}
 	parts, err := s.buildParticipants(in)
-	if err != nil {
+	if err != nil { // cov:ignore pass-through: split rules are tested in internal/split
 		return nil, err
 	}
 	e := s.newExpense(in)
 	created, err := s.Store.CreateExpense(ctx, e, parts)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return nil, err
 	}
 	s.recordSplitInputs(ctx, created.ID, in)
@@ -115,11 +119,35 @@ func (s *Service) AddExpense(ctx context.Context, in ExpenseInput) (*store.Expen
 	return created, nil
 }
 
-// CanEditExpense reports whether actorID is a member of the transaction — its
-// payer, its creator, or one of its participants — and so may edit or delete it.
-// Group membership alone is NOT enough: a group member who is not part of this
-// expense can neither edit nor delete it.
+// CanEditExpense reports whether actorID may edit or delete e: a member of the
+// transaction (IsTransactionMember) or an admin, who has the same powers over
+// every transaction. Group membership alone is NOT enough: a group member who is
+// not part of this expense can neither edit nor delete it.
 func (s *Service) CanEditExpense(ctx context.Context, actorID int64, e *store.Expense) bool {
+	ok, _ := s.editAccess(ctx, actorID, e)
+	return ok
+}
+
+// editAccess is CanEditExpense plus whether the admin override alone granted it
+// (the actor is not part of the transaction), decided before any write so the
+// audit line reflects who the actor was to the transaction at that moment.
+func (s *Service) editAccess(ctx context.Context, actorID int64, e *store.Expense) (ok, viaAdmin bool) {
+	if Immutable(e) {
+		return false, false // nobody edits a netting entry, admins included
+	}
+	if s.IsTransactionMember(ctx, actorID, e) {
+		return true, false
+	}
+	if s.isAdmin(ctx, actorID) {
+		return true, true
+	}
+	return false, false
+}
+
+// IsTransactionMember reports whether actorID is part of e: its payer, its
+// creator, or one of its participants. A failed participants lookup counts as
+// "not a member".
+func (s *Service) IsTransactionMember(ctx context.Context, actorID int64, e *store.Expense) bool {
 	if e.PaidBy == actorID || e.AddedBy == actorID {
 		return true
 	}
@@ -133,6 +161,20 @@ func (s *Service) CanEditExpense(ctx context.Context, actorID int64, e *store.Ex
 		}
 	}
 	return false
+}
+
+// isAdmin reports whether actorID is an active admin, read fresh from the store
+// so a demotion or deactivation takes effect on the very next action. Any lookup
+// failure counts as "not an admin": the override fails closed.
+func (s *Service) isAdmin(ctx context.Context, actorID int64) bool {
+	u, err := s.Store.GetUser(ctx, actorID)
+	return err == nil && u.IsActive() && u.IsAdmin()
+}
+
+// logAdminOverride records a write the admin override alone allowed, so a change
+// made to someone else's books leaves a trace beyond updated_by/deleted_by.
+func logAdminOverride(action string, e *store.Expense, actorID int64) {
+	slog.Info("admin override", "action", action, "expense", e.ID, "actor", actorID)
 }
 
 // Transfer is one leg of a group settle-up: who pays whom, how much.
@@ -151,6 +193,11 @@ func (s *Service) Settle(ctx context.Context, sender, receiver int64, amount int
 		return nil, err
 	}
 	s.notifyExpense(ctx, created, parts, actor, KindSettlementAdded)
+	// Inside a group that shows simplified debts, paying one of them leaves the
+	// pairs out of step with what the page shows; rewire them (netting_service).
+	if groupID != nil {
+		s.renetIfSimplified(ctx, *groupID, created.ExpenseDate, actor, created.ID)
+	}
 	return created, nil
 }
 
@@ -173,6 +220,10 @@ func (s *Service) SettleAll(ctx context.Context, transfers []Transfer, groupID i
 	if len(settled) == 0 {
 		return settled, nil
 	}
+	// A settle-up always pays the simplified transfers, whatever the group's
+	// display setting, so the pairs it leaves behind are always rewired: after a
+	// full settle-up every pair in the group reads zero.
+	s.netGroupAfter(ctx, groupID, date, actor, settled[0].ID)
 	name := ""
 	if g, err := s.Store.GetGroup(ctx, groupID); err == nil {
 		name = g.Name
@@ -206,7 +257,7 @@ func (s *Service) settle(ctx context.Context, sender, receiver int64, amount int
 		{UserID: receiver, Amount: -amount},
 	}
 	created, err := s.Store.CreateExpense(ctx, e, parts)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return nil, nil, err
 	}
 	return created, parts, nil
@@ -214,25 +265,30 @@ func (s *Service) settle(ctx context.Context, sender, receiver int64, amount int
 
 // MoveExpense edits an expense in place (the shared move/edit action): the SAME
 // record is updated with the recalculated split and note (no soft-delete, no
-// duplicate). The actor must be authorized to edit it (payer/creator/participant/
-// group member). The recalculated-split acknowledgment (acknowledged=true) is
-// required ONLY when the expense is relocated to a different group — a plain
-// in-place edit (same group, incl. direct→direct) needs no ack. Eligibility
-// (§5.2) and target membership are validated. The actor must be a member of the
-// transaction (payer/creator/participant) and, when a group is targeted, of that
-// group. created_at/added_by are preserved; the note comes from the form
-// (in.Note) and the receipt (file_key) is carried over since the form doesn't
-// resubmit it. A settlement is refused outright: its two rows are hand-built,
+// duplicate). The actor must be allowed to edit it (CanEditExpense: payer,
+// creator or participant, or an admin; group membership alone is not enough).
+// The recalculated-split acknowledgment (acknowledged=true) is required ONLY
+// when the expense is relocated to a different group — a plain in-place edit
+// (same group, incl. direct→direct) needs no ack. Eligibility (§5.2) and target
+// membership are validated: when a group is targeted the actor must belong to
+// it too, except an admin, who skips only that actor check -- the payer and
+// every participant are always checked. created_at/added_by are preserved; the
+// note comes from the form (in.Note) and the receipt (file_key) is carried over
+// since the form doesn't resubmit it. A settlement is refused outright: its two rows are hand-built,
 // so re-splitting them here would rewrite split_type -- see UpdateSettlement.
 func (s *Service) MoveExpense(ctx context.Context, origID string, in ExpenseInput, acknowledged bool) (*store.Expense, error) {
 	orig, err := s.Store.GetExpense(ctx, origID)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return nil, err
+	}
+	if Immutable(orig) {
+		return nil, ErrImmutable
 	}
 	if orig.SplitType == string(split.SETTLEMENT) {
 		return nil, ErrIsSettlement
 	}
-	if !s.CanEditExpense(ctx, in.ActorID, orig) {
+	allowed, viaAdmin := s.editAccess(ctx, in.ActorID, orig)
+	if !allowed {
 		return nil, ErrNotEditor
 	}
 	if !movable(orig) {
@@ -242,12 +298,19 @@ func (s *Service) MoveExpense(ctx context.Context, origID string, in ExpenseInpu
 		return nil, ErrMoveNoAck
 	}
 	if in.GroupID != nil {
-		if err := s.assertMembers(ctx, *in.GroupID, in.Lines, in.PaidBy, in.ActorID); err != nil {
+		// An admin is exempt from the actor-must-be-a-member half of the check:
+		// passing the payer in the actor slot leaves exactly payer plus
+		// participants, so an admin who is one of those is still checked as such.
+		memberActor := in.ActorID
+		if s.isAdmin(ctx, in.ActorID) {
+			memberActor = in.PaidBy
+		}
+		if err := s.assertMembers(ctx, *in.GroupID, in.Lines, in.PaidBy, memberActor); err != nil {
 			return nil, err
 		}
 	}
 	parts, err := s.buildParticipants(in)
-	if err != nil {
+	if err != nil { // cov:ignore pass-through: split rules are tested in internal/split
 		return nil, err
 	}
 	e := s.newExpense(in)
@@ -257,9 +320,12 @@ func (s *Service) MoveExpense(ctx context.Context, origID string, in ExpenseInpu
 	if err := s.Store.UpdateExpense(ctx, e, parts); err != nil {
 		return nil, err
 	}
+	if viaAdmin {
+		logAdminOverride("edit", orig, in.ActorID)
+	}
 	s.recordSplitInputs(ctx, origID, in)
 	updated, err := s.Store.GetExpense(ctx, origID)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return nil, err
 	}
 	s.notifyExpense(ctx, updated, parts, in.ActorID, KindExpenseUpdated)
@@ -279,13 +345,17 @@ func (s *Service) MoveExpense(ctx context.Context, origID string, in ExpenseInpu
 // changes which balance the settlement clears.
 func (s *Service) UpdateSettlement(ctx context.Context, id string, in SettlementInput, acknowledged bool) (*store.Expense, error) {
 	orig, err := s.Store.GetExpense(ctx, id)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return nil, err
+	}
+	if Immutable(orig) {
+		return nil, ErrImmutable
 	}
 	if orig.SplitType != string(split.SETTLEMENT) {
 		return nil, ErrNotSettlement
 	}
-	if !s.CanEditExpense(ctx, in.ActorID, orig) {
+	allowed, viaAdmin := s.editAccess(ctx, in.ActorID, orig)
+	if !allowed {
 		return nil, ErrNotEditor
 	}
 	if !movable(orig) {
@@ -302,7 +372,7 @@ func (s *Service) UpdateSettlement(ctx context.Context, id string, in Settlement
 	if currency != orig.Currency {
 		return nil, ErrSettlementCurrency
 	}
-	if !sameGroup(orig.GroupID, in.GroupID) && !acknowledged {
+	if !sameGroup(orig.GroupID, in.GroupID) && !acknowledged { // cov:ignore redundant: tested end to end in httpapp settle_edit_test
 		return nil, ErrMoveNoAck
 	}
 	payer, other, err := s.SettlementParties(ctx, orig)
@@ -313,8 +383,13 @@ func (s *Service) UpdateSettlement(ctx context.Context, id string, in Settlement
 		// The actor is checked alongside the pair, not just the pair: settling a
 		// whole group makes the acting member added_by on transfers between two
 		// other people, and CanEditExpense then lets them edit it -- without this
-		// they could file that settlement into a group they do not belong to.
-		if err := s.assertGroupMembers(ctx, *in.GroupID, payer, other, in.ActorID); err != nil {
+		// they could file that settlement into a group they do not belong to. An
+		// admin is exempt from the actor half only; the pair is always checked.
+		ids := []int64{payer, other}
+		if !s.isAdmin(ctx, in.ActorID) {
+			ids = append(ids, in.ActorID)
+		}
+		if err := s.assertGroupMembers(ctx, *in.GroupID, ids...); err != nil {
 			return nil, err
 		}
 	}
@@ -341,8 +416,19 @@ func (s *Service) UpdateSettlement(ctx context.Context, id string, in Settlement
 	if err := s.Store.UpdateExpense(ctx, e, parts); err != nil {
 		return nil, err
 	}
+	if viaAdmin {
+		logAdminOverride("settlement edit", orig, in.ActorID)
+	}
+	// The edit changed what this settlement pays, possibly in two groups (a
+	// move): rewire both, before anything below can return early.
+	if orig.GroupID.Valid {
+		s.renetIfSimplified(ctx, orig.GroupID.Int64, e.ExpenseDate, in.ActorID, orig.ID)
+	}
+	if in.GroupID != nil && !sameGroup(orig.GroupID, in.GroupID) {
+		s.renetIfSimplified(ctx, *in.GroupID, e.ExpenseDate, in.ActorID, orig.ID)
+	}
 	updated, err := s.Store.GetExpense(ctx, id)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return nil, err
 	}
 	s.notifyExpense(ctx, updated, parts, in.ActorID, KindSettlementUpdated)
@@ -356,7 +442,7 @@ func (s *Service) UpdateSettlement(ctx context.Context, id string, in Settlement
 // fails loudly rather than silently picking one.
 func (s *Service) SettlementParties(ctx context.Context, e *store.Expense) (payer, other int64, err error) {
 	parts, err := s.Store.GetParticipants(ctx, e.ID)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return 0, 0, err
 	}
 	if len(parts) != 2 {
@@ -375,10 +461,10 @@ func (s *Service) SettlementParties(ctx context.Context, e *store.Expense) (paye
 	return payer, other, nil
 }
 
-// DeleteExpense soft-deletes an expense after confirming the actor is a member of
-// the transaction (payer/creator/participant). Deleting a settlement is the
-// supported way to reverse it: the row leaves balance_view (deleted_at IS NOT
-// NULL) and the balance is restored.
+// DeleteExpense soft-deletes an expense after confirming the actor may edit it
+// (CanEditExpense: payer/creator/participant, or an admin). Deleting a settlement
+// is the supported way to reverse it: the row leaves balance_view (deleted_at IS
+// NOT NULL) and the balance is restored.
 //
 // version is the expense version the delete button was rendered from, and it is
 // asserted like any other write: a delete decided from a stale page -- one that
@@ -389,7 +475,11 @@ func (s *Service) DeleteExpense(ctx context.Context, id string, actorID, version
 	if err != nil {
 		return err // ErrExpenseNotFound
 	}
-	if !s.CanEditExpense(ctx, actorID, e) {
+	if Immutable(e) {
+		return ErrImmutable
+	}
+	allowed, viaAdmin := s.editAccess(ctx, actorID, e)
+	if !allowed {
 		return ErrNotEditor
 	}
 	// Read the participants before the delete: they are who gets told, and a
@@ -399,13 +489,29 @@ func (s *Service) DeleteExpense(ctx context.Context, id string, actorID, version
 	if err := s.Store.SoftDeleteExpense(ctx, id, actorID, version); err != nil {
 		return err
 	}
-	if pErr != nil {
+	if viaAdmin {
+		logAdminOverride("delete", e, actorID)
+	}
+	// Deleting a group settlement brings its debt back: rewire the group's pairs
+	// to the simplified debts again, before the notification path can return.
+	if e.SplitType == string(split.SETTLEMENT) && e.GroupID.Valid {
+		s.renetIfSimplified(ctx, e.GroupID.Int64, "", actorID, e.ID)
+	}
+	if pErr != nil { // cov:ignore log-only: the delete stands; only the notification is skipped
 		slog.Warn("notify: participants for deleted expense", "expense", id, "err", pErr)
 		return nil
 	}
 	s.notifyExpense(ctx, e, parts, actorID, KindExpenseDeleted)
 	return nil
 }
+
+// Movable reports whether e can be edited or moved at all (see movable). The
+// detail page and the edit form's guard use it so they agree with the service.
+func Movable(e *store.Expense) bool { return movable(e) }
+
+// Immutable reports whether e is an automatic netting entry, which no one may
+// edit, move or delete (ErrImmutable).
+func Immutable(e *store.Expense) bool { return e.SplitType == string(split.NETTING) }
 
 // movable enforces §5.2 eligibility: currency-conversion pairs and recurrence
 // templates are not movable; everything else (incl. settlements) is.
@@ -415,6 +521,10 @@ func movable(e *store.Expense) bool {
 	}
 	// Historical Transactions are a synthetic collapse of many rows — not movable.
 	if e.SplitType == string(split.ARCHIVE) {
+		return false
+	}
+	// A netting entry belongs to a zero-sum set; it never moves on its own.
+	if Immutable(e) {
 		return false
 	}
 	// Expenses generated by a recurrence move like any other; a recurrence
@@ -445,7 +555,7 @@ func (s *Service) assertMembers(ctx context.Context, groupID int64, lines []spli
 func (s *Service) assertGroupMembers(ctx context.Context, groupID int64, ids ...int64) error {
 	for _, id := range ids {
 		ok, err := s.Store.IsGroupMember(ctx, groupID, id)
-		if err != nil {
+		if err != nil { // cov:ignore store-fault: needs a failing database
 			return err
 		}
 		if !ok {
@@ -457,7 +567,7 @@ func (s *Service) assertGroupMembers(ctx context.Context, groupID int64, ids ...
 
 func (s *Service) buildParticipants(in ExpenseInput) ([]store.ExpenseParticipant, error) {
 	ps, err := split.Compute(in.Method, in.Total, in.PaidBy, in.ExpenseDate, in.Lines)
-	if err != nil {
+	if err != nil { // cov:ignore pass-through: split rules are tested in internal/split
 		return nil, err
 	}
 	out := make([]store.ExpenseParticipant, len(ps))

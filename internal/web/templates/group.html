@@ -3,12 +3,16 @@
 <div class="m-head">
   <span class="ava lg" style="--c:{{avatarColor .Data.Group.ID}}">{{initials .Data.Group.Name .Data.Group.Name}}</span>
   <div style="flex:1;min-width:0">
-    <h1>{{.Data.Group.Name}}{{if .Data.Group.IsArchived}} <span class="tag">{{.T "groups.archived"}}</span>{{end}}</h1>
+    <h1>{{.Data.Group.Name}}{{if .Data.Group.IsArchived}} <span class="tag">{{.T "groups.archived"}}</span>{{end}}{{if .Data.ReadOnly}} <span class="tag role">{{.T "group.admin_view"}}</span>{{end}}</h1>
     <div class="member-line">
       <span class="ava-stack">{{range .Data.Members}}<span class="ava sm" style="--c:{{avatarColor .ID}}" title="{{if .Name}}{{.Name}}{{else}}{{.Email}}{{end}}">{{initials .Name .Email}}</span>{{end}}</span>
       <span class="l-sub">{{len .Data.Members}} {{.T "groups.members"}}</span>
     </div>
   </div>
+  {{/* A non-member admin views the group read-only: every group-level action
+       below (and the join link) is for members, and the server refuses them
+       to anyone else anyway. */}}
+  {{if not .Data.ReadOnly}}
   <details class="omenu">
     <summary class="a-btn ghost icon-only" aria-label="{{.T "action.options"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#dots"></use></svg></summary>
     <div class="omenu-panel">
@@ -23,8 +27,10 @@
       <a href="/groups/{{.Data.Group.ID}}/collapse"><svg class="icon"><use href="{{asset "icons.svg"}}#archive"></use></svg>{{.T "archive.title"}}</a>
     </div>
   </details>
+  {{end}}
 </div>
 
+{{if not .Data.ReadOnly}}
 <details class="add-inline group-invite">
   <summary class="a-btn sec sm"><svg class="icon"><use href="{{asset "icons.svg"}}#user-plus"></use></svg>{{.T "group.add_member"}}</summary>
   {{if .Data.AddableFriends}}
@@ -43,6 +49,7 @@
     <button type="submit" class="a-btn sm">{{.T "group.invite"}}</button>
   </form>
 </details>
+{{end}}
 
 {{if .Data.Position}}
 <div class="stat-hero">
@@ -51,10 +58,18 @@
 </div>
 {{end}}
 
+{{if not .Data.ReadOnly}}
 <div class="group-actions">
   <a class="a-btn" href="/expenses/new?group={{.Data.Group.ID}}"><svg class="icon"><use href="{{asset "icons.svg"}}#plus"></use></svg> {{.T "expense.add"}}</a>
   {{if .Data.Simplified}}<a class="a-btn sec" href="/groups/{{.Data.Group.ID}}/settle"><svg class="icon"><use href="{{asset "icons.svg"}}#banknote"></use></svg> {{.T "group.settle_all"}}</a>{{end}}
+  {{if .Data.NeedsTidy}}
+  <form method="post" action="/groups/{{.Data.Group.ID}}/tidy" hx-disabled-elt="find button[type=submit]">
+    {{template "csrf" .CSRF}}
+    <button type="submit" class="a-btn sec" title="{{.T "group.tidy_hint"}}"><svg class="icon"><use href="{{asset "icons.svg"}}#shuffle"></use></svg> {{.T "group.tidy"}}</button>
+  </form>
+  {{end}}
 </div>
+{{end}}
 
 <h2>{{if .Data.Group.SimplifyDebts}}{{.T "group.simplified"}}{{else}}{{.T "title.balances"}}{{end}}</h2>
 {{if .Data.Simplified}}
@@ -75,7 +90,7 @@
 {{else}}
 <p class="muted">{{.T "group.settled"}}</p>
 {{end}}
-<p class="muted small">{{.T "group.join_link"}}: <code>{{.Data.JoinURL}}</code></p>
+{{if not .Data.ReadOnly}}<p class="muted small">{{.T "group.join_link"}}: <code>{{.Data.JoinURL}}</code></p>{{end}}
 
 <h2>{{.T "group.expenses"}}</h2>
 {{template "frag_group_feed" .}}
@@ -87,6 +102,6 @@
 {{define "frag_group_feed"}}
 <div id="group-feed" class="frag" hx-target="#group-feed" hx-swap="morph:outerHTML" hx-indicator="this">
   {{template "filterbar" (dict "Action" (printf "/groups/%d" .Data.Group.ID) "Filter" .Data.Filter "ShowScope" false "Root" .)}}
-  {{template "expense_table" (dict "Groups" .Data.Expenses "Root" . "ShowAllHref" .Data.ShowAllHref)}}
+  {{template "expense_table" (dict "Groups" .Data.Expenses "Root" . "ShowAllHref" .Data.ShowAllHref "Neutral" .Data.ReadOnly)}}
 </div>
 {{end}}

@@ -51,7 +51,7 @@ func (s *Store) ListRecurrencesForUser(ctx context.Context, userID int64) ([]*Ex
 	var out []*ExpenseRecurrence
 	for rows.Next() {
 		r, err := scanRecurrence(rows)
-		if err != nil {
+		if err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 			return nil, err
 		}
 		out = append(out, r)
@@ -78,7 +78,7 @@ func (s *Store) ListDueRecurrences(ctx context.Context, nowIso string) ([]*Expen
 	var out []*ExpenseRecurrence
 	for rows.Next() {
 		r, err := scanRecurrence(rows)
-		if err != nil {
+		if err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 			return nil, err
 		}
 		out = append(out, r)

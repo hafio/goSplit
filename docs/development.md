@@ -4,7 +4,7 @@ Building, testing, releasing and extending GoSplit. For contributors.
 
 ## Prerequisites
 
-- Go 1.27. `go.mod` pins `toolchain go1.27.0` and the dev scripts export `GOTOOLCHAIN`
+- Go 1.27. `go.mod` pins `toolchain go1.27.2` and the dev scripts export `GOTOOLCHAIN`
   from it when it is not already set, so any Go 1.21+ on your PATH fetches and uses
   exactly that toolchain. An exported `GOTOOLCHAIN` (for example `local`) wins; unset it
   to get CI's toolchain.
@@ -36,7 +36,7 @@ what passes locally is what passes in CI.
 ./scripts/dev.sh build     # dist/gosplit-<os>-<arch>[.exe], version stamped in
 ./scripts/dev.sh vet       # go vet ./...
 ./scripts/dev.sh test      # go test ./... -count=1
-./scripts/dev.sh cov       # coverage profile -> scripts/logs/coverage.html, prints the total
+./scripts/dev.sh cov       # coverage minus cov:ignore code -> scripts/logs/coverage.html, prints the total
 ./scripts/dev.sh image     # docker build of the distroless image (local, single-arch)
 ./scripts/dev.sh scan      # govulncheck, then Trivy against a freshly built image
 ./scripts/dev.sh up        # docker compose up -d      (down to stop)
@@ -90,6 +90,21 @@ gates.
   it at the end of `scripts/logs/cov.log`. That file is gitignored and rewritten on every
   run, and CI never produces one (`all scan` does not include `cov`), so note the number
   before you re-run. A drop needs either more tests or a stated reason in the change.
+  The total is counted after `cov:ignore` exclusions (next point); the two lines above it
+  give the total before them and what they removed. Totals recorded before 2026-10-20
+  had no exclusions.
+- **Code where a test would only restate the code is excluded, not tested.** That means
+  error pass-through (store, filesystem and flag faults, tested where they arise),
+  log-only and print-only branches, usage text, states that cannot happen, glue already
+  proven end to end, and paths that need a real PostgreSQL, SMTP relay or push service.
+  Mark it `// cov:ignore <reason>`. At the end of a line that opens a block (`if ... {`,
+  `} else {`, `case ...:`, `func ... {`) the marker excludes that block and everything
+  nested in it; alone on a line it applies to the next line, so the last line of a doc
+  comment covers the whole function; on a line that opens no block it excludes the
+  coverage blocks that start there. `scripts/covfilter` applies the markers between
+  `go test` and `go tool cover`. A marker without a reason, or one that excludes nothing,
+  fails `cov`; one whose code the tests already cover is printed as a `warn:` so it can
+  go. Never mark dead code (delete it) or behaviour a test should pin.
 - Every test runs against SQLite. There is no live-PostgreSQL harness, by choice. The
   engine-specific pieces that are pure functions (boolean binding per engine, `?` to `$n`
   rebinding) are unit-tested by passing the PostgreSQL engine value in. The
@@ -120,7 +135,9 @@ Copy `internal/i18n/locales/en.json` to `<lang>.json`, translate the values, kee
 keys. The catalogue is embedded and discovered by listing the directory, so no code
 changes and no new test: `TestNoOrphanTranslationKeys` in `internal/i18n` walks every
 catalogue and fails on a key that `en.json` does not have. A key missing from a
-translation is tolerated and falls back to English.
+translation is tolerated and falls back to English, except the keys pinned in
+`internal/i18n/translated_keys_test.go`, which must have a value in every catalogue
+(starting from a copy of `en.json` satisfies that).
 
 ### Adding a page
 

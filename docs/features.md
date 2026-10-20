@@ -20,14 +20,37 @@ history, whole-instance backups and a few other things noted below.
   (`DISABLE_EMAIL_SIGNUP`), in which case new users are created from the admin console.
 - Addresses listed in `ADMIN_EMAILS` become **admins** automatically on first sign-in.
 
+### Roles
+
+Every account has one of three roles:
+
+- **USER**: a full account. Everyone who signs up themselves (the register page, or a
+  first magic-link request for a new address) gets this role.
+- **LIMITED**: everything a user can do except create groups, which also rules out the
+  Splitwise import (it creates groups). A limited user can still be added to groups, join
+  one through its link, add and settle expenses, and invite people. This is the default
+  for every account created on someone else's behalf: by an admin in the console, by a
+  friend or group invite to a new address, and by a Splitwise import.
+- **ADMIN**: a full account plus the [admin console](#admin-console).
+
+An address in `ADMIN_EMAILS` always ends up an admin: it is created as one when invited or
+imported, and promoted at sign-in otherwise, limited or not. Only an admin changes roles;
+nothing demotes anyone automatically. While self-registration is open, LIMITED is advisory
+rather than a hard boundary: anyone, a limited user included, can register a second
+address and get a full account. Close registration (`DISABLE_EMAIL_SIGNUP=true`) when the
+restriction matters.
+
 ## Friends
 
 Add a friend by email. If they already have an account you are linked immediately; if not,
-a pending account is created for them and they are emailed an invitation. With
-`ENABLE_SENDING_INVITES=false` that is refused outright: the address needs an account
-first, either by registering or by an admin creating it.
+a pending **limited** account is created for them (see [Roles](#roles)) and they are
+emailed an invitation. An invited address cannot use the register page, since the account
+already exists: the invitee signs in with a magic link or the forgot-password flow, and
+stays limited until an admin changes the role. With `ENABLE_SENDING_INVITES=false` an
+invite is refused outright: the address needs an account first, either by registering or
+by an admin creating it.
 
-A friend's page shows your balance with them per currency, netted across every group you
+A friend's page shows your balance with them per currency, summed across every group you
 share, and a filterable history that includes the expenses you share in groups. From here
 you can settle up, convert a balance to another currency, or collapse old history (see
 [Collapsing history](#collapsing-history)). A friend can be hidden, which greys the row out
@@ -35,20 +58,28 @@ but keeps it listed, or removed outright.
 
 ## Groups
 
-Create a group and add members either by picking an existing friend or by email. Every
+Create a group and add members either by picking an existing friend or by email (limited
+accounts cannot create groups; they can be added to any). Every
 group also has a **join link** you can share. Opening it requires signing in and shows
 the recipient an invitation message; it does not add them by itself, so a member still
 adds them with the group's *Add member* form.
 
 The group page shows your own net position in the group, per currency, and the list of who
 owes whom. A **simplify debts** toggle switches the suggestions between the minimal set of transfers that settles
-everyone and the raw pairwise balances. Debt simplification uses a min-cash-flow algorithm
-and never changes what anyone owes in total.
+everyone and the pairwise balances as recorded. Debt simplification uses a min-cash-flow algorithm
+and never changes what anyone owes in total. Settling up rewires the recorded pairs to the
+simplified debts (see [Settlements](#settlements)), so after a settlement the two views
+agree; a settled group with leftover pairs offers **Tidy up balances**.
 
 **Archiving a group** hides it from the normal lists and from your aggregate balances. It
 moves into a collapsed "Archived" section that still shows its own unsettled debt, and its
 expenses can still be seen in Activity with the archived filter switched on. Archive is
 reversible.
+
+Only members can act on a group: archiving, the simplify toggle, adding members, settling up
+and collapsing history all answer 403 to anyone else, and the expense forms never list a
+group's members to someone outside it. An admin can still open any group's page to read it
+(see [Admin console](#admin-console)), but gets none of these actions there.
 
 ## Expenses
 
@@ -71,8 +102,12 @@ Five split methods:
 
 Editing an expense restores the method and the values exactly as you typed them, not a
 reconstruction from the computed amounts. Editing and deleting are limited to the people
-involved: the payer, the creator and the participants. Deletion is a soft delete; the
-detail page still shows the row marked as deleted.
+involved: the payer, the creator and the participants -- and admins, who can edit, move or
+delete any transaction (see [Admin console](#admin-console)). Automatic "Group debts
+simplified" entries (see [Settlements](#settlements)) cannot be edited or deleted by
+anyone. Someone else opening the edit
+form gets a refusal. Deletion is a soft delete; the detail page still shows the row marked
+as deleted, with who deleted it and when.
 
 **Moving an expense** to a different group, into a group, or out to a direct expense goes
 through a guided re-split, because the set of people changes.
@@ -97,11 +132,35 @@ A settlement is recorded like an expense and reversed by deleting it.
 
 The difference between the two scopes matters when you share several groups with someone.
 A group settlement fixes that group's books; a friend settlement fixes the overall picture.
+A friend settlement is direct: paying a friend from their page leaves any group's own
+debts where they are.
+
+**Group debts simplified.** Paying a group's simplified debts settles every member's net,
+but on its own it would leave the pairs uneven: if Alice owed Bob and Bob owed Carol, and
+Alice paid Carol, the pairwise books would read "Alice owes Bob, Bob owes Carol, Carol
+owes Alice". So after a settlement inside a group -- always for *settle the whole group*,
+and for a single payment or a settlement edit or delete when the group's **simplify
+debts** is on -- the app adds automatic **"Group debts simplified"** entries that rewire
+each pair to match the group's simplified debts. After a full settle-up every pair reads
+zero, so the Balances page and friend pages read settled too. The entries never change
+anyone's total, appear read-only in feeds and friend histories, send no notifications, and
+cannot be edited or deleted by anyone; deleting or editing the settlement they came from
+rewires the pairs again. A pair can show a debt between two people who never shared an
+expense (Alice owing Carol above): that is the simplified debt.
+
+A group settled before this existed can still show leftover pairs on Balances while its
+own page reads settled; its members get a **Tidy up balances** action on the group page,
+which records the same kind of entries to clear them.
 
 ## Balances and activity
 
 **Balances** shows what you are owed and what you owe, per currency. Balances are never
-stored; they are computed from expenses every time, so they cannot drift.
+stored; they are computed from expenses every time, so they cannot drift. The list is one
+row per person and currency, each pair's direct expenses and shared groups summed together.
+It is not simplified across people (A owes B and B owes C stays two rows), and the page says
+so above the list; the minimal set of payments is on each group's page (see
+[Groups](#groups)). Once a group is settled, its pairs are rewired to match (see
+[Settlements](#settlements)), so they drop off this page.
 
 **Activity** is a feed of every expense you are part of, grouped by month, with a "you
 lent / you borrowed" column per row. The same feed appears on friend and group pages
@@ -120,7 +179,8 @@ the URL so they can be bookmarked, and never change any balance.
 "Collapse" takes your direct two-person transactions with a friend, or a group's own
 transactions, dated before a day you choose, and replaces them with one "Historical
 Transactions" entry per currency that carries the same balance. Currency-conversion pairs
-and expenses used as recurrence templates are left alone. The originals move to a
+and expenses used as recurrence templates are left alone; "Group debts simplified"
+entries collapse like any other row, so nets stay exact. The originals move to a
 separate archived-expenses table and a CSV listing of them is kept in the entry's note, so
 nothing is lost, but the feed gets short again. Expenses you share with a friend inside a
 group still appear on the friend's page; they are collapsed from the group, not from the
@@ -140,16 +200,18 @@ The operator can switch the rate provider or disable live rates entirely
 
 ## Recurring expenses
 
-From the Recurring page, pick the template from your 20 most recent expenses (conversions
-and deleted expenses excluded) and give it a standard 5-field cron rule (`0 9 1 * *` for
+From the Recurring page, pick the template from your 20 most recent expenses (conversions,
+history collapses, "Group debts simplified" entries and deleted expenses excluded) and give it a standard 5-field cron rule (`0 9 1 * *` for
 09:00 UTC on the first of every month; rules are evaluated in UTC). The server creates
-each due expense exactly once, even when several replicas run. Recurrences can be deleted
-from the same page.
+each due expense exactly once, even when several replicas run. A recurring group
+settlement rewires the group's pairs like a manual one (see [Settlements](#settlements)).
+Recurrences can be deleted from the same page.
 
 ## Notifications
 
 Five events notify everyone involved except the person who did it: an expense added,
-edited or deleted, and a settlement recorded or edited. There are three channels, and
+edited or deleted, and a settlement recorded or edited. Automatic "Group debts simplified"
+entries notify no one. There are three channels, and
 they all read from the same record, so nothing is ever delivered that the app cannot
 also show you.
 
@@ -192,13 +254,18 @@ match. You can also upload an avatar.
 ## Profile export
 
 Your profile page offers a JSON export of your own data. It is a takeout for your records,
-not a backup, and cannot be imported. Whole-instance backups are the operator's job; see
+not a backup, and cannot be imported. It holds your account details (name, email, currencies,
+language, theme, role), each friend's name and email, your groups (name, currency, simplify
+setting, archived date) and the expenses your Activity page shows, with their splits. It
+never contains password hashes, bank links or group join links. Whole-instance backups are the operator's job; see
 [backup-restore.md](backup-restore.md).
 
 ## Progressive web app
 
 GoSplit is installable on phones and desktops. A service worker caches the shell so the
-app opens offline to a clear "you are offline" page rather than a browser error. The core
+app opens offline to a clear "you are offline" page rather than a browser error. It never
+keeps a copy of the admin pages, or of other people's data an admin opens, so none of it
+stays readable offline on the admin's device. The core
 flows (signing in, expenses, settlements, filters, archiving) work with JavaScript
 disabled; scripting makes navigation smoother. Three features need it: the conversion
 page's live rate lookup, bank sync (Plaid Link), and enrolling a browser for push.
@@ -208,6 +275,9 @@ page's live rate lookup, bank sync (Plaid Link), and enrolling a browser for pus
 The Import page takes your Splitwise API key and imports your friends and groups. It does
 not import expenses (matching the upstream project) and is safe to run twice: groups
 already imported are skipped. The key is used for the import request and not stored.
+Accounts the import creates for your Splitwise friends and group members are limited
+(admins in `ADMIN_EMAILS` excepted). Because it creates groups, the import is not available
+to limited accounts: the menu entry is hidden and the page answers with an explanation.
 
 ## Bank sync (optional)
 
@@ -217,11 +287,28 @@ one click. Without Plaid credentials the page simply reports the feature as off.
 
 ## Admin console
 
-Admins get `/admin`, where they can create users, edit anyone's name, email, role, currency
-and language, set or reset a password (which signs that user out everywhere), deactivate
+Admins get `/admin`, where they can create users, edit anyone's name, email, role (LIMITED,
+USER or ADMIN, see [Roles](#roles); the Add user form starts at LIMITED, so pick USER for
+someone who should create groups), currency and language, set or reset a password (which signs that user out everywhere), deactivate
 and reactivate accounts, and mint a one-time sign-in link for a user who cannot receive
 mail. `/admin/backup` handles backups and restores; see
 [backup-restore.md](backup-restore.md).
+
+**All activity** (`/admin/activity`) lists every user's transactions, soft-deleted ones
+included (dimmed, tagged and read-only), with each row's total rather than a "you lent"
+column. Besides the usual filters it can narrow to one user (the transactions they paid,
+created or are part of; each user's card in the console links there) or one group, and it
+always includes archived groups. Opening a transaction gives an admin the same powers a
+participant has: edit it, move it to another group, or delete it. When moving into a
+group, the payer and everyone in the split must belong to it; only the admin does not need
+to. Participants are notified as for any other edit, with the admin named, and the detail
+page tells the admin they are acting on someone else's transaction. Admins cannot add new
+expenses to, settle, or otherwise act on a group they are not in.
+
+**All groups** (`/admin/groups`) lists every group with its member count, creator and a
+link into the activity list. An admin can open any group's page read-only: its balances,
+simplified debts and feed are all there, but none of the member controls (settle, add
+member, archive, the simplify toggle, collapse), and never its join link.
 
 ## See also
 

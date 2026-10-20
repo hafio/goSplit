@@ -53,7 +53,7 @@ func (s *Store) CreateNotifications(ctx context.Context, ns []*Notification) err
 			 title, amount, currency, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 			n.UserID, n.ActorID, n.Kind, n.EntityType, n.EntityID,
 			n.Title, n.Amount, n.Currency, now); err != nil {
-			return err
+			return err // cov:ignore store-fault: needs a failing database
 		}
 	}
 	return tx.Commit()
@@ -85,7 +85,7 @@ func (s *Store) ListNotifications(ctx context.Context, userID int64, limit int) 
 	var out []*Notification
 	for rows.Next() {
 		n, err := scanNotification(rows)
-		if err != nil {
+		if err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 			return nil, err
 		}
 		out = append(out, n)

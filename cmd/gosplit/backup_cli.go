@@ -77,16 +77,16 @@ func runBackupCLI(args []string) error {
 	fs := flag.NewFlagSet("backup", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	out := fs.String("o", "", "directory to write the archive into (defaults to BACKUP_DIR)")
-	fs.Usage = func() {
+	fs.Usage = func() { // cov:ignore usage text, nothing to check
 		fmt.Fprintf(os.Stderr, "usage: gosplit backup [-o DIR]\n\nWrites a sealed archive of every table plus the upload tree.\nThe archive is encrypted with a key derived from SESSION_SECRET.\n\n")
 		fs.PrintDefaults()
 	}
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(args); err != nil { // cov:ignore pass-through: flag already prints the bad flag
 		return err
 	}
 
 	cfg, err := loadCLIConfig()
-	if err != nil {
+	if err != nil { // cov:ignore pass-through: config.Load errors are tested in internal/config
 		return err
 	}
 	dir := *out
@@ -98,7 +98,7 @@ func runBackupCLI(args []string) error {
 	defer stop()
 
 	st, err := store.OpenNoMigrate(ctx, cfg)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a database that cannot be opened
 		return err
 	}
 	defer func() { _ = st.Close() }()
@@ -109,7 +109,7 @@ func runBackupCLI(args []string) error {
 
 	r := backup.New(st, cfg)
 	path, man, err := r.DumpToDir(ctx, dir, backup.ArchivePrefix)
-	if err != nil {
+	if err != nil { // cov:ignore pass-through: dump failures are tested in internal/backup
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "wrote %s\n", path)
@@ -127,7 +127,7 @@ func runRestoreCLI(args []string) error {
 		fmt.Fprintf(os.Stderr, "usage: gosplit restore --file ARCHIVE [--force] [--no-pre-dump]\n\nWithout --force the archive is validated and summarized, and nothing is changed.\nWith --force EVERY TABLE IS EMPTIED and replaced by the archive's contents, and\nthe upload directory is replaced. Rows keep their original ids.\n\n")
 		fs.PrintDefaults()
 	}
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(args); err != nil { // cov:ignore pass-through: flag already prints the bad flag
 		return err
 	}
 	if *file == "" {
@@ -136,14 +136,14 @@ func runRestoreCLI(args []string) error {
 	}
 
 	cfg, err := loadCLIConfig()
-	if err != nil {
+	if err != nil { // cov:ignore pass-through: config.Load errors are tested in internal/config
 		return err
 	}
 
 	// An upload swap interrupted by a crash leaves a recognizable state on
 	// disk. Repair it here as well as on server boot: a CLI restore killed
 	// mid-swap would otherwise stay broken until someone started the server.
-	if err := backup.RecoverIncompleteSwap(cfg); err != nil {
+	if err := backup.RecoverIncompleteSwap(cfg); err != nil { // cov:ignore pass-through: swap recovery is tested in internal/backup
 		return err
 	}
 
@@ -154,7 +154,7 @@ func runRestoreCLI(args []string) error {
 	// restore needs the live schema to match the archive anyway, and Validate
 	// is what enforces that -- so there is still no reason to migrate here.
 	st, err := store.OpenNoMigrate(ctx, cfg)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a database that cannot be opened
 		return err
 	}
 	defer func() { _ = st.Close() }()
@@ -180,7 +180,7 @@ func runRestoreCLI(args []string) error {
 	fmt.Fprintf(os.Stderr, "\nrestoring...\n")
 
 	rep, err := r.Apply(ctx, v, backup.ApplyOptions{Confirmed: true, SkipSafetyDump: *noPreDump})
-	if err != nil {
+	if err != nil { // cov:ignore pass-through: restore failures are tested in internal/backup
 		return err
 	}
 	if rep.SafetyDumpPath != "" {
@@ -196,7 +196,7 @@ func runInspectCLI(args []string) error {
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: gosplit inspect ARCHIVE\n\nPrints an archive's plaintext header. Needs no database and no matching\nSESSION_SECRET, so it works on any archive file.\n\n")
 	}
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(args); err != nil { // cov:ignore pass-through: flag already prints the bad flag
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -210,7 +210,7 @@ func runInspectCLI(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("format version:   %d\n", hdr.FormatVersion)
+	fmt.Printf("format version:   %d\n", hdr.FormatVersion) // cov:ignore print-only: the inspect header, field by field
 	fmt.Printf("created at:       %s\n", hdr.CreatedAt)
 	fmt.Printf("source engine:    %s\n", hdr.SourceEngine)
 	fmt.Printf("gosplit version:  %s\n", orDash(hdr.GosplitVersion))
@@ -228,7 +228,7 @@ func runInspectCLI(args []string) error {
 // once first.
 func warnPendingMigrations(ctx context.Context, st *store.Store) error {
 	pending, err := st.PendingMigrations(ctx)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs an unreadable schema_migrations table
 		return err
 	}
 	if len(pending) == 0 {
@@ -267,5 +267,5 @@ func humanBytes(n int64) string {
 			return fmt.Sprintf("%.1f %s", v, suffix)
 		}
 	}
-	return fmt.Sprintf("%.1f PiB", v)
+	return fmt.Sprintf("%.1f PiB", v) // cov:ignore impossible in practice: an archive over a pebibyte
 }

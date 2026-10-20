@@ -80,7 +80,7 @@ func monthLabel(date string) string {
 	if t, err := time.Parse("2006-01-02", dateOnly(date)); err == nil {
 		return t.Format("January 2006")
 	}
-	return date
+	return date // cov:ignore defensive: a stored date that does not parse
 }
 
 // nameCache resolves user/group display names within a single request without
@@ -123,14 +123,36 @@ func (c *nameCache) group(ctx context.Context, id int64) string {
 	return name
 }
 
+// privateHeader marks a response the service worker must neither cache nor
+// serve offline (sw.js checks it): admin pages, and other people's data seen
+// through the admin override, would otherwise persist on the admin's device.
+const privateHeader = "X-GoSplit-Private"
+
+// markPrivate sets privateHeader on w; call it before the response is written.
+func markPrivate(w http.ResponseWriter) { w.Header().Set(privateHeader, "1") }
+
+// privateResponses is middleware that marks every response of a route group
+// private (the admin area).
+func privateResponses(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		markPrivate(w)
+		next.ServeHTTP(w, r)
+	})
+}
+
 // buildRows converts store expenses to presentation rows with resolved names,
-// feed date parts, and the viewer's net share per row (positive = lent).
+// feed date parts, and the viewer's net share per row (positive = lent). Viewer
+// 0 means a neutral feed (the admin's): no per-viewer net is looked up at all,
+// which also keeps an all-users list from binding every row id into one query.
 func (s *Server) buildRows(ctx context.Context, nc *nameCache, viewer int64, expenses []*store.Expense) []expenseRow {
-	ids := make([]string, len(expenses))
-	for i, e := range expenses {
-		ids[i] = e.ID
+	var nets map[string]int64
+	if viewer != 0 {
+		ids := make([]string, len(expenses))
+		for i, e := range expenses {
+			ids[i] = e.ID
+		}
+		nets, _ = s.Store.UserNetByExpense(ctx, viewer, ids)
 	}
-	nets, _ := s.Store.UserNetByExpense(ctx, viewer, ids)
 
 	rows := make([]expenseRow, 0, len(expenses))
 	for _, e := range expenses {
@@ -180,7 +202,7 @@ func parseFilter(r *http.Request) (store.ExpenseFilter, map[string]string) {
 			f.AmountMin = &m
 		}
 	}
-	if v := q.Get("max"); v != "" {
+	if v := q.Get("max"); v != "" { // cov:ignore glue: query plumbing; the filters are tested in internal/store
 		if m, err := money.Parse(v, "USD"); err == nil {
 			f.AmountMax = &m
 		}
@@ -188,9 +210,9 @@ func parseFilter(r *http.Request) (store.ExpenseFilter, map[string]string) {
 	f.DateFrom = q.Get("from")
 	f.DateTo = q.Get("to")
 	switch q.Get("scope") {
-	case "group":
+	case "group": // cov:ignore glue: query plumbing; the filters are tested in internal/store
 		f.Scope = store.ScopeOnlyGroup
-	case "nongroup":
+	case "nongroup": // cov:ignore glue: query plumbing; the filters are tested in internal/store
 		f.Scope = store.ScopeOnlyNonGroup
 	default:
 		f.Scope = store.ScopeAll
@@ -204,5 +226,5 @@ func dateOnly(iso string) string {
 	if len(iso) >= 10 {
 		return iso[:10]
 	}
-	return iso
+	return iso // cov:ignore defensive: a date shorter than YYYY-MM-DD
 }

@@ -1,10 +1,14 @@
 {{/* Shared §5.2 filter bar. Expects Action (string), Filter (map), ShowScope
     (bool). Search stays visible; advanced filters fold into a disclosure; active
-    filters render as removable chip links (no JS — chips drop one query param). */}}
+    filters render as removable chip links (no JS — chips drop one query param).
+    The admin feed also passes UserOpts/GroupOpts (id + label choices),
+    UserSel/GroupSel (int64, 0 = none) and UserName/GroupName for the chips; other
+    callers omit them and get no user or group select. */}}
 {{define "filterbar"}}
 {{$root := .Root}}
 {{$f := .Filter}}{{$a := .Action}}
-{{$active := or $f.q $f.min $f.max $f.from $f.to (and (ne $f.scope "all") (ne $f.scope "")) (eq $f.archived "1")}}
+{{$userSel := .UserSel}}{{$groupSel := .GroupSel}}
+{{$active := or $f.q $f.min $f.max $f.from $f.to (and (ne $f.scope "all") (ne $f.scope "")) (eq $f.archived "1") $f.user $f.group}}
 <form class="filterbar" method="get" action="{{$a}}">
   <div class="search-wrap">
     <svg class="icon"><use href="{{asset "icons.svg"}}#search"></use></svg>
@@ -34,6 +38,20 @@
       {{if .ShowArchived}}
       <label class="filter-check"><input type="checkbox" name="archived" value="1"{{if eq $f.archived "1"}} checked{{end}}> {{$root.T "filter.archived"}}</label>
       {{end}}
+      {{if .UserOpts}}
+      <div class="field-lab">{{$root.T "admin.filter_user"}}</div>
+      <select name="user" class="native-select" aria-label="{{$root.T "admin.filter_user"}}">
+        <option value="">{{$root.T "admin.all_users"}}</option>
+        {{range .UserOpts}}<option value="{{.ID}}"{{if eq .ID $userSel}} selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+      {{end}}
+      {{if .GroupOpts}}
+      <div class="field-lab">{{$root.T "admin.filter_group"}}</div>
+      <select name="group" class="native-select" aria-label="{{$root.T "admin.filter_group"}}">
+        <option value="">{{$root.T "admin.all_groups"}}</option>
+        {{range .GroupOpts}}<option value="{{.ID}}"{{if eq .ID $groupSel}} selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+      {{end}}
       <button type="submit" class="a-btn sm">{{$root.T "filter.apply"}}</button>
     </div>
   </details>
@@ -47,6 +65,8 @@
   {{if $f.to}}<a class="chip" href="{{queryWithout $f $a "to"}}">≤ {{$f.to}} <span class="x">×</span></a>{{end}}
   {{if and (ne $f.scope "all") (ne $f.scope "")}}<a class="chip" href="{{queryWithout $f $a "scope"}}">{{if eq $f.scope "group"}}{{$root.T "filter.groups"}}{{else}}{{$root.T "filter.direct"}}{{end}} <span class="x">×</span></a>{{end}}
   {{if eq $f.archived "1"}}<a class="chip" href="{{queryWithout $f $a "archived"}}">{{$root.T "filter.archived"}} <span class="x">×</span></a>{{end}}
+  {{if $f.user}}<a class="chip" href="{{queryWithout $f $a "user"}}">{{.UserName}} <span class="x">&times;</span></a>{{end}}
+  {{if $f.group}}<a class="chip" href="{{queryWithout $f $a "group"}}">{{.GroupName}} <span class="x">&times;</span></a>{{end}}
   <a class="chip clear-chip" href="{{$a}}">{{$root.T "filter.clear_all"}}</a>
 </div>
 {{end}}
@@ -64,10 +84,12 @@
 {{end}}
 
 {{/* Month-grouped expense feed. Expects a dict: Groups ([]monthGroup), Root
-    (the ViewData, for i18n via $root.T), and ShowAllHref (optional link to
-    re-request the full, unlimited feed). */}}
+    (the ViewData, for i18n via $root.T), ShowAllHref (optional link to
+    re-request the full, unlimited feed) and Neutral (optional: a viewer who is
+    not part of the rows, such as an admin, gets each row's total instead of a
+    "you lent / you borrowed" column). */}}
 {{define "expense_table"}}
-{{$root := .Root}}
+{{$root := .Root}}{{$neutral := .Neutral}}
 {{if .Groups}}
 {{range .Groups}}
 <div class="month-h">{{.Label}}</div>
@@ -77,13 +99,18 @@
        fragment's hx-target so it swaps the page like any other boosted link. */}}
   <a class="l-row{{if .Deleted}} dim{{end}}" href="/expenses/{{.ID}}" hx-target="body" hx-swap="morph:innerHTML" hx-indicator="body">
     <span class="dateblk"><b>{{.DateMonthAbbr}}</b><span>{{.DateDay}}</span></span>
-    <span class="cat">{{if eq .SplitType "SETTLEMENT"}}💸{{else if eq .SplitType "ARCHIVE"}}🗂️{{else}}{{categoryEmoji .Category}}{{end}}</span>
+    {{$netting := eq .SplitType "NETTING"}}
+    <span class="cat">{{if eq .SplitType "SETTLEMENT"}}💸{{else if eq .SplitType "ARCHIVE"}}🗂️{{else if $netting}}&#9878;&#65039;{{else}}{{categoryEmoji .Category}}{{end}}</span>
     <div class="l-main">
-      <div class="l-title">{{.Name}}{{if .Moved}} <span class="tag">{{$root.T "feed.moved"}}</span>{{else if .Deleted}} <span class="tag danger">{{$root.T "feed.deleted"}}</span>{{end}}</div>
-      <div class="l-sub">{{.PaidByName}} {{$root.T "feed.paid"}} {{money .Amount .Currency}} {{.Currency}}{{if .GroupName}} · {{.GroupName}}{{end}}</div>
+      <div class="l-title">{{if $netting}}{{$root.T "feed.netting"}}{{else}}{{.Name}}{{end}}{{if .Moved}} <span class="tag">{{$root.T "feed.moved"}}</span>{{else if .Deleted}} <span class="tag danger">{{$root.T "feed.deleted"}}</span>{{end}}</div>
+      {{if $netting}}<div class="l-sub">{{$root.T "feed.netting_sub"}}{{if .GroupName}} &middot; {{.GroupName}}{{end}}</div>
+      {{else}}<div class="l-sub">{{.PaidByName}} {{$root.T "feed.paid"}} {{money .Amount .Currency}} {{.Currency}}{{if .GroupName}} · {{.GroupName}}{{end}}</div>{{end}}
     </div>
     <div class="l-end">
-      {{if eq .SplitType "SETTLEMENT"}}<span class="amt muted">{{money .Amount .Currency}}</span>
+      {{/* A netting entry is never "you lent / you borrowed": it only moves who
+           owes whom. A viewer in the pair sees their signed share, muted. */}}
+      {{if and $netting (not $neutral) .HasNet}}<span class="amt muted">{{if gt .MyNet 0}}+{{end}}{{money .MyNet .Currency}}</span>
+      {{else if or (eq .SplitType "SETTLEMENT") $neutral $netting}}<span class="amt muted">{{money .Amount .Currency}}</span>
       {{else if .HasNet}}
         {{if gt .MyNet 0}}<span class="lbl">{{$root.T "feed.you_lent"}}</span><span class="amt pos">{{money .MyNet .Currency}}</span>
         {{else if lt .MyNet 0}}<span class="lbl">{{$root.T "feed.you_borrowed"}}</span><span class="amt neg">{{money (abs64 .MyNet) .Currency}}</span>

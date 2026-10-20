@@ -2,7 +2,7 @@ module github.com/hafio/gosplit
 
 go 1.27
 
-toolchain go1.27.0
+toolchain go1.27.2
 
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0

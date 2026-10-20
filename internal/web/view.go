@@ -39,8 +39,9 @@ func csvRows(s string) [][]string {
 	return rows
 }
 
-// filterKeys is the frozen §5.2 filter query-string contract.
-var filterKeys = []string{"q", "min", "max", "from", "to", "scope", "archived"}
+// filterKeys is the §5.2 filter query-string contract, plus the admin feed's
+// user and group (other feeds never set them, so they never appear there).
+var filterKeys = []string{"q", "min", "max", "from", "to", "scope", "archived", "user", "group"}
 
 // queryWithout rebuilds a filter URL (action + query string) from the current
 // filter map minus one key — used to render a removable filter chip as a plain
@@ -75,15 +76,15 @@ var assetsFS embed.FS
 var assetHashes = func() map[string]string {
 	m := map[string]string{}
 	entries, err := assetsFS.ReadDir("assets")
-	if err != nil {
+	if err != nil { // cov:ignore impossible: reads the go:embed FS
 		return m
 	}
 	for _, e := range entries {
-		if e.IsDir() {
+		if e.IsDir() { // cov:ignore impossible: assets/ holds no subdirectories
 			continue
 		}
 		b, err := assetsFS.ReadFile("assets/" + e.Name())
-		if err != nil {
+		if err != nil { // cov:ignore impossible: reads the go:embed FS
 			continue
 		}
 		sum := sha256.Sum256(b)
@@ -160,6 +161,8 @@ var pageFiles = map[string]string{
 	"profile":        "profile.html",
 	"admin":          "admin.html",
 	"admin_backup":   "admin_backup.html",
+	"admin_activity": "admin_activity.html",
+	"admin_groups":   "admin_groups.html",
 	"recurring":      "recurring.html",
 	"convert":        "convert.html",
 	"import":         "import.html",
@@ -199,6 +202,10 @@ var fragments = map[string]map[string]Fragment{
 		"notif-badge": {Block: "frag_notif_badge"}},
 	"expense_detail": {"content": contentFragment},
 	"recurring":      {"content": contentFragment},
+	// The admin feed swaps its own region for filter and show-all clicks, but has
+	// no "content" entry: it is deliberately not polled, since every poll would
+	// re-run an all-users query.
+	"admin_activity": {"admin-activity-feed": {Block: "frag_admin_activity_feed"}},
 }
 
 // FragmentFor returns the block registered for a page's swap target.
@@ -214,14 +221,14 @@ func pollable(page string) bool { return fragments[page]["content"].Poll }
 // NewRenderer parses all page templates once at startup and loads i18n.
 func NewRenderer() (*Renderer, error) {
 	bundle, err := i18n.Load()
-	if err != nil {
+	if err != nil { // cov:ignore impossible: the embedded templates and locales load in every test
 		return nil, fmt.Errorf("web: load i18n: %w", err)
 	}
 	r := &Renderer{pages: map[string]*template.Template{}, bundle: bundle}
 	for name, file := range pageFiles {
 		t, err := template.New("layout.html").Funcs(funcs).ParseFS(templatesFS,
 			"templates/layout.html", "templates/partials.html", "templates/"+file)
-		if err != nil {
+		if err != nil { // cov:ignore impossible: the embedded templates and locales load in every test
 			return nil, fmt.Errorf("web: parse %s: %w", file, err)
 		}
 		r.pages[name] = t
@@ -229,7 +236,7 @@ func NewRenderer() (*Renderer, error) {
 	// A registry entry naming a page or block that does not exist is a wiring
 	// mistake that would otherwise surface as a 500 the first time a user
 	// happened to trigger that swap. Fail at startup instead.
-	if err := validateFragments(r.pages, fragments); err != nil {
+	if err := validateFragments(r.pages, fragments); err != nil { // cov:ignore impossible: the embedded templates and locales load in every test
 		return nil, err
 	}
 	return r, nil
@@ -420,7 +427,7 @@ func (r *Renderer) RenderFragment(w http.ResponseWriter, req *http.Request, stat
 // URLs (?v=<hash>) are immutable; unversioned ones get a short cache.
 func (r *Renderer) AssetsHandler() http.Handler {
 	sub, err := fs.Sub(assetsFS, "assets")
-	if err != nil {
+	if err != nil { // cov:ignore impossible: fs.Sub of a constant, valid path
 		panic(err)
 	}
 	fileServer := http.StripPrefix(staticPrefix, http.FileServer(http.FS(sub)))

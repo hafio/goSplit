@@ -1,0 +1,24 @@
+{{define "content"}}
+<div class="m-head adm-head">
+  <h1>{{.T "title.admin_groups"}}</h1>
+  <a class="a-btn sec sm" href="/admin"><svg class="icon"><use href="{{asset "icons.svg"}}#shield"></use></svg> {{.T "action.admin"}}</a>
+  <a class="a-btn sec sm" href="/admin/activity"><svg class="icon"><use href="{{asset "icons.svg"}}#list"></use></svg> {{.T "nav.activity"}}</a>
+</div>
+
+{{if .Data.Groups}}
+<div class="card">
+  {{range .Data.Groups}}
+  <div class="l-row{{if .Group.IsArchived}} dim{{end}}">
+    <span class="ava" style="--c:{{avatarColor .Group.ID}}">{{initials .Group.Name .Group.Name}}</span>
+    <div class="l-main">
+      <div class="l-title"><a href="/groups/{{.Group.ID}}">{{.Group.Name}}</a>{{if .Group.IsArchived}} <span class="tag">{{$.T "groups.archived"}}</span>{{end}}</div>
+      <div class="l-sub">{{.MemberCount}} {{$.T "groups.members"}} · {{.CreatorName}} · {{.Created}}</div>
+    </div>
+    <div class="l-end"><a class="a-btn ghost sm" href="/admin/activity?group={{.Group.ID}}">{{$.T "nav.activity"}}</a></div>
+  </div>
+  {{end}}
+</div>
+{{else}}
+{{template "empty_state" (dict "Icon" "home" "Text" (.T "admin.groups_empty") "CTAHref" "" "CTALabel" "")}}
+{{end}}
+{{end}}

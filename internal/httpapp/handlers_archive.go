@@ -41,7 +41,7 @@ func (s *Server) handleFriendCollapsePage(w http.ResponseWriter, r *http.Request
 	if vd.Before != "" {
 		counts, _ := s.Svc.PreviewArchive(ctx, me.ID, &fid, nil, vd.Before)
 		vd.Counts = counts
-		for _, n := range counts {
+		for _, n := range counts { // cov:ignore glue: only labels the confirm button; the group twin runs
 			vd.Total += n
 		}
 	}
@@ -65,20 +65,17 @@ func (s *Server) handleFriendCollapse(w http.ResponseWriter, r *http.Request) {
 	s.redirectFlash(w, r, fmt.Sprintf("/friends/%d", fid), fmt.Sprintf(s.tr(r, "flash.archived_n"), n))
 }
 
+// handleGroupCollapsePage previews collapsing a group's history. Members only:
+// the preview names the group and counts its transactions.
 func (s *Server) handleGroupCollapsePage(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := ctxTimeout(r)
 	defer cancel()
 	me := s.currentUser(r)
-	gid, ok := atoi64(chi.URLParam(r, "id"))
+	g, ok := s.resolveGroupCaller(ctx, w, r, me)
 	if !ok {
-		http.NotFound(w, r)
 		return
 	}
-	g, err := s.Store.GetGroup(ctx, gid)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
+	gid := g.ID
 	action := fmt.Sprintf("/groups/%d/collapse", gid)
 	vd := collapseView{Kind: "group", Target: g.Name, Action: action,
 		CancelURL: fmt.Sprintf("/groups/%d", gid), Before: r.URL.Query().Get("before"),
@@ -97,11 +94,13 @@ func (s *Server) handleGroupCollapse(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := ctxTimeout(r)
 	defer cancel()
 	me := s.currentUser(r)
-	gid, ok := atoi64(chi.URLParam(r, "id"))
+	// The service refuses non-members as well; checking here answers them 403
+	// like every other group-level action instead of a 400 message page.
+	g, ok := s.resolveGroupCaller(ctx, w, r, me)
 	if !ok {
-		http.NotFound(w, r)
 		return
 	}
+	gid := g.ID
 	n, err := s.Svc.ArchiveGroup(ctx, me.ID, gid, r.FormValue("before"))
 	if err != nil {
 		s.renderErr(w, r, "message", "msg.archive_failed", err.Error(), http.StatusBadRequest, err.Error())

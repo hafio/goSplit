@@ -42,14 +42,14 @@ func (s *Store) ListPushSubscriptions(ctx context.Context, userIDs []int64) ([]P
 	}
 	q += ")"
 	rows, err := s.DB.QueryContext(ctx, s.rebind(q), args...)
-	if err != nil {
+	if err != nil { // cov:ignore store-fault: needs a failing database
 		return nil, err
 	}
 	defer rows.Close()
 	var out []PushSubscription
 	for rows.Next() {
 		var p PushSubscription
-		if err := rows.Scan(&p.UserID, &p.Endpoint, &p.Subscription); err != nil {
+		if err := rows.Scan(&p.UserID, &p.Endpoint, &p.Subscription); err != nil { // cov:ignore store-fault: a scan of NOT NULL columns fails only on a broken database
 			return nil, err
 		}
 		out = append(out, p)

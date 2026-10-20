@@ -1,6 +1,7 @@
 {{define "content"}}
 <div class="m-head">
   <h1>{{.T "title.groups"}}</h1>
+  {{if .User.CanCreateGroups}}
   <details class="add-inline">
     <summary class="a-btn sec sm"><svg class="icon"><use href="{{asset "icons.svg"}}#plus"></use></svg>{{.T "groups.create"}}</summary>
     <form method="post" action="/groups/create" class="inline-form" hx-disabled-elt="find button[type=submit]">
@@ -10,6 +11,7 @@
       <button type="submit" class="a-btn sm">{{.T "groups.create"}}</button>
     </form>
   </details>
+  {{end}}
 </div>
 
 {{if .Data.Groups}}
