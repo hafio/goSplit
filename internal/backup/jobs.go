@@ -212,6 +212,21 @@ func (t *JobTracker) Prune(now time.Time) {
 	}
 }
 
+// DiscardAllPending releases every pending restore. A new upload calls it
+// before validating: there is one staging directory, so only the newest upload
+// can be confirmed, and an older pending one left in place would later expire
+// and delete the newer one's staged uploads.
+func (t *JobTracker) DiscardAllPending() {
+	t.mu.Lock()
+	all := t.pending
+	t.pending = map[string]*pending{}
+	t.mu.Unlock()
+	for _, p := range all {
+		p.validated.Discard()
+		removeQuietly(p.path)
+	}
+}
+
 // DiscardPending releases a pending restore without applying it.
 func (t *JobTracker) DiscardPending(token string) {
 	t.mu.Lock()

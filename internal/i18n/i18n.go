@@ -30,10 +30,8 @@ func Load() (*Bundle, error) {
 	if err != nil { // cov:ignore impossible: reads the go:embed FS
 		return nil, err
 	}
+	// The embed pattern is locales/*.json, so every entry is a locale file.
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
 		data, err := localesFS.ReadFile("locales/" + e.Name())
 		if err != nil { // cov:ignore impossible: reads the go:embed FS
 			return nil, err

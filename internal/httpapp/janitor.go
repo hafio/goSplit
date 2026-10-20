@@ -32,15 +32,20 @@ func (s *Server) StartJanitor(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case now := <-t.C:
-				s.Jobs.Prune(now)
-				// Stale .partial files are a dump killed mid-write. Swept here
-				// rather than in the scheduler so it happens even with
-				// scheduled backups switched off.
-				if n := backup.SweepStalePartials(s.Cfg.BackupDir, now); n > 0 {
-					slog.Info("janitor: swept stale partial archives", "removed", n)
-				}
+			case now := <-t.C: // cov:ignore env: fires every five minutes; sweepOnce is tested directly
+				s.sweepOnce(now)
 			}
 		}
 	}()
+}
+
+// sweepOnce is one janitor pass: expired jobs and abandoned restore uploads,
+// then stale .partial files -- each a dump killed mid-write. Those are swept
+// here rather than in the scheduler so it happens even with scheduled backups
+// switched off.
+func (s *Server) sweepOnce(now time.Time) {
+	s.Jobs.Prune(now)
+	if n := backup.SweepStalePartials(s.Cfg.BackupDir, now); n > 0 {
+		slog.Info("janitor: swept stale partial archives", "removed", n)
+	}
 }

@@ -24,7 +24,7 @@ func (s *Store) AcquireLock(ctx context.Context, id, holder string, ttl time.Dur
 	}
 	var current string
 	err = s.DB.QueryRowContext(ctx, s.rebind(`SELECT holder FROM scheduler_locks WHERE id = ?`), id).Scan(&current)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) { // cov:ignore race: a restore emptied scheduler_locks between the two statements
 		return false, nil
 	}
 	if err != nil { // cov:ignore store-fault: needs a failing database

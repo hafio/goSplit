@@ -150,8 +150,8 @@ func TestSettleRecordsDirectionAndRejectsNonPositive(t *testing.T) {
 }
 
 // TestGetRateSameCurrencyCacheAndProvider covers GetRate: identical currencies
-// short-circuit to "1", a cache miss falls back to the provider and then caches
-// the result, and GetRates batches several targets from one base.
+// short-circuit to "1", and a cache miss falls back to the provider and then
+// caches the result.
 func TestGetRateSameCurrencyCacheAndProvider(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newTestService(t)
@@ -168,13 +168,48 @@ func TestGetRateSameCurrencyCacheAndProvider(t *testing.T) {
 	if cached, err := svc.Store.GetCachedRate(ctx, "USD", "EUR", "2026-02-02"); err != nil || cached != "0.9" {
 		t.Errorf("rate not cached: %q %v", cached, err)
 	}
-	// Batch lookup.
-	m, err := svc.GetRates(ctx, "USD", []string{"EUR", "USD"}, "2026-02-02")
-	if err != nil {
+}
+
+// countingRates is a rate provider that counts its calls.
+type countingRates struct{ calls *int }
+
+func (c countingRates) Name() string { return "counting" }
+func (c countingRates) Rate(context.Context, string, string, string) (string, error) {
+	*c.calls++
+	return "0.9", nil
+}
+
+// TestGetRateWithoutADateRefreshesDaily: a date-less lookup (the convert form
+// leaves the date optional) is cached under today's date, not a key that never
+// expires, so the scheduler's purge removes it and a later lookup fetches a
+// fresh rate.
+func TestGetRateWithoutADateRefreshesDaily(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	calls := 0
+	svc.Rates = countingRates{calls: &calls}
+
+	for i := 0; i < 2; i++ {
+		if r, err := svc.GetRate(ctx, "USD", "EUR", ""); err != nil || r != "0.9" {
+			t.Fatalf("GetRate = %q %v", r, err)
+		}
+	}
+	today := todayISO()
+	if calls != 1 {
+		t.Errorf("provider called %d times for two same-day lookups, want 1", calls)
+	}
+	if got, err := svc.Store.GetCachedRate(ctx, "USD", "EUR", today); err != nil || got != "0.9" {
+		t.Errorf("rate not cached under today's date %s: %q %v", today, got, err)
+	}
+	if _, err := svc.Store.GetCachedRate(ctx, "USD", "EUR", "latest"); err == nil {
+		t.Error("rate still cached under the never-expiring 'latest' key")
+	}
+
+	if err := svc.Store.DeleteRatesBefore(ctx, "9999-12-31"); err != nil {
 		t.Fatal(err)
 	}
-	if m["EUR"] != "0.9" || m["USD"] != "1" {
-		t.Errorf("GetRates = %v, want EUR=0.9 USD=1", m)
+	if _, err := svc.GetRate(ctx, "USD", "EUR", ""); err != nil || calls != 2 {
+		t.Errorf("after the purge: provider calls = %d (err %v), want a fresh fetch", calls, err)
 	}
 }
 

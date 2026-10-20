@@ -331,38 +331,13 @@ func (covErrRates) Rate(context.Context, string, string, string) (string, error)
 	return "", errors.New("rate unavailable")
 }
 
-// TestCovConversionErrors covers CreateConversion's guard and provider-failure
-// branches (same currency, non-positive amount, provider error, unparseable
-// rate) and GetRate's provider-error path.
-func TestCovConversionErrors(t *testing.T) {
+// TestCovGetRateProviderError: a rate provider failure bubbles up through
+// GetRate instead of being cached or swallowed.
+func TestCovGetRateProviderError(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newTestService(t)
-	a := covUser(t, svc, "A", "a@x.com")
-	b := covUser(t, svc, "B", "b@x.com")
-	covFriends(t, svc, a, b)
-
-	// Same currency and non-positive amount are rejected before any lookup.
-	if _, err := svc.CreateConversion(ctx, a.ID, a.ID, b.ID, 1000, "USD", "USD", "2026-01-01", nil); err == nil ||
-		!strings.Contains(err.Error(), "must differ") {
-		t.Errorf("same-currency: got %v, want a 'must differ' error", err)
-	}
-	if _, err := svc.CreateConversion(ctx, a.ID, a.ID, b.ID, 0, "USD", "EUR", "2026-01-01", nil); err == nil ||
-		!strings.Contains(err.Error(), "must be positive") {
-		t.Errorf("zero amount: got %v, want a 'must be positive' error", err)
-	}
-
-	// Provider failure bubbles up through GetRate.
 	svc.Rates = covErrRates{}
-	if _, err := svc.CreateConversion(ctx, a.ID, a.ID, b.ID, 1000, "USD", "EUR", "2026-03-03", nil); err == nil {
-		t.Error("provider error should abort CreateConversion")
-	}
 	if _, err := svc.GetRate(ctx, "USD", "GBP", "2026-03-03"); err == nil {
 		t.Error("GetRate should surface a provider error")
-	}
-
-	// A provider that returns an unparseable rate fails in currency.Convert.
-	svc.Rates = fakeRates{rate: "not-a-number"}
-	if _, err := svc.CreateConversion(ctx, a.ID, a.ID, b.ID, 1000, "USD", "JPY", "2026-04-04", nil); err == nil {
-		t.Error("unparseable rate should abort CreateConversion via Convert")
 	}
 }

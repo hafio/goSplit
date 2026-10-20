@@ -5,6 +5,7 @@ package money
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -80,9 +81,14 @@ func Parse(s, currency string) (int64, error) {
 	if intPart == "" {
 		intPart = "0"
 	}
+	// Digits only. strconv.ParseInt accepts a sign of its own, so without this
+	// "--5" would parse as 5.00 and "1.-5" as 0.95.
+	if !allDigits(intPart) || !allDigits(fracPart) {
+		return 0, fmt.Errorf("money: invalid amount %q", s)
+	}
 	whole, err := strconv.ParseInt(intPart, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("money: invalid amount %q", s)
+		return 0, fmt.Errorf("money: amount %q is too large", s)
 	}
 	var frac int64
 	if hasFrac {
@@ -93,17 +99,29 @@ func Parse(s, currency string) (int64, error) {
 			fracPart += "0"
 		}
 		if fracPart != "" {
-			frac, err = strconv.ParseInt(fracPart, 10, 64)
-			if err != nil {
-				return 0, fmt.Errorf("money: invalid fraction %q", fracPart)
-			}
+			// At most three digits, all of them checked: this cannot fail.
+			frac, _ = strconv.ParseInt(fracPart, 10, 64)
 		}
+	}
+	// whole*10^d + frac must fit, or it would wrap into a different amount.
+	if whole > (math.MaxInt64-frac)/pow10(d) {
+		return 0, fmt.Errorf("money: amount %q is too large", s)
 	}
 	minor := whole*pow10(d) + frac
 	if neg {
 		minor = -minor
 	}
 	return minor, nil
+}
+
+// allDigits reports whether s holds only ASCII digits ("" counts).
+func allDigits(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func pow10(n int) int64 {

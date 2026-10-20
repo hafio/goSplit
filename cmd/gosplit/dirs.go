@@ -8,6 +8,23 @@ import (
 	"github.com/hafio/gosplit/internal/store"
 )
 
+// prepareBoot readies the data volume before anything opens the database:
+// first it repairs an upload swap a crash interrupted, then it creates the
+// directories this instance writes to.
+//
+// The order is the whole point. RecoverIncompleteSwap tells "interrupted
+// between the two renames" from "finished" by whether UPLOAD_DIR exists, so
+// creating a missing UPLOAD_DIR first would make an interrupted swap look
+// finished -- and recovery would then delete the previous uploads it exists to
+// put back.
+func prepareBoot(cfg *config.Config) error {
+	if err := backup.RecoverIncompleteSwap(cfg); err != nil {
+		return err
+	}
+	prepareDataDirs(cfg)
+	return nil
+}
+
 // prepareDataDirs creates every directory this instance writes to, at boot,
 // and reports on any it cannot.
 //
@@ -44,10 +61,9 @@ func prepareDataDirs(cfg *config.Config) {
 		targets = append(targets, target{"AUTO_RESTORE_DIR", cfg.AutoRestoreDir})
 	}
 
+	// Every target has a path: config.Load never leaves UPLOAD_DIR or
+	// BACKUP_DIR empty, and the optional ones are only added when set.
 	for _, t := range targets {
-		if t.path == "" {
-			continue
-		}
 		if err := backup.EnsureWritableDir(t.path, t.setting); err != nil {
 			slog.Warn("startup: a configured directory is not usable",
 				"setting", t.setting, "path", t.path, "err", err)

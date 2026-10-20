@@ -43,16 +43,14 @@ func ValidTheme(slug string) bool {
 // falling back to the default theme for unknown slugs. Used for the PWA
 // theme-color meta tags.
 func themeHex(slug string, dark bool) string {
+	pick := themes[0] // DefaultTheme comes first (TestDefaultThemeIsValid)
 	for _, t := range themes {
 		if t.Slug == slug {
-			if dark {
-				return t.DarkAccent
-			}
-			return t.LightAccent
+			pick = t
 		}
 	}
-	if slug != DefaultTheme {
-		return themeHex(DefaultTheme, dark)
+	if dark {
+		return pick.DarkAccent
 	}
-	return "#8d3f4c"
+	return pick.LightAccent
 }

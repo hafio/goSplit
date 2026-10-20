@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/hafio/gosplit/internal/config"
@@ -100,7 +102,7 @@ func (r *Runner) Validate(ctx context.Context, archivePath string) (*Validated, 
 	}
 	hdr, aad, _, err := ReadHeader(rc)
 	_ = rc.Close()
-	if err != nil { // cov:ignore pass-through: ReadHeader is tested in container_test
+	if err != nil {
 		return nil, err
 	}
 
@@ -177,6 +179,54 @@ func (v *Validated) Discard() {
 	v.staging = ""
 }
 
+// ErrStagingChanged refuses a restore whose staged uploads are no longer the
+// ones its own validation extracted.
+var ErrStagingChanged = errors.New("backup: this archive's staged uploads were replaced or removed since it was validated -- another upload or restore has used the staging directory; validate the archive again")
+
+// checkStaging reports whether the staging directory still holds exactly the
+// uploads Validate extracted for v: the same paths with the same sizes.
+func (v *Validated) checkStaging() error {
+	want := make(map[string]int64, len(v.Index.Uploads))
+	for _, u := range v.Index.Uploads {
+		want[u.RelPath] = u.Size
+	}
+	if v.staging == "" {
+		return ErrStagingChanged
+	}
+	got := 0
+	err := filepath.WalkDir(v.staging, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(v.staging, p)
+		if err != nil { // cov:ignore impossible: WalkDir paths are always under the root
+			return err
+		}
+		info, err := d.Info()
+		if err != nil { // cov:ignore race: the file vanished between the walk and its stat
+			return err
+		}
+		if size, ok := want[filepath.ToSlash(rel)]; !ok || size != info.Size() {
+			return ErrStagingChanged
+		}
+		got++
+		return nil
+	})
+	if errors.Is(err, fs.ErrNotExist) {
+		return ErrStagingChanged
+	}
+	if err != nil {
+		return err
+	}
+	if got != len(want) {
+		return ErrStagingChanged
+	}
+	return nil
+}
+
 // Apply performs the destructive restore: one transaction empties every table
 // and reinserts the archive's rows with their original primary keys, then the
 // staged uploads are swapped in.
@@ -189,6 +239,15 @@ func (r *Runner) Apply(ctx context.Context, v *Validated, opts ApplyOptions) (Re
 	}
 
 	rep := Report{Manifest: v.Manifest, RowsRestored: map[string]int64{}}
+
+	// The staging directory has a fixed name (RecoverIncompleteSwap needs it),
+	// so anything else that stages uploads -- another upload validated since,
+	// a restore from the command line -- replaces or removes this archive's
+	// copy. Swapping that in after the commit would pair the restored rows with
+	// another archive's uploads, or with none, so check before anything else.
+	if err := v.checkStaging(); err != nil {
+		return Report{}, err
+	}
 
 	// The operator's only way back. If it fails, nothing is touched.
 	if !opts.SkipSafetyDump {
@@ -423,11 +482,4 @@ func oldDirFor(uploadDir string) string     { return strings.TrimRight(uploadDir
 // liveMigrationVersions reads the target database's applied migration set.
 func (r *Runner) liveMigrationVersions(ctx context.Context) ([]string, error) {
 	return readMigrationVersions(ctx, r.Store.DB)
-}
-
-// SafetyDump writes a dump of the current data into the configured backup
-// directory.
-func (r *Runner) SafetyDump(ctx context.Context) (string, error) {
-	path, _, err := r.DumpToDir(ctx, r.Cfg.BackupDir, SafetyDumpPrefix)
-	return path, err
 }

@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -32,7 +33,7 @@ type Runner struct {
 
 // New builds a Runner.
 func New(st *store.Store, cfg *config.Config) *Runner {
-	return &Runner{Store: st, Cfg: cfg, Now: func() time.Time { return time.Now().UTC() }} // cov:ignore glue: the real clock; tests set Now
+	return &Runner{Store: st, Cfg: cfg, Now: func() time.Time { return time.Now().UTC() }}
 }
 
 func (r *Runner) now() time.Time {
@@ -221,14 +222,8 @@ func (r *Runner) snapshot(ctx context.Context) (queryer, func(), error) {
 	// the whole dump; WAL lets an independent reader run without blocking the
 	// writer.
 	dsn := store.SQLiteReadOnlyDSN(r.Cfg)
-	if dsn == "" {
-		// An in-memory database has no second handle, so fall back to the
-		// pooled one. Only tests use this, and they have no concurrent writer.
-		tx, err := r.Store.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-		if err != nil {
-			return nil, nil, fmt.Errorf("backup: begin snapshot transaction: %w", err)
-		}
-		return tx, func() { _ = tx.Rollback() }, nil
+	if dsn == "" { // cov:ignore defensive: only an in-memory database has no file to reopen
+		return nil, nil, errors.New("backup: an in-memory database cannot be backed up")
 	}
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil { // cov:ignore store-fault: needs a SQLite file that cannot be reopened read-only
@@ -349,8 +344,8 @@ func (r *Runner) dumpUploads(tw *tar.Writer) (int, int64, error) {
 		}
 		slashRel := filepath.ToSlash(rel)
 		if _, err := safeUploadRel(uploadsPrefix + slashRel); err != nil {
-			// A single unusable name is skipped rather than aborting the whole
-			// backup, but it is not skipped silently.
+			// An unusable name aborts the backup: an archive that silently
+			// lacked someone's file would only be found out at restore time.
 			return fmt.Errorf("backup: upload %q cannot be archived: %w", slashRel, err)
 		}
 		f, err := os.Open(p)

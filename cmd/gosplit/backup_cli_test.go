@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/hafio/gosplit/internal/backup"
+	"github.com/hafio/gosplit/internal/config"
+	"github.com/hafio/gosplit/internal/store"
 )
 
 // TestWantsBackup covers the subcommand dispatch. It is separate from
@@ -141,5 +147,235 @@ func TestOrDash(t *testing.T) {
 		if got := orDash(in); got != want {
 			t.Errorf("orDash(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// cliEnv points the commands at a fresh SQLite instance under one temp root,
+// in the state a server's first boot leaves it: migrated, with one user and one
+// upload. It returns the config the commands will load.
+func cliEnv(t *testing.T) *config.Config {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("SESSION_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("DATABASE_URL", "file:"+filepath.Join(dir, "gosplit.db"))
+	t.Setenv("UPLOAD_DIR", filepath.Join(dir, "uploads"))
+	t.Setenv("BACKUP_DIR", filepath.Join(dir, "backups"))
+	t.Setenv("AUTO_RESTORE_DIR", "")
+	t.Setenv("BACKUP_CRON", "")
+	cfg, err := loadCLIConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	st, err := store.Open(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	_ = st.Close()
+	withStore(t, cfg, func(st *store.Store) { addUser(t, st, "alice@example.com") })
+	if err := os.MkdirAll(cfg.UploadDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.UploadDir, "a.png"), []byte("png"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+// withStore opens the instance's database without migrating it, runs fn and
+// closes it again, so the command under test holds the only open handle.
+func withStore(t *testing.T, cfg *config.Config, fn func(*store.Store)) {
+	t.Helper()
+	st, err := store.OpenNoMigrate(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	fn(st)
+}
+
+func addUser(t *testing.T, st *store.Store, email string) {
+	t.Helper()
+	if _, err := st.CreateUser(context.Background(), &store.User{Name: email, Email: email}); err != nil {
+		t.Fatalf("create %s: %v", email, err)
+	}
+}
+
+func countUsers(t *testing.T, cfg *config.Config) int {
+	t.Helper()
+	var n int
+	withStore(t, cfg, func(st *store.Store) {
+		if err := st.DB.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n); err != nil {
+			t.Fatalf("count users: %v", err)
+		}
+	})
+	return n
+}
+
+// archivesIn lists the archives in dir whose names start with prefix.
+func archivesIn(t *testing.T, dir, prefix string) []string {
+	t.Helper()
+	got, err := filepath.Glob(filepath.Join(dir, prefix+"*"+backup.ArchiveExt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+// cliBackup runs a plain `gosplit backup` and returns the archive it wrote.
+func cliBackup(t *testing.T, cfg *config.Config) string {
+	t.Helper()
+	var err error
+	captureStderr(t, func() { err = runBackupCLI(nil) })
+	if err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+	got := archivesIn(t, cfg.BackupDir, backup.ArchivePrefix)
+	if len(got) != 1 {
+		t.Fatalf("archives after one backup = %v", got)
+	}
+	return got[0]
+}
+
+// diverge makes the live instance differ from a backup just taken: Bob signs
+// up and a stray upload appears.
+func diverge(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	withStore(t, cfg, func(st *store.Store) { addUser(t, st, "bob@example.com") })
+	if err := os.WriteFile(filepath.Join(cfg.UploadDir, "stray.png"), []byte("stray"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestBackupCLIWritesOneArchive: `gosplit backup -o DIR` writes exactly one
+// archive into DIR and nothing into BACKUP_DIR; without -o it goes to
+// BACKUP_DIR. The report names the file.
+func TestBackupCLIWritesOneArchive(t *testing.T) {
+	cfg := cliEnv(t)
+	other := t.TempDir()
+
+	var err error
+	out := captureStderr(t, func() { err = runBackupCLI([]string{"-o", other}) })
+	if err != nil {
+		t.Fatalf("backup -o: %v", err)
+	}
+	if got := archivesIn(t, other, ""); len(got) != 1 || !strings.Contains(out, "wrote "+got[0]) {
+		t.Errorf("backup -o wrote %v, reported:\n%s", got, out)
+	}
+	if got := archivesIn(t, cfg.BackupDir, ""); len(got) != 0 {
+		t.Errorf("backup -o also wrote into BACKUP_DIR: %v", got)
+	}
+
+	cliBackup(t, cfg)
+}
+
+// TestBackupCLIRefusesAnUnmigratedDatabase: a database this build would still
+// migrate is neither backed up nor migrated. The backup typically runs right
+// before an upgrade and must not change the schema as a side effect.
+func TestBackupCLIRefusesAnUnmigratedDatabase(t *testing.T) {
+	ctx := context.Background()
+	cfg := cliEnv(t)
+	var last string
+	withStore(t, cfg, func(st *store.Store) {
+		applied, err := st.AppliedMigrations(ctx)
+		if err != nil || len(applied) == 0 {
+			t.Fatalf("applied migrations = %v, %v", applied, err)
+		}
+		last = applied[len(applied)-1]
+		if _, err := st.DB.ExecContext(ctx, `DELETE FROM schema_migrations WHERE version = ?`, last); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	var err error
+	captureStderr(t, func() { err = runBackupCLI(nil) })
+	if err == nil || !strings.Contains(err.Error(), last) || !strings.Contains(err.Error(), "Start the server once") {
+		t.Fatalf("backup of an unmigrated database = %v, want a refusal naming %s", err, last)
+	}
+	if got := archivesIn(t, cfg.BackupDir, ""); len(got) != 0 {
+		t.Errorf("a refused backup wrote %v", got)
+	}
+	withStore(t, cfg, func(st *store.Store) {
+		if pending, err := st.PendingMigrations(ctx); err != nil || len(pending) != 1 || pending[0] != last {
+			t.Errorf("pending after the refused backup = %v, %v; want %s still pending", pending, err, last)
+		}
+	})
+}
+
+// TestRestoreCLIWithoutForceChangesNothing: without --force, restore only
+// validates. The data and uploads stay, no safety dump is written and no
+// staged uploads are left beside UPLOAD_DIR.
+func TestRestoreCLIWithoutForceChangesNothing(t *testing.T) {
+	cfg := cliEnv(t)
+	archive := cliBackup(t, cfg)
+	diverge(t, cfg)
+
+	var err error
+	out := captureStderr(t, func() { err = runRestoreCLI([]string{"--file", archive}) })
+	if err != nil || !strings.Contains(out, "Nothing has been changed") {
+		t.Fatalf("restore without --force = %v, reported:\n%s", err, out)
+	}
+	if n := countUsers(t, cfg); n != 2 {
+		t.Errorf("users = %d after a validate-only restore, want 2", n)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.UploadDir, "stray.png")); err != nil {
+		t.Errorf("a validate-only restore touched the uploads: %v", err)
+	}
+	if got := archivesIn(t, cfg.BackupDir, backup.SafetyDumpPrefix); len(got) != 0 {
+		t.Errorf("a validate-only restore wrote a safety dump: %v", got)
+	}
+	if _, err := os.Stat(cfg.UploadDir + ".restore"); !os.IsNotExist(err) {
+		t.Errorf("staged uploads were left behind (stat err %v)", err)
+	}
+}
+
+// TestRestoreCLIForceRestores: --force replaces the data and the uploads with
+// the archive's, and first writes a safety dump of what was there -- one that
+// restores, and holds the pre-restore rows. --no-pre-dump skips only that dump.
+func TestRestoreCLIForceRestores(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		extra []string
+		dumps int
+	}{
+		{"with the safety dump", nil, 1},
+		{"--no-pre-dump", []string{"--no-pre-dump"}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			cfg := cliEnv(t)
+			archive := cliBackup(t, cfg)
+			diverge(t, cfg)
+
+			var err error
+			captureStderr(t, func() { err = runRestoreCLI(append([]string{"--file", archive, "--force"}, tc.extra...)) })
+			if err != nil {
+				t.Fatalf("restore --force: %v", err)
+			}
+			if n := countUsers(t, cfg); n != 1 {
+				t.Errorf("users after the restore = %d, want the archive's 1", n)
+			}
+			if _, err := os.Stat(filepath.Join(cfg.UploadDir, "stray.png")); !os.IsNotExist(err) {
+				t.Errorf("the uploads were not replaced (stray.png stat err %v)", err)
+			}
+			if _, err := os.Stat(filepath.Join(cfg.UploadDir, "a.png")); err != nil {
+				t.Errorf("the archive's upload is missing: %v", err)
+			}
+			dumps := archivesIn(t, cfg.BackupDir, backup.SafetyDumpPrefix)
+			if len(dumps) != tc.dumps {
+				t.Fatalf("safety dumps = %v, want %d", dumps, tc.dumps)
+			}
+			for _, d := range dumps {
+				withStore(t, cfg, func(st *store.Store) {
+					v, err := backup.New(st, cfg).Validate(ctx, d)
+					if err != nil {
+						t.Fatalf("the safety dump does not restore: %v", err)
+					}
+					defer v.Discard()
+					if n, _ := v.Manifest.RowCount("users"); n != 2 {
+						t.Errorf("the safety dump holds %d users, want the pre-restore 2", n)
+					}
+				})
+			}
+		})
 	}
 }

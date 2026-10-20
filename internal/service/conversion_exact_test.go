@@ -39,3 +39,29 @@ func TestCreateConversionExact(t *testing.T) {
 		t.Error("negative to-amount should error")
 	}
 }
+
+// TestCreateConversionExactDatesABlankDateToday: a conversion entered without a
+// date is recorded on today's date, on both legs.
+func TestCreateConversionExactDatesABlankDateToday(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	a, _ := svc.Register(ctx, "A", "a@example.com", "password12")
+	b, _ := svc.Register(ctx, "B", "b@example.com", "password12")
+	covFriends(t, svc, a, b)
+
+	before := todayISO()
+	e, err := svc.CreateConversionExact(ctx, a.ID, a.ID, b.ID, 10000, 7830, "SGD", "USD", "", nil)
+	after := todayISO()
+	if err != nil {
+		t.Fatal(err)
+	}
+	to, err := svc.Store.GetExpense(ctx, e.ConversionToID.String)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, leg := range []string{e.ExpenseDate, to.ExpenseDate} {
+		if leg != before && leg != after {
+			t.Errorf("a date-less conversion leg is dated %q, want today (%s)", leg, before)
+		}
+	}
+}

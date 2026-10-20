@@ -200,41 +200,12 @@ func TestChangePassword(t *testing.T) {
 	}
 }
 
-// fakeRates implements currency.Provider for conversion tests.
+// fakeRates implements currency.Provider for rate tests.
 type fakeRates struct{ rate string }
 
 func (f fakeRates) Name() string { return "fake" }
 func (f fakeRates) Rate(context.Context, string, string, string) (string, error) {
 	return f.rate, nil
-}
-
-func TestCreateConversion(t *testing.T) {
-	svc, _ := newTestService(t)
-	svc.Rates = fakeRates{rate: "0.9"}
-	ctx := context.Background()
-	a, _ := svc.Register(ctx, "A", "a@example.com", "password12")
-	b, _ := svc.Register(ctx, "B", "b@example.com", "password12")
-	covFriends(t, svc, a, b)
-
-	e, err := svc.CreateConversion(ctx, a.ID, a.ID, b.ID, 10000, "USD", "EUR", "2025-01-01", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !e.ConversionToID.Valid {
-		t.Fatal("from-expense should link to the to-expense")
-	}
-	// The linked EUR leg should exist with 9000 minor units.
-	to, err := svc.Store.GetExpense(ctx, e.ConversionToID.String)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if to.Amount != 9000 || to.Currency != "EUR" {
-		t.Fatalf("to-leg amount/currency = %d/%s, want 9000/EUR", to.Amount, to.Currency)
-	}
-	// Rate should now be cached.
-	if r, err := svc.Store.GetCachedRate(ctx, "USD", "EUR", "2025-01-01"); err != nil || r != "0.9" {
-		t.Fatalf("rate not cached: %q %v", r, err)
-	}
 }
 
 func TestImportFromSplitwise(t *testing.T) {

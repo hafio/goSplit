@@ -5,21 +5,23 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/hafio/gosplit/internal/currency"
 	"github.com/hafio/gosplit/internal/split"
 	"github.com/hafio/gosplit/internal/store"
 )
 
-// GetRate returns the decimal rate for from->to on date (""=latest), using the
+// GetRate returns the decimal rate for from->to on date (""=today), using the
 // DB cache first and falling back to the configured provider (then caching).
 func (s *Service) GetRate(ctx context.Context, from, to, date string) (string, error) {
 	from, to = strings.ToUpper(from), strings.ToUpper(to)
 	if from == to {
 		return "1", nil
 	}
+	// A lookup without a date means "today's rate", so it is cached under
+	// today's date: tomorrow fetches a fresh one, and the scheduler's purge,
+	// which drops dates before its cutoff, can remove it.
 	key := date
 	if key == "" {
-		key = "latest"
+		key = todayISO()
 	}
 	if rate, err := s.Store.GetCachedRate(ctx, from, to, key); err == nil {
 		return rate, nil
@@ -32,41 +34,6 @@ func (s *Service) GetRate(ctx context.Context, from, to, date string) (string, e
 	}
 	_ = s.Store.PutCachedRate(ctx, from, to, key, rate)
 	return rate, nil
-}
-
-// GetRates looks up several targets from a single base (batch), caching each.
-func (s *Service) GetRates(ctx context.Context, from string, to []string, date string) (map[string]string, error) {
-	out := make(map[string]string, len(to))
-	for _, t := range to {
-		r, err := s.GetRate(ctx, from, t, date)
-		if err != nil {
-			return nil, err
-		}
-		out[t] = r
-	}
-	return out, nil
-}
-
-// CreateConversion converts a balance between two users at the current provider
-// rate: it looks up from->to, computes the target amount with exact math, then
-// delegates to CreateConversionExact.
-func (s *Service) CreateConversion(ctx context.Context, actor, sender, receiver int64, amountFrom int64, fromCur, toCur string, date string, groupID *int64) (*store.Expense, error) {
-	fromCur, toCur = strings.ToUpper(fromCur), strings.ToUpper(toCur)
-	if fromCur == toCur {
-		return nil, errors.New("conversion currencies must differ")
-	}
-	if amountFrom <= 0 {
-		return nil, errors.New("conversion amount must be positive")
-	}
-	rate, err := s.GetRate(ctx, fromCur, toCur, date)
-	if err != nil {
-		return nil, err
-	}
-	amountTo, err := currency.Convert(amountFrom, fromCur, toCur, rate)
-	if err != nil {
-		return nil, err
-	}
-	return s.CreateConversionExact(ctx, actor, sender, receiver, amountFrom, amountTo, fromCur, toCur, date, groupID)
 }
 
 // CreateConversionExact converts a balance between two users using explicit,

@@ -192,7 +192,10 @@ restored values.
 with `413` before any of it is read), validates it, shows the
 manifest summary, and asks you to type `RESTORE ALL DATA` to proceed. The phrase is fixed
 and not translated. A wrong phrase leaves the staged archive in place so you can try
-again; an abandoned upload is discarded after 15 minutes.
+again; an abandoned upload is discarded after 15 minutes. Only the most recent upload can
+be confirmed: uploading another archive discards the one waiting. A restore whose staged
+uploads were replaced since it was validated -- by another upload, or a command-line
+restore on the same volume -- is refused before anything is touched.
 
 The restore replaces the users and sessions tables, so your own session is gone the
 moment it commits. The progress page and its status poll are therefore gated by an

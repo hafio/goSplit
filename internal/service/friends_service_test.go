@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/hafio/gosplit/internal/store"
@@ -53,5 +54,38 @@ func TestAddFriendToGroup(t *testing.T) {
 	}
 	if err := svc.AddFriendToGroup(ctx, dave, g.ID, bob.ID); err == nil {
 		t.Fatal("a non-member must not add others")
+	}
+}
+
+// TestToggleHiddenFriendKeepsTheOthers: hiding a second friend keeps the first
+// hidden, and showing one again leaves the rest as they were.
+func TestToggleHiddenFriendKeepsTheOthers(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	u := covUser(t, svc, "U", "u@x.com")
+	b := covUser(t, svc, "B", "b@x.com")
+	c := covUser(t, svc, "C", "c@x.com")
+	hidden := func() string {
+		t.Helper()
+		got, err := svc.Store.GetUser(ctx, u.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fmt.Sprint(got.HiddenFriendIDs)
+	}
+
+	for _, id := range []int64{b.ID, c.ID} {
+		if err := svc.ToggleHiddenFriend(ctx, u, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, want := hidden(), fmt.Sprint([]int64{b.ID, c.ID}); got != want {
+		t.Errorf("hidden after hiding two = %s, want %s", got, want)
+	}
+	if err := svc.ToggleHiddenFriend(ctx, u, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := hidden(), fmt.Sprint([]int64{c.ID}); got != want {
+		t.Errorf("hidden after showing one again = %s, want %s", got, want)
 	}
 }

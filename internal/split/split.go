@@ -307,13 +307,9 @@ func splitmix64(s uint64) func() uint64 {
 	}
 }
 
+// gcd of two non-negative values: its only caller passes a running gcd and a
+// share unit, and negative units are rejected before it runs.
 func gcd(a, b int64) int64 {
-	if a < 0 {
-		a = -a
-	}
-	if b < 0 {
-		b = -b
-	}
 	for b != 0 {
 		a, b = b, a%b
 	}

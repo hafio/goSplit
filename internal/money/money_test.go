@@ -1,6 +1,9 @@
 package money
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestFormat(t *testing.T) {
 	cases := []struct {
@@ -44,6 +47,10 @@ func TestParse(t *testing.T) {
 		{"1,234.50", "USD", 123450},
 		{"100", "JPY", 100},
 		{".5", "USD", 50},
+		// The largest amounts that fit in int64 minor units.
+		{"92233720368547758.07", "USD", math.MaxInt64},
+		{"-92233720368547758.07", "USD", -math.MaxInt64},
+		{"9223372036854775807", "JPY", math.MaxInt64},
 	}
 	for _, c := range cases {
 		got, err := Parse(c.in, c.currency)
@@ -63,6 +70,17 @@ func TestParseErrors(t *testing.T) {
 		{"12.345", "USD"}, // too many decimals
 		{"abc", "USD"},
 		{"1.2.3", "USD"},
+		// A sign anywhere but the front used to slip through strconv.
+		{"--5", "USD"},
+		{"+-5", "USD"},
+		{"1.-5", "USD"},
+		{"1.+5", "USD"},
+		{"1.-", "USD"},
+		{"12.5x", "USD"},
+		// Too large: these used to wrap around into a different amount.
+		{"92233720368547758.08", "USD"},
+		{"200000000000000000", "USD"},
+		{"99999999999999999999", "JPY"},
 	}
 	for _, c := range bad {
 		if _, err := Parse(c.in, c.cur); err == nil {

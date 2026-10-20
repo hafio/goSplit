@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 
@@ -34,7 +35,9 @@ func New(cfg *config.Config) *Sender {
 	return &Sender{
 		publicKey:  cfg.WebPushPublicKey,
 		privateKey: cfg.WebPushPrivateKey,
-		subscriber: "mailto:" + sub,
+		// The bare address: webpush-go adds the mailto: scheme itself, so
+		// adding it here too sent "mailto:mailto:..." as the VAPID subject.
+		subscriber: strings.TrimPrefix(sub, "mailto:"),
 		enabled:    enabled,
 	}
 }

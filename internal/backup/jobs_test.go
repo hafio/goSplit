@@ -3,6 +3,8 @@ package backup
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -75,6 +77,42 @@ func TestStartRestoreMarksTheJob(t *testing.T) {
 	}
 	if st, _ := tr.Status(restoreTok); !st.Restore || st.ActingUserID != 7 || st.ActingEmail != "root@example.com" {
 		t.Errorf("finished restore job = %+v, want the restore mark and its acting user's id and address", st)
+	}
+}
+
+// TestDiscardAllPendingReleasesEverything: every pending restore goes, its
+// uploaded file and staging directory with it, so a new upload starts from a
+// clean slate and no older pending restore is left to expire into it later.
+func TestDiscardAllPendingReleasesEverything(t *testing.T) {
+	tr := NewJobTracker()
+	var tokens, leftovers []string
+	for i := 0; i < 2; i++ {
+		dir := t.TempDir()
+		upload, staging := filepath.Join(dir, "upload.gsbak.tmp"), filepath.Join(dir, "staging")
+		if err := os.WriteFile(upload, []byte("archive"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(staging, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		token, err := tr.StagePending(&Validated{staging: staging}, upload, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tokens = append(tokens, token)
+		leftovers = append(leftovers, upload, staging)
+	}
+
+	tr.DiscardAllPending()
+	for _, token := range tokens {
+		if _, ok := tr.PeekPending(token); ok {
+			t.Errorf("pending %s survived DiscardAllPending", token)
+		}
+	}
+	for _, p := range leftovers {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s still exists (stat err %v)", p, err)
+		}
 	}
 }
 

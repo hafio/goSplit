@@ -22,6 +22,10 @@ func TestDefaultThemeIsValid(t *testing.T) {
 	if DefaultTheme != "burgundy" {
 		t.Errorf("DefaultTheme = %q, want burgundy", DefaultTheme)
 	}
+	// themeHex falls back to the first theme for an unknown slug.
+	if themes[0].Slug != DefaultTheme {
+		t.Errorf("first theme = %q, want the default %q", themes[0].Slug, DefaultTheme)
+	}
 }
 
 func TestThemeHex(t *testing.T) {

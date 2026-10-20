@@ -60,3 +60,15 @@ func TestUploadsServesFilesButNoListing(t *testing.T) {
 		}
 	}
 }
+
+// TestHealthzReportsALostDatabase: /healthz answers 503 once the database is
+// unreachable -- the signal a container orchestrator restarts on.
+func TestHealthzReportsALostDatabase(t *testing.T) {
+	h := newHarness(t)
+	_ = h.st.Close()
+	resp := h.get("/healthz")
+	_ = body(t, resp)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("/healthz with the database closed = %d, want 503", resp.StatusCode)
+	}
+}

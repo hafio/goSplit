@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/hafio/gosplit/internal/split"
@@ -184,5 +185,59 @@ func TestMoveExpenseNotMovableWhenDeleted(t *testing.T) {
 	}
 	if _, err := svc.MoveExpense(ctx, orig.ID, in, true); err != ErrNotMovable {
 		t.Fatalf("deleted expense: got %v, want ErrNotMovable", err)
+	}
+}
+
+// TestMovable: an ordinary expense and a settlement can be moved; either leg of
+// a currency conversion, a history collapse, a netting entry and a deleted row
+// cannot.
+func TestMovable(t *testing.T) {
+	linked := sql.NullString{String: "other-leg", Valid: true}
+	deleted := sql.NullString{String: "2026-01-01T00:00:00.000Z", Valid: true}
+	for _, tc := range []struct {
+		name string
+		e    store.Expense
+		want bool
+	}{
+		{"an ordinary expense", store.Expense{SplitType: string(split.EQUAL)}, true},
+		{"a settlement", store.Expense{SplitType: string(split.SETTLEMENT)}, true},
+		{"a conversion's from-leg", store.Expense{SplitType: string(split.CURRENCY_CONVERSION), ConversionToID: linked}, false},
+		{"a conversion's to-leg", store.Expense{SplitType: string(split.CURRENCY_CONVERSION)}, false},
+		{"a history collapse", store.Expense{SplitType: string(split.ARCHIVE)}, false},
+		{"a netting entry", store.Expense{SplitType: string(split.NETTING)}, false},
+		{"a deleted expense", store.Expense{SplitType: string(split.EQUAL), DeletedAt: deleted}, false},
+	} {
+		if got := Movable(&tc.e); got != tc.want {
+			t.Errorf("Movable(%s) = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestMoveExpenseRefusesAConversionLeg: editing one leg of a conversion on its
+// own would unpair it from the other, so it is refused and the row is left as
+// it was.
+func TestMoveExpenseRefusesAConversionLeg(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	a, _ := svc.Store.CreateUser(ctx, &store.User{Name: "A", Email: "a@x.com"})
+	b, _ := svc.Store.CreateUser(ctx, &store.User{Name: "B", Email: "b@x.com"})
+	covFriends(t, svc, a, b)
+	from, err := svc.CreateConversionExact(ctx, a.ID, a.ID, b.ID, 10000, 7830, "SGD", "USD", "2026-01-10", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	in := ExpenseInput{
+		Name: "X", Total: 1000, Method: split.EQUAL, Currency: "USD", ExpenseDate: "2026-01-10",
+		PaidBy: a.ID, Lines: []split.Line{{UserID: a.ID}, {UserID: b.ID}}, ActorID: a.ID,
+	}
+	for _, id := range []string{from.ID, from.ConversionToID.String} {
+		before, _ := svc.Store.GetExpense(ctx, id)
+		if _, err := svc.MoveExpense(ctx, id, in, true); err != ErrNotMovable {
+			t.Errorf("moving conversion leg %s = %v, want ErrNotMovable", id, err)
+		}
+		if after, _ := svc.Store.GetExpense(ctx, id); after.Version != before.Version || after.Amount != before.Amount {
+			t.Errorf("the refused move changed leg %s: v%d %d -> v%d %d", id, before.Version, before.Amount, after.Version, after.Amount)
+		}
 	}
 }

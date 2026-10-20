@@ -944,9 +944,6 @@ func parseSettlementInput(r *http.Request, actorID int64, orig *store.Expense) (
 // their typing. A stale-version conflict answers 409; everything else 400.
 func (s *Server) renderMoveError(ctx context.Context, w http.ResponseWriter, r *http.Request,
 	me *store.User, e *store.Expense, err error) {
-	if me.IsAdmin() {
-		markPrivate(w) // the same form as handleExpenseMovePage, re-rendered
-	}
 	var curGroup int64
 	if e.GroupID.Valid {
 		curGroup = e.GroupID.Int64
@@ -970,9 +967,6 @@ func (s *Server) renderMoveError(ctx context.Context, w http.ResponseWriter, r *
 	applySubmittedFields(data, r)
 	status := http.StatusBadRequest
 	msg := err.Error()
-	if errors.Is(err, service.ErrImmutable) {
-		status, msg = http.StatusForbidden, s.tr(r, "err.netting_immutable")
-	}
 	if errors.Is(err, store.ErrStaleExpense) {
 		// The form still holds the user's edit; hand back the row's current
 		// version so one resubmit is enough, rather than the one we read before
@@ -1321,10 +1315,8 @@ func groupSettleSuggestion(rows []settlementRow, a, b int64, cur, def string) (s
 // the first non-zero balance in any currency, either direction — a debt you owe or
 // one owed to you. Empty amount + the default currency when nothing is outstanding.
 func friendSettlePrefill(bals []store.CumulatedBalance, def string) (string, string) {
+	// The first balance: FriendBalance already drops the zero ones.
 	for _, b := range bals {
-		if b.Amount == 0 {
-			continue
-		}
 		amt := b.Amount
 		if amt < 0 { // cov:ignore glue: prefill formatting; the server rejects a bad amount
 			amt = -amt

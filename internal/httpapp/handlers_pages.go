@@ -495,11 +495,6 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	u := s.currentUser(r)
 	filter, view := parseFilter(r)
-	if gid := r.URL.Query().Get("group"); gid != "" {
-		if id, ok := atoi64(gid); ok {
-			filter.GroupID = &id
-		}
-	}
 	showAll := applyFeedLimit(r, &filter)
 	expenses, err := s.Store.ListActivity(ctx, u.ID, filter)
 	if err != nil { // cov:ignore store-fault: a read that fails only on a broken database

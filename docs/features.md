@@ -204,7 +204,8 @@ friend. Use it for long-running groups and for friends you have settled with for
 
 A balance with a friend in one currency can be converted to another. The conversion page
 fetches a rate (Frankfurter by default, or Open Exchange Rates), lets you adjust it, and
-lets you pick the direction. Both amounts and the rate stay in sync as you type, and the
+lets you pick the direction. Rates are cached per day: one fetched without a date counts as
+today's, so the next day fetches a fresh one. Both amounts and the rate stay in sync as you type, and the
 amounts you confirm are stored exactly as shown. A conversion is recorded as a linked pair
 of expenses: one cancels the balance in the old currency, the other recreates it in the
 new one.
@@ -271,7 +272,8 @@ match. You can also upload an avatar.
 Your profile page offers a JSON export of your own data. It is a takeout for your records,
 not a backup, and cannot be imported. It holds your account details (name, email, currencies,
 language, theme, role), each friend's name and email, your groups (name, currency, simplify
-setting, archived date) and the expenses your Activity page shows, with their splits. It
+setting, archived date) and every expense you are part of, archived groups included, with
+their splits. If any of it cannot be read, the export fails rather than arriving incomplete. It
 never contains password hashes, bank links or group join links. Whole-instance backups are the operator's job; see
 [backup-restore.md](backup-restore.md).
 

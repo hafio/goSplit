@@ -1,6 +1,9 @@
 package balance
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 // netAfter applies transfers to the starting net and returns the resulting net.
 func netAfter(start map[int64]int64, ts []Transfer) map[int64]int64 {
@@ -59,5 +62,19 @@ func TestSimplify_GoldenUSDTransactionCount(t *testing.T) {
 	// Naive per-pair upper bound: never exceed nodes-1 transfers here.
 	if len(ts) > len(net)-1 {
 		t.Fatalf("more transfers than n-1: %d", len(ts))
+	}
+}
+
+// TestSimplify_TiesAreDeterministic: with equal amounts on both sides the plan is
+// the same on every call, ordered by ascending id among equals. Map iteration
+// order must not leak into it: settle-all records, on confirm, the plan the
+// user was shown a moment earlier.
+func TestSimplify_TiesAreDeterministic(t *testing.T) {
+	net := map[int64]int64{3: 100, 1: 100, 2: 100, 5: -150, 4: -150}
+	want := "[{4 1 100} {4 2 50} {5 2 50} {5 3 100}]"
+	for i := 0; i < 50; i++ {
+		if got := fmt.Sprint(Simplify(net)); got != want {
+			t.Fatalf("call %d planned %s, want %s", i, got, want)
+		}
 	}
 }

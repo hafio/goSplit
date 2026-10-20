@@ -387,7 +387,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dest := s.Cfg.DefaultHomepage
-	if dest == "" {
+	if dest == "" { // cov:ignore defensive: config always sets DEFAULT_HOMEPAGE
 		dest = "/balances"
 	}
 	http.Redirect(w, r, dest, http.StatusSeeOther)

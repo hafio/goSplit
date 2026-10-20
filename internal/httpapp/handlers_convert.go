@@ -57,9 +57,6 @@ func (s *Server) handleConvertPage(w http.ResponseWriter, r *http.Request) {
 	// Preselect from the first nonzero balance: its currency + abs amount, and
 	// the direction (owes you / you owe).
 	fromCur := me.DefaultCurrency
-	if fromCur == "" {
-		fromCur = "USD"
-	}
 	fromAmt, direction := "", "owed"
 	for _, b := range bals {
 		if b.Amount != 0 {

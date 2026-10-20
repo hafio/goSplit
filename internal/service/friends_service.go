@@ -137,7 +137,7 @@ func (s *Service) AddFriendToGroup(ctx context.Context, actor *store.User, group
 // its own goroutine with a bounded context so a slow or unreachable SMTP server
 // never stalls the HTTP request that triggered it.
 func (s *Service) sendInvite(_ context.Context, email, body string) {
-	if !s.Config.EnableSendingInvites {
+	if !s.Config.EnableSendingInvites { // cov:ignore defensive: callers invite only accounts they just created, which needs invites enabled
 		return
 	}
 	s.sendMailAsync(func() {

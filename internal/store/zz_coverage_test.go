@@ -873,12 +873,25 @@ func TestCovRatesCache(t *testing.T) {
 	if got, _ := st.GetCachedRate(ctx, "USD", "EUR", "2025-01-01"); got != "1.20" {
 		t.Errorf("PutCachedRate did not upsert: %q", got)
 	}
-	// DeleteRatesBefore purges older dates.
+	// DeleteRatesBefore purges older dates, and the legacy date-less "latest"
+	// key -- which sorts after every date -- but keeps a date on or after the
+	// cutoff.
+	if err := st.PutCachedRate(ctx, "USD", "EUR", "latest", "1.30"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutCachedRate(ctx, "USD", "EUR", "2025-07-01", "1.40"); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.DeleteRatesBefore(ctx, "2025-06-01"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.GetCachedRate(ctx, "USD", "EUR", "2025-01-01"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("rate survived DeleteRatesBefore: %v", err)
+	for _, key := range []string{"2025-01-01", "latest"} {
+		if _, err := st.GetCachedRate(ctx, "USD", "EUR", key); !errors.Is(err, ErrNotFound) {
+			t.Errorf("rate under %q survived DeleteRatesBefore: %v", key, err)
+		}
+	}
+	if got, err := st.GetCachedRate(ctx, "USD", "EUR", "2025-07-01"); err != nil || got != "1.40" {
+		t.Errorf("a rate after the cutoff was purged: %q %v", got, err)
 	}
 }
 

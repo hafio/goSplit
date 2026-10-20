@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/hafio/gosplit/internal/bank"
@@ -22,7 +23,7 @@ func (s *Service) BankEnabled() bool { return s.Bank != nil && s.Bank.Enabled() 
 
 // CreateBankLinkToken returns a Plaid Link token for the client flow.
 func (s *Service) CreateBankLinkToken(ctx context.Context, user *store.User) (string, error) {
-	return s.Bank.CreateLinkToken(ctx, itoa(user.ID))
+	return s.Bank.CreateLinkToken(ctx, strconv.FormatInt(user.ID, 10))
 }
 
 // ConnectBank exchanges a public token and stores the access token.
@@ -85,26 +86,4 @@ func (s *Service) saveBankData(ctx context.Context, userID int64, d bankData) er
 		return err
 	}
 	return s.Store.PutBankData(ctx, userID, string(b))
-}
-
-func itoa(n int64) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
 }

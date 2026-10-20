@@ -115,6 +115,25 @@ func TestInspectDirMissing(t *testing.T) {
 	}
 }
 
+// TestInspectDirMissingUnderAnUnwritableParent: when the directory does not
+// exist and the app could not create it either, the report blames the parent,
+// which is the directory whose ownership has to change.
+func TestInspectDirMissingUnderAnUnwritableParent(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		t.Skip("mode bits do not restrict the owner here")
+	}
+	parent := filepath.Join(t.TempDir(), "readonly")
+	if err := os.Mkdir(parent, 0o500); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
+
+	d := inspectDir("BACKUP_DIR", filepath.Join(parent, "backups"))
+	if d.Exists || !strings.Contains(d.Problem, "its parent "+parent+" is not writable") {
+		t.Errorf("missing directory under a read-only parent = %+v, want the parent named", d)
+	}
+}
+
 // TestInspectDirNotADirectory asserts a file where a directory belongs is
 // called out, which is otherwise a confusing failure later.
 func TestInspectDirNotADirectory(t *testing.T) {
@@ -302,6 +321,50 @@ func TestPrepareDataDirsToleratesUnwritable(t *testing.T) {
 	}
 }
 
+// TestPrepareBootRecoversASwapBeforeCreatingDirs: after a crash between the two
+// upload renames (UPLOAD_DIR gone, .old and .restore present), boot moves the
+// previous uploads back and refuses to start. Creating UPLOAD_DIR first would
+// make the swap look finished, and recovery would delete them instead.
+func TestPrepareBootRecoversASwapBeforeCreatingDirs(t *testing.T) {
+	cfg := pathsCfg(t)
+	old, staged := cfg.UploadDir+".old", cfg.UploadDir+".restore"
+	for dir, file := range map[string]string{old: "previous.png", staged: "restored.png"} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, file), []byte(file), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	err := prepareBoot(cfg)
+	if err == nil || !strings.Contains(err.Error(), "interrupted while swapping") {
+		t.Fatalf("prepareBoot = %v, want the interrupted-swap error", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(cfg.UploadDir, "previous.png")); err != nil || string(b) != "previous.png" {
+		t.Errorf("previous uploads not moved back: %q, %v", b, err)
+	}
+	for _, gone := range []string{old, staged} {
+		if _, err := os.Stat(gone); !os.IsNotExist(err) {
+			t.Errorf("%s still exists after recovery (stat err %v)", gone, err)
+		}
+	}
+}
+
+// TestPrepareBootCreatesTheDirectories: on a clean volume boot goes on and
+// creates the directories, as prepareDataDirs alone did.
+func TestPrepareBootCreatesTheDirectories(t *testing.T) {
+	cfg := pathsCfg(t)
+	if err := prepareBoot(cfg); err != nil {
+		t.Fatalf("prepareBoot on a clean volume: %v", err)
+	}
+	for _, dir := range []string{cfg.UploadDir, cfg.BackupDir} {
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			t.Errorf("%s not created: %v", dir, err)
+		}
+	}
+}
+
 // TestRunPathsCLIRedactsTheDatabasePassword: the report operators paste into
 // tickets names the database without its password.
 func TestRunPathsCLIRedactsTheDatabasePassword(t *testing.T) {
@@ -326,12 +389,25 @@ func TestRunPathsCLIRedactsTheDatabasePassword(t *testing.T) {
 // captureStdout runs fn with os.Stdout redirected and returns what it wrote.
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
+	return capture(t, &os.Stdout, fn)
+}
+
+// captureStderr is captureStdout for os.Stderr, where the backup and restore
+// commands report.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	return capture(t, &os.Stderr, fn)
+}
+
+// capture runs fn with *stream redirected to a pipe and returns what it wrote.
+func capture(t *testing.T, stream **os.File, fn func()) string {
+	t.Helper()
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatalf("pipe: %v", err)
 	}
-	orig := os.Stdout
-	os.Stdout = w
+	orig := *stream
+	*stream = w
 	done := make(chan string, 1)
 	go func() {
 		var sb strings.Builder
@@ -350,7 +426,7 @@ func captureStdout(t *testing.T, fn func()) string {
 
 	fn()
 
-	os.Stdout = orig
+	*stream = orig
 	_ = w.Close()
 	out := <-done
 	_ = r.Close()

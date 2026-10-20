@@ -223,6 +223,25 @@ func TestRenderFragmentReportsTemplateFailure(t *testing.T) {
 	}
 }
 
+// TestRenderFailsWholeOnATemplateError: a page whose template cannot render
+// answers 500 with none of the page in the body. A half-written page that looks
+// complete is worse than an error.
+func TestRenderFailsWholeOnATemplateError(t *testing.T) {
+	r, err := NewRenderer()
+	if err != nil {
+		t.Fatalf("renderer: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	// No Data at all, but the activity feed dereferences .Data.Items.
+	r.Render(rec, http.StatusOK, "activity", ViewData{})
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500 when the page cannot render", rec.Code)
+	}
+	if b := strings.ToLower(rec.Body.String()); strings.Contains(b, "<html") || strings.Contains(b, "<!doctype") {
+		t.Errorf("a failed render sent part of the page:\n%s", rec.Body.String())
+	}
+}
+
 // Only list and detail pages may be polled; a form page must never be, or a
 // timed morph would discard what the user was typing.
 func TestPollableCoversListPagesOnly(t *testing.T) {

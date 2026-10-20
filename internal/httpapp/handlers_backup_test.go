@@ -19,6 +19,7 @@ import (
 
 	"github.com/hafio/gosplit/internal/auth"
 	"github.com/hafio/gosplit/internal/backup"
+	"github.com/hafio/gosplit/internal/store"
 )
 
 // adminHarness returns a harness signed in as an admin. admin@example.com is
@@ -223,6 +224,35 @@ func TestRestoreUploadRejectsNonArchive(t *testing.T) {
 	}
 	if got := h.countUsers(t); got != before {
 		t.Errorf("a rejected upload changed the users table (%d -> %d)", before, got)
+	}
+}
+
+// TestRestoreUploadDiscardsThePendingOne: a new upload drops the restore that
+// was waiting, file and all, even when the new archive is rejected --
+// validating wipes the one staging directory either way, so the old pending
+// restore could no longer be applied, and left in place it would expire later
+// and delete the newer upload's staged files.
+func TestRestoreUploadDiscardsThePendingOne(t *testing.T) {
+	h := adminHarness(t)
+	if err := os.MkdirAll(h.cfg.BackupDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	waiting := filepath.Join(h.cfg.BackupDir, "upload-waiting.gsbak.tmp")
+	if err := os.WriteFile(waiting, []byte("an earlier upload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	token, err := h.app.Jobs.StagePending(&backup.Validated{}, waiting, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp := h.postFile(t, "/admin/backup/restore/upload", "archive", "junk.gsbak", []byte("not an archive"))
+	_ = body(t, resp)
+	if _, ok := h.app.Jobs.PeekPending(token); ok {
+		t.Error("the earlier pending restore survived a new upload")
+	}
+	if _, err := os.Stat(waiting); !os.IsNotExist(err) {
+		t.Errorf("the earlier upload's file is still on disk (stat err %v)", err)
 	}
 }
 
@@ -613,6 +643,155 @@ func TestAdminPageLinksToBackup(t *testing.T) {
 	}
 }
 
+// TestRestoreOverHTTP drives the panel's restore end to end. The preview shows
+// the archive's token, the phrase to type and a row total that matches the
+// dumped tables, and changes nothing. Confirming replaces the data and the
+// uploads, writes a safety dump the status names, removes the uploaded file and
+// the staged uploads, lifts the maintenance flag and spends the token.
+func TestRestoreOverHTTP(t *testing.T) {
+	h := adminHarness(t)
+	if err := os.MkdirAll(h.cfg.UploadDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.cfg.UploadDir, "a.png"), []byte("png"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	name := h.mustGenerateBackup(t)
+	rows := 0
+	for _, tbl := range backup.InsertOrder() {
+		rows += countOf(t, h, `SELECT COUNT(*) FROM "`+tbl.Name+`"`)
+	}
+	h.addCarol(t)
+	stray := filepath.Join(h.cfg.UploadDir, "stray.png")
+	if err := os.WriteFile(stray, []byte("stray"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	token, page := h.stageRestore(t, filepath.Join(h.cfg.BackupDir, name))
+	for _, want := range []string{`value="` + token + `"`, "<code>" + restoreConfirmPhrase + "</code>", fmt.Sprintf(`class="l-sub">%d rows`, rows)} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the preview lacks %q", want)
+		}
+	}
+	if n := h.countUsers(t); n != 2 {
+		t.Errorf("users = %d after the preview, want 2 (nothing changed yet)", n)
+	}
+	if _, err := os.Stat(stray); err != nil {
+		t.Errorf("the preview touched the uploads: %v", err)
+	}
+
+	status, resp := h.confirmRestore(t, token)
+	if status["state"] != "done" {
+		t.Fatalf("restore ended %v: %v", status["state"], status["error"])
+	}
+	if cc := resp.Header.Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("status Cache-Control = %q, want no-store", cc)
+	}
+	if n := h.countUsers(t); n != 1 {
+		t.Errorf("users = %d after the restore, want the archive's 1", n)
+	}
+	if _, err := os.Stat(stray); !os.IsNotExist(err) {
+		t.Errorf("the uploads were not replaced (stray.png stat err %v)", err)
+	}
+	dump, _ := status["file"].(string)
+	if !strings.HasPrefix(dump, backup.SafetyDumpPrefix) {
+		t.Errorf("status names %q, want the safety dump", dump)
+	} else if _, err := os.Stat(filepath.Join(h.cfg.BackupDir, dump)); err != nil {
+		t.Errorf("the named safety dump is missing: %v", err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(h.cfg.BackupDir, "upload-*.gsbak.tmp")); len(left) != 0 {
+		t.Errorf("the uploaded archive was left behind: %v", left)
+	}
+	if _, err := os.Stat(h.cfg.UploadDir + ".restore"); !os.IsNotExist(err) {
+		t.Errorf("the staged uploads were left behind (stat err %v)", err)
+	}
+
+	replay := h.post("/admin/backup/restore/confirm", url.Values{"token": {token}, "confirm": {restoreConfirmPhrase}})
+	if replay.StatusCode != http.StatusBadRequest || !strings.Contains(body(t, replay), "no longer pending") {
+		t.Errorf("replaying the token = %d, want 400 saying it is no longer pending", replay.StatusCode)
+	}
+	if n := h.countUsers(t); n != 1 {
+		t.Errorf("users = %d after the replay, want 1", n)
+	}
+}
+
+// TestFailedRestoreOverHTTPChangesNothing: a restore that fails inside its
+// transaction reports the error, leaves every table as it was and lifts the
+// maintenance flag, so the next write is served rather than refused with 503.
+func TestFailedRestoreOverHTTPChangesNothing(t *testing.T) {
+	h := adminHarness(t)
+	name := h.mustGenerateBackup(t)
+	h.addCarol(t)
+	token, _ := h.stageRestore(t, filepath.Join(h.cfg.BackupDir, name))
+	before := tableCounts(t, h)
+	if _, err := h.st.DB.Exec(`CREATE TRIGGER fail_users BEFORE INSERT ON users BEGIN SELECT RAISE(ABORT, 'refused'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	status, _ := h.confirmRestore(t, token)
+	if status["state"] != "error" {
+		t.Fatalf("a restore whose inserts fail ended %v", status["state"])
+	}
+	if after := tableCounts(t, h); after != before {
+		t.Errorf("a failed restore changed the tables:\nbefore %s\nafter  %s", before, after)
+	}
+	next := h.post("/admin/backup/restore/confirm", url.Values{"token": {token}, "confirm": {restoreConfirmPhrase}})
+	_ = body(t, next)
+	if next.StatusCode != http.StatusBadRequest {
+		t.Errorf("a POST after the failed restore = %d, want 400 (the flag lifted, the token spent)", next.StatusCode)
+	}
+}
+
+// TestRestoreUploadExplainsTheCommonRefusals: an archive sealed with another
+// SESSION_SECRET, and one from a build with other migrations, each get their
+// own message, and neither is staged.
+func TestRestoreUploadExplainsTheCommonRefusals(t *testing.T) {
+	ctx := context.Background()
+	h := adminHarness(t)
+	other := *h.cfg
+	other.SessionSecret = "another-session-secret-0123456789"
+	foreign, _, err := backup.New(h.st, &other).DumpToDir(ctx, t.TempDir(), backup.ArchivePrefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.st.DB.Exec(`INSERT INTO schema_migrations (version, applied_at) VALUES ('9999_future.sql', '2026-01-01T00:00:00.000Z')`); err != nil {
+		t.Fatal(err)
+	}
+	future, _, err := backup.New(h.st, h.cfg).DumpToDir(ctx, t.TempDir(), backup.ArchivePrefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.st.DB.Exec(`DELETE FROM schema_migrations WHERE version = '9999_future.sql'`); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct{ name, path, want string }{
+		{"another SESSION_SECRET", foreign, "This archive was created with a different SESSION_SECRET:"},
+		{"other migrations", future, "This archive does not match this version of GoSplit:"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := os.ReadFile(tc.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp := h.postFile(t, "/admin/backup/restore/upload", "archive", filepath.Base(tc.path), raw)
+			page := body(t, resp)
+			if resp.StatusCode != http.StatusBadRequest || !strings.Contains(page, tc.want) {
+				t.Errorf("upload = %d, want 400 with %q", resp.StatusCode, tc.want)
+			}
+			if resp.Request.URL.Query().Get("pending") != "" {
+				t.Error("a refused archive was staged for confirmation")
+			}
+			if left, _ := filepath.Glob(filepath.Join(h.cfg.BackupDir, "upload-*.gsbak.tmp")); len(left) != 0 {
+				t.Errorf("the refused upload was left behind: %v", left)
+			}
+			if _, err := os.Stat(h.cfg.UploadDir + ".restore"); !os.IsNotExist(err) {
+				t.Errorf("a refused archive left staged uploads (stat err %v)", err)
+			}
+		})
+	}
+}
+
 // --- harness helpers -------------------------------------------------------
 
 // rawRequest issues a bare request, attaching a CSRF token when given.
@@ -726,4 +905,64 @@ func (h *harness) mustGenerateBackup(t *testing.T) string {
 	}
 	t.Fatal("backup job did not finish in time")
 	return ""
+}
+
+// addCarol adds a user straight to the store, so a restore of an earlier
+// backup has something visible to undo.
+func (h *harness) addCarol(t *testing.T) {
+	t.Helper()
+	if _, err := h.st.CreateUser(context.Background(), &store.User{Name: "Carol", Email: "carol@example.com"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// tableCounts is every registry table's row count, as one comparable string.
+func tableCounts(t *testing.T, h *harness) string {
+	t.Helper()
+	var sb strings.Builder
+	for _, tbl := range backup.InsertOrder() {
+		fmt.Fprintf(&sb, "%s=%d ", tbl.Name, countOf(t, h, `SELECT COUNT(*) FROM "`+tbl.Name+`"`))
+	}
+	return sb.String()
+}
+
+// stageRestore uploads the archive at path and returns the token its preview
+// is addressed by, with the preview page.
+func (h *harness) stageRestore(t *testing.T, path string) (string, string) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := h.postFile(t, "/admin/backup/restore/upload", "archive", filepath.Base(path), raw)
+	page := body(t, resp)
+	token := resp.Request.URL.Query().Get("pending")
+	if token == "" {
+		t.Fatalf("the upload was not staged (status %d):\n%s", resp.StatusCode, page)
+	}
+	return token, page
+}
+
+// confirmRestore confirms a staged restore, then polls its job until it ends.
+// It returns the final status body and the response that carried it.
+func (h *harness) confirmRestore(t *testing.T, token string) (map[string]any, *http.Response) {
+	t.Helper()
+	resp := h.post("/admin/backup/restore/confirm", url.Values{"token": {token}, "confirm": {restoreConfirmPhrase}})
+	_ = resp.Body.Close()
+	job, ok := strings.CutPrefix(resp.Request.URL.Path, "/admin/backup/restoring/")
+	if !ok {
+		t.Fatalf("confirm landed on %s, not the progress page", resp.Request.URL.Path)
+	}
+	for i := 0; i < 400; i++ {
+		st := h.get("/admin/backup/restore/status/" + job)
+		var out map[string]any
+		_ = json.NewDecoder(st.Body).Decode(&out)
+		_ = st.Body.Close()
+		if out["state"] == "done" || out["state"] == "error" {
+			return out, st
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the restore did not finish in time")
+	return nil, nil
 }

@@ -2,6 +2,7 @@ package httpapp
 
 import (
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"net/url"
 	"sort"
@@ -168,6 +169,27 @@ func TestRebalanceToTargetEdges(t *testing.T) {
 	rebalanceToTarget(over, split.BasisPointsFull)
 	if over[0] != 6000 || over[1] != 4000 {
 		t.Errorf("overshoot = %v, want the excess taken off the largest entry", over)
+	}
+}
+
+// TestRebalanceToTargetPicksTheLargest: the whole difference goes onto the
+// largest entry wherever it sits, and on a tie onto the first of them, so the
+// smaller shares a user typed stay exactly as typed.
+func TestRebalanceToTargetPicksTheLargest(t *testing.T) {
+	for _, tc := range []struct {
+		in     []int64
+		target int64
+		want   []int64
+	}{
+		{[]int64{1000, 4000, 2000}, 8000, []int64{1000, 5000, 2000}},
+		{[]int64{1000, 2000, 4000}, 6000, []int64{1000, 2000, 3000}},
+		{[]int64{3000, 3000}, 7000, []int64{4000, 3000}},
+	} {
+		got := append([]int64(nil), tc.in...)
+		rebalanceToTarget(got, tc.target)
+		if fmt.Sprint(got) != fmt.Sprint(tc.want) {
+			t.Errorf("rebalanceToTarget(%v, %d) = %v, want %v", tc.in, tc.target, got, tc.want)
+		}
 	}
 }
 

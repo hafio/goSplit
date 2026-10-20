@@ -46,11 +46,11 @@ const backupTimeout = 2 * time.Hour
 
 // handleBackupPage renders the backup and restore page.
 func (s *Server) handleBackupPage(w http.ResponseWriter, r *http.Request) {
-	s.renderBackupPage(w, r, http.StatusOK, "", "")
+	s.renderBackupPage(w, r, http.StatusOK, "")
 }
 
 // renderBackupPage lists the archives on disk plus any in-flight job.
-func (s *Server) renderBackupPage(w http.ResponseWriter, r *http.Request, status int, errMsg, flash string) {
+func (s *Server) renderBackupPage(w http.ResponseWriter, r *http.Request, status int, errMsg string) {
 	archives, err := s.listArchives()
 	if err != nil { // cov:ignore io-fault: BACKUP_DIR cannot be listed
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -90,9 +90,6 @@ func (s *Server) renderBackupPage(w http.ResponseWriter, r *http.Request, status
 
 	vd := s.vdPage(w, r, "title.backup", data)
 	vd.Error = errMsg
-	if flash != "" {
-		vd.Flash = flash
-	}
 	s.Renderer.Render(w, status, "admin_backup", vd)
 }
 
@@ -107,9 +104,6 @@ type archiveInfo struct {
 // listArchives returns the archives in BackupDir, newest first.
 func (s *Server) listArchives() ([]archiveInfo, error) {
 	dir := s.Cfg.BackupDir
-	if dir == "" {
-		return nil, nil
-	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -135,7 +129,7 @@ func (s *Server) listArchives() ([]archiveInfo, error) {
 	}
 	// Names carry a fixed-width UTC timestamp, so reverse lexicographic order
 	// is newest first.
-	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 { // cov:ignore glue: display order only
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
 		out[i], out[j] = out[j], out[i]
 	}
 	return out, nil
@@ -157,7 +151,7 @@ func (s *Server) handleBackupGenerate(w http.ResponseWriter, r *http.Request) {
 		return backup.JobStatus{State: backup.JobDone, ResultPath: path, Manifest: &man}, nil
 	})
 	if err != nil { // cov:ignore impossible: fails only if crypto/rand does
-		s.renderBackupPage(w, r, http.StatusInternalServerError, s.tr(r, "err.backup_generate"), "")
+		s.renderBackupPage(w, r, http.StatusInternalServerError, s.tr(r, "err.backup_generate"))
 		return
 	}
 	http.Redirect(w, r, "/admin/backup?job="+token, http.StatusSeeOther)
@@ -220,7 +214,7 @@ func (s *Server) handleRestoreUpload(w http.ResponseWriter, r *http.Request) {
 	// the form is already parsed -- see the route registration.
 	file, _, err := r.FormFile("archive")
 	if err != nil {
-		s.renderBackupPage(w, r, http.StatusBadRequest, s.tr(r, "err.restore_no_file"), "")
+		s.renderBackupPage(w, r, http.StatusBadRequest, s.tr(r, "err.restore_no_file"))
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -230,12 +224,12 @@ func (s *Server) handleRestoreUpload(w http.ResponseWriter, r *http.Request) {
 	// shared check so a wrong-ownership bind mount produces the same
 	// actionable message here as it does on the command line.
 	if err := backup.EnsureWritableDir(s.Cfg.BackupDir, "BACKUP_DIR"); err != nil { // cov:ignore pass-through: the writability probe is tested in internal/backup
-		s.renderBackupPage(w, r, http.StatusInternalServerError, err.Error(), "")
+		s.renderBackupPage(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
 	tmp, err := os.CreateTemp(s.Cfg.BackupDir, "upload-*.gsbak.tmp")
 	if err != nil { // cov:ignore pass-through: the writability probe is tested in internal/backup
-		s.renderBackupPage(w, r, http.StatusInternalServerError, err.Error(), "")
+		s.renderBackupPage(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
 	tmpPath := tmp.Name()
@@ -249,17 +243,21 @@ func (s *Server) handleRestoreUpload(w http.ResponseWriter, r *http.Request) {
 			// failing BACKUP_DIR gets here.
 			msg = fmt.Sprintf("%s (%s)", msg, copyErr)
 		}
-		s.renderBackupPage(w, r, http.StatusBadRequest, msg, "")
+		s.renderBackupPage(w, r, http.StatusBadRequest, msg)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
 
+	// Validating wipes the one staging directory, so whatever restore was
+	// pending is gone either way: drop it first, rather than leave it to expire
+	// later and delete this upload's staged files.
+	s.Jobs.DiscardAllPending()
 	runner := backup.New(s.Store, s.Cfg)
 	v, err := runner.Validate(ctx, tmpPath)
 	if err != nil {
 		_ = os.Remove(tmpPath)
-		s.renderBackupPage(w, r, http.StatusBadRequest, s.restoreErrMessage(r, err), "")
+		s.renderBackupPage(w, r, http.StatusBadRequest, s.restoreErrMessage(r, err))
 		return
 	}
 
@@ -267,7 +265,7 @@ func (s *Server) handleRestoreUpload(w http.ResponseWriter, r *http.Request) {
 	if err != nil { // cov:ignore impossible: fails only if crypto/rand does
 		v.Discard()
 		_ = os.Remove(tmpPath)
-		s.renderBackupPage(w, r, http.StatusInternalServerError, err.Error(), "")
+		s.renderBackupPage(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
 	http.Redirect(w, r, "/admin/backup?pending="+token, http.StatusSeeOther)
@@ -285,7 +283,7 @@ func (s *Server) handleRestoreConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	v, path, _, ok := s.Jobs.TakePending(token)
 	if !ok {
-		s.renderBackupPage(w, r, http.StatusBadRequest, s.tr(r, "err.restore_expired"), "")
+		s.renderBackupPage(w, r, http.StatusBadRequest, s.tr(r, "err.restore_expired"))
 		return
 	}
 
@@ -313,7 +311,7 @@ func (s *Server) handleRestoreConfirm(w http.ResponseWriter, r *http.Request) {
 	if err != nil { // cov:ignore impossible: fails only if crypto/rand does
 		v.Discard()
 		_ = os.Remove(path)
-		s.renderBackupPage(w, r, http.StatusInternalServerError, err.Error(), "")
+		s.renderBackupPage(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
 	http.Redirect(w, r, "/admin/backup/restoring/"+jobToken, http.StatusSeeOther)

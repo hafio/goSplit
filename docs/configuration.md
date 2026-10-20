@@ -92,7 +92,7 @@ do. What SMTP being configured changes is sign-in links, password resets and inv
 | --- | --- | --- |
 | `WEB_PUSH_PUBLIC_KEY` | none | VAPID public key. Push is enabled only when both keys are set. Otherwise the profile page still shows the notifications section, and enabling reports that push is not configured on this server. |
 | `WEB_PUSH_PRIVATE_KEY` | none | VAPID private key. |
-| `WEB_PUSH_EMAIL` | `FROM_EMAIL` | Contact address sent to push services as `mailto:`. Optional. |
+| `WEB_PUSH_EMAIL` | `FROM_EMAIL` | Contact address sent to push services as `mailto:`. Give the bare address; a leading `mailto:` is accepted too. Optional. |
 
 Generate a VAPID key pair with any web-push tool, for example
 `npx web-push generate-vapid-keys`.

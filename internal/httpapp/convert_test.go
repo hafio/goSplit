@@ -6,14 +6,16 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRateEndpoint(t *testing.T) {
 	h := newHarness(t)
 	h.register("Alice", "alice@example.com", "password123")
 
-	// Happy path: seed the cache so no provider call is needed.
-	_ = h.st.PutCachedRate(context.Background(), "SGD", "USD", "latest", "0.78")
+	// Happy path: seed today's cached rate, which a date-less lookup reads, so
+	// no provider call is needed.
+	_ = h.st.PutCachedRate(context.Background(), "SGD", "USD", time.Now().UTC().Format("2006-01-02"), "0.78")
 	if b := body(t, h.get("/rates?from=SGD&to=USD")); !strings.Contains(b, `"rate":"0.78"`) {
 		t.Errorf("rate endpoint body = %s", b)
 	}

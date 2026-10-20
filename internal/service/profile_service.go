@@ -108,9 +108,22 @@ func (s *Service) ExportUserData(ctx context.Context, userID int64) ([]byte, err
 	if err != nil { // cov:ignore store-fault: needs a failing database
 		return nil, err
 	}
-	friends, _ := s.Store.ListFriends(ctx, userID)
-	groups, _ := s.Store.ListGroupsForUser(ctx, userID, true)
-	expenses, _ := s.Store.ListActivity(ctx, userID, store.ExpenseFilter{})
+	// Every read is checked: a takeout that silently lacked a section would
+	// look complete to the person relying on it.
+	friends, err := s.Store.ListFriends(ctx, userID)
+	if err != nil { // cov:ignore store-fault: needs a failing database
+		return nil, err
+	}
+	groups, err := s.Store.ListGroupsForUser(ctx, userID, true)
+	if err != nil { // cov:ignore store-fault: needs a failing database
+		return nil, err
+	}
+	// Archived groups' expenses too: the export is everything that is yours,
+	// not only what the Activity page shows by default.
+	expenses, err := s.Store.ListActivity(ctx, userID, store.ExpenseFilter{IncludeArchived: true})
+	if err != nil { // cov:ignore store-fault: needs a failing database
+		return nil, err
+	}
 
 	type expenseExport struct {
 		Expense      *store.Expense              `json:"expense"`
@@ -118,7 +131,10 @@ func (s *Service) ExportUserData(ctx context.Context, userID int64) ([]byte, err
 	}
 	exps := make([]expenseExport, 0, len(expenses))
 	for _, e := range expenses {
-		parts, _ := s.Store.GetParticipants(ctx, e.ID)
+		parts, err := s.Store.GetParticipants(ctx, e.ID)
+		if err != nil { // cov:ignore store-fault: needs a failing database
+			return nil, err
+		}
 		exps = append(exps, expenseExport{Expense: e, Participants: parts})
 	}
 

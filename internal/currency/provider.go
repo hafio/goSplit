@@ -1,3 +1,6 @@
+// Package currency looks up exchange rates through a pluggable provider
+// (Frankfurter, Open Exchange Rates, or none). Converting amounts is not done
+// here: the convert page posts both amounts exactly as the user confirmed them.
 package currency
 
 import (

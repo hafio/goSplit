@@ -529,3 +529,74 @@ func TestGroupSimplifyTogglesView(t *testing.T) {
 		t.Error("raw view should not offer Alice a payment to Carol")
 	}
 }
+
+// TestFriendSettleDirectionPerCurrency: with a USD debt one way and a EUR debt
+// the other, each settlement runs debtor -> creditor in its own currency. A
+// currency with nothing outstanding defaults to the one recording it paying.
+func TestFriendSettleDirectionPerCurrency(t *testing.T) {
+	h := newHarness(t)
+	h.register("Alice", "alice@example.com", "password123")
+	h.post("/friends/add", url.Values{"email": {"bob@example.com"}}) // 2
+	// Alice paid 40.00 USD: Bob owes her 20. Bob paid 60.00 EUR: she owes him 30.
+	h.post("/expenses", url.Values{
+		"name": {"Lunch"}, "amount": {"40.00"}, "currency": {"USD"},
+		"date": {"2026-03-10"}, "method": {"EQUAL"}, "paid_by": {"1"},
+		"include_1": {"1"}, "include_2": {"1"},
+	})
+	h.post("/expenses", url.Values{
+		"name": {"Dinner"}, "amount": {"60.00"}, "currency": {"EUR"},
+		"date": {"2026-03-10"}, "method": {"EQUAL"}, "paid_by": {"2"},
+		"include_1": {"1"}, "include_2": {"1"},
+	})
+
+	for _, tc := range []struct {
+		amount, currency string
+		payer            int64
+	}{
+		{"20.00", "USD", 2},
+		{"30.00", "EUR", 1},
+		{"5.00", "GBP", 1},
+	} {
+		_ = body(t, h.post("/friends/2/settle", url.Values{
+			"amount": {tc.amount}, "currency": {tc.currency}, "date": {"2026-03-11"},
+		}))
+		var paidBy int64
+		if err := h.st.DB.QueryRow(
+			`SELECT paid_by FROM expenses WHERE split_type = 'SETTLEMENT' AND currency = ?`, tc.currency,
+		).Scan(&paidBy); err != nil {
+			t.Fatalf("%s settlement: %v", tc.currency, err)
+		}
+		if paidBy != tc.payer {
+			t.Errorf("%s settlement paid_by = %d, want %d", tc.currency, paidBy, tc.payer)
+		}
+	}
+}
+
+// TestGroupSettleSuggestion: the group settle prefill matches the pair in
+// either orientation, takes the clicked currency when the pair owes in several,
+// ignores other pairs and a currency with no row, and is empty with the group's
+// default currency when the two owe each other nothing.
+func TestGroupSettleSuggestion(t *testing.T) {
+	rows := []settlementRow{
+		{FromID: 3, ToID: 1, Amount: 999, Currency: "USD"},
+		{FromID: 2, ToID: 1, Amount: 1500, Currency: "USD"},
+		{FromID: 1, ToID: 2, Amount: 700, Currency: "EUR"},
+	}
+	for _, tc := range []struct {
+		name             string
+		a, b             int64
+		cur              string
+		wantAmt, wantCur string
+	}{
+		{"the debtor's view", 2, 1, "", "15.00", "USD"},
+		{"the creditor's view", 1, 2, "", "15.00", "USD"},
+		{"the clicked currency", 1, 2, "EUR", "7.00", "EUR"},
+		{"a currency with no row", 2, 1, "JPY", "15.00", "USD"},
+		{"no debt between them", 2, 3, "", "", "SGD"},
+	} {
+		amt, cur := groupSettleSuggestion(rows, tc.a, tc.b, tc.cur, "SGD")
+		if amt != tc.wantAmt || cur != tc.wantCur {
+			t.Errorf("%s: got %q %q, want %q %q", tc.name, amt, cur, tc.wantAmt, tc.wantCur)
+		}
+	}
+}

@@ -14,7 +14,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html/template"
-	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -369,9 +368,7 @@ func (r *Renderer) Render(w http.ResponseWriter, status int, page string, vd Vie
 	htmlHeaders(w)
 	setServerTiming(w, page, dur)
 	w.WriteHeader(status)
-	if _, err := w.Write(out); err != nil {
-		fmt.Fprintf(io.Discard, "page write error: %v", err)
-	}
+	_, _ = w.Write(out) // a write error means the client went away
 }
 
 // FragmentVersionHeader carries the fingerprint of the block just rendered. The
@@ -418,9 +415,7 @@ func (r *Renderer) RenderFragment(w http.ResponseWriter, req *http.Request, stat
 		return
 	}
 	w.WriteHeader(status)
-	if _, err := w.Write(out); err != nil {
-		fmt.Fprintf(io.Discard, "fragment write error: %v", err)
-	}
+	_, _ = w.Write(out) // a write error means the client went away
 }
 
 // AssetsHandler serves embedded static assets under /static/. Fingerprinted

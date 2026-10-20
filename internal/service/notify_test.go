@@ -2,9 +2,17 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
+	webpush "github.com/SherClockHolmes/webpush-go"
+
+	"github.com/hafio/gosplit/internal/push"
 	"github.com/hafio/gosplit/internal/split"
 	"github.com/hafio/gosplit/internal/store"
 )
@@ -392,6 +400,128 @@ func TestShareLineBranches(t *testing.T) {
 		got := svc.shareLine("en", covNotif(1, c.amount))
 		if !strings.Contains(got, c.want) {
 			t.Errorf("shareLine(%d) = %q, want it to mention %q", c.amount, got, c.want)
+		}
+	}
+}
+
+// TestPushPrunesGoneSubscriptions: delivering to a subscription the push
+// service reports gone (410) deletes it, while one that took the message (201)
+// stays -- so a dead browser stops being retried and a live one keeps working.
+func TestPushPrunesGoneSubscriptions(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	u := covUser(t, svc, "U", "u@x.com")
+	priv, pub, err := webpush.GenerateVAPIDKeys()
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.Config.WebPushPublicKey, svc.Config.WebPushPrivateKey = pub, priv
+	svc.Push = push.New(svc.Config)
+
+	endpoint := func(status int) string {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) }))
+		t.Cleanup(srv.Close)
+		return srv.URL + "/push"
+	}
+	gone, live := endpoint(http.StatusGone), endpoint(http.StatusCreated)
+	for _, ep := range []string{gone, live} {
+		_, key, err := webpush.GenerateVAPIDKeys()
+		if err != nil {
+			t.Fatal(err)
+		}
+		sub := fmt.Sprintf(`{"endpoint":%q,"keys":{"p256dh":%q,"auth":%q}}`,
+			ep, key, base64.RawURLEncoding.EncodeToString([]byte("0123456789abcdef")))
+		if err := svc.Store.SavePushSubscription(ctx, u.ID, ep, sub); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rows := []*store.Notification{covNotif(u.ID, -500)}
+	svc.pushNotifications(ctx, rows, covUserMap(t, svc, rows), "Actor", "/expenses/exp-1")
+
+	subs, err := svc.Store.ListPushSubscriptions(ctx, []int64{u.ID})
+	if err != nil || len(subs) != 1 || subs[0].Endpoint != live {
+		t.Errorf("subscriptions after delivery = %+v (err %v), want only the live one", subs, err)
+	}
+}
+
+// pushSink turns web push on for svc against one local push service. subscribe
+// registers a device for a user; received reports how many pushes that device
+// has been sent.
+func pushSink(t *testing.T, svc *Service) (subscribe func(userID int64, device string), received func(device string) int) {
+	t.Helper()
+	priv, pub, err := webpush.GenerateVAPIDKeys()
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.Config.WebPushPublicKey, svc.Config.WebPushPrivateKey = pub, priv
+	svc.Push = push.New(svc.Config)
+	var mu sync.Mutex
+	hits := map[string]int{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits[strings.TrimPrefix(r.URL.Path, "/")]++
+		mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+	}))
+	t.Cleanup(srv.Close)
+	subscribe = func(userID int64, device string) {
+		t.Helper()
+		_, key, err := webpush.GenerateVAPIDKeys()
+		if err != nil {
+			t.Fatal(err)
+		}
+		ep := srv.URL + "/" + device
+		sub := fmt.Sprintf(`{"endpoint":%q,"keys":{"p256dh":%q,"auth":%q}}`,
+			ep, key, base64.RawURLEncoding.EncodeToString([]byte("0123456789abcdef")))
+		if err := svc.Store.SavePushSubscription(context.Background(), userID, ep, sub); err != nil {
+			t.Fatal(err)
+		}
+	}
+	received = func(device string) int {
+		mu.Lock()
+		defer mu.Unlock()
+		return hits[device]
+	}
+	return subscribe, received
+}
+
+// TestSettleAllPushesOncePerRecipient: settling a group records a row per
+// transfer but sends each recipient one push for the whole batch. Carol, paid
+// by both others, gets one push, not two; Bob gets one; Alice, who pressed the
+// button, gets none.
+func TestSettleAllPushesOncePerRecipient(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	a := covUser(t, svc, "Alice", "alice@x.com")
+	b := covUser(t, svc, "Bob", "bob@x.com")
+	c := covUser(t, svc, "Carol", "carol@x.com")
+	g, err := svc.Store.CreateGroup(ctx, &store.Group{Name: "Trip", CreatedBy: a.ID, DefaultCurrency: "USD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int64{a.ID, b.ID, c.ID} {
+		if err := svc.Store.AddGroupMember(ctx, g.ID, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	subscribe, received := pushSink(t, svc)
+	subscribe(a.ID, "alice")
+	subscribe(b.ID, "bob")
+	subscribe(c.ID, "carol")
+
+	if _, err := svc.SettleAll(ctx, []Transfer{
+		{FromID: a.ID, ToID: c.ID, Amount: 3000, Currency: "USD"},
+		{FromID: b.ID, ToID: c.ID, Amount: 2000, Currency: "USD"},
+	}, g.ID, "2026-03-01", a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(covNotifications(t, svc, c.ID)); n != 2 {
+		t.Errorf("Carol has %d notification rows, want one per transfer (2)", n)
+	}
+	for device, want := range map[string]int{"carol": 1, "bob": 1, "alice": 0} {
+		if got := received(device); got != want {
+			t.Errorf("%s's device got %d pushes, want %d", device, got, want)
 		}
 	}
 }

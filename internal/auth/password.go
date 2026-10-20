@@ -36,9 +36,8 @@ func HashPassword(password string) (string, error) {
 		return "", errors.New("auth: empty password")
 	}
 	salt := make([]byte, argonSaltLen)
-	if _, err := rand.Read(salt); err != nil {
-		return "", err
-	}
+	_, _ = rand.Read(salt) // crypto/rand.Read never fails since Go 1.24
+
 	key := argon2.IDKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
 	b64 := base64.RawStdEncoding
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
@@ -82,8 +81,6 @@ func VerifyPassword(password, encoded string) error {
 // RandomToken returns a URL-safe random token with n bytes of entropy.
 func RandomToken(n int) string {
 	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		panic("auth: crypto/rand failed: " + err.Error())
-	}
+	_, _ = rand.Read(b) // crypto/rand.Read never fails since Go 1.24
 	return base64.RawURLEncoding.EncodeToString(b)
 }

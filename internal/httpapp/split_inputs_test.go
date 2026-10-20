@@ -1,6 +1,7 @@
 package httpapp
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -413,4 +414,52 @@ func deletedCount(t *testing.T, h *harness) int {
 		t.Fatalf("count deleted: %v", err)
 	}
 	return n
+}
+
+// TestEditLegacyEqualTicksOnlyThoseWhoShared: an EQUAL expense saved before
+// inputs were stored is rebuilt from its rows. The payer comes back ticked only
+// when they took a share, and saving the form as rendered keeps the split.
+func TestEditLegacyEqualTicksOnlyThoseWhoShared(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		includes    []string
+		payerTicked bool
+	}{
+		{"payer shared", []string{"1", "2"}, true},
+		{"payer only paid", []string{"2"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			form := url.Values{
+				"name": {"Dinner"}, "amount": {"30.00"}, "currency": {"USD"},
+				"date": {"2026-01-02"}, "method": {"EQUAL"}, "paid_by": {"1"},
+			}
+			for _, id := range tc.includes {
+				form.Set("include_"+id, "1")
+			}
+			h, path := seedDirectExpense(t, form)
+			if _, err := h.st.DB.Exec(`DELETE FROM expense_split_inputs`); err != nil {
+				t.Fatalf("clear inputs: %v", err)
+			}
+			before := participantAmounts(t, h)
+
+			b := body(t, h.get(path+"/move"))
+			if got := strings.Contains(b, `name="include_1" value="1" checked`); got != tc.payerTicked {
+				t.Errorf("payer ticked = %v, want %v", got, tc.payerTicked)
+			}
+			if !strings.Contains(b, `name="include_2" value="1" checked`) {
+				t.Error("the friend who shared the cost came back unticked")
+			}
+
+			form.Set("target_group", "none")
+			form.Set("version", "1")
+			if r := h.post(path+"/move", form); r.StatusCode != http.StatusOK {
+				t.Fatalf("re-save status %d", r.StatusCode)
+			} else {
+				_ = body(t, r)
+			}
+			if after := participantAmounts(t, h); fmt.Sprint(after) != fmt.Sprint(before) {
+				t.Errorf("an unchanged re-save moved the split: %v -> %v", before, after)
+			}
+		})
+	}
 }

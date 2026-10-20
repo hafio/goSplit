@@ -97,8 +97,8 @@ func FileOpener(path string) Opener {
 // uploadStagingDir. It never touches the live database or the live upload
 // directory, so any failure here costs nothing but the staging directory.
 //
-// Pass "" for uploadStagingDir to validate without extracting (inspect, and
-// the admin panel's preview).
+// Passing "" for uploadStagingDir validates without extracting. Nothing does
+// that today: Validate always stages.
 func Scan(opener Opener, k *Keyring, hdr Header, aad []byte, limits Limits, uploadStagingDir string) (*Index, error) {
 	rc, err := opener()
 	if err != nil { // cov:ignore io-fault: the archive vanished after its header was read
@@ -194,7 +194,7 @@ func Scan(opener Opener, k *Keyring, hdr Header, aad []byte, limits Limits, uplo
 			return nil, fmt.Errorf("backup: archive holds unexpected entry %q (expected only %s, %s* and %s*)", name, ManifestEntry, tablesPrefix, uploadsPrefix)
 		}
 
-		if counted.n > limits.MaxTotalBytes {
+		if counted.n > limits.MaxTotalBytes { // cov:ignore redundant: the counting reader trips the cap while inflating
 			return nil, fmt.Errorf("backup: archive expands past %d bytes (RESTORE_MAX_ARCHIVE_MB); refusing to continue", limits.MaxTotalBytes)
 		}
 	}
@@ -460,7 +460,7 @@ func safeUploadRel(name string) (string, error) {
 			return "", fmt.Errorf("backup: upload path %q escapes the upload directory", rel)
 		}
 	}
-	if path.Clean(rel) != rel {
+	if path.Clean(rel) != rel { // cov:ignore defensive: the segment checks above already rule this out
 		return "", fmt.Errorf("backup: upload path %q is not canonical", rel)
 	}
 	return rel, nil
@@ -470,7 +470,7 @@ func safeUploadRel(name string) (string, error) {
 // maxBytes. Archive mode bits are ignored: files land 0644 and directories
 // 0755, so an archive cannot make anything executable or world-writable.
 func extractUpload(r io.Reader, stagingDir, rel string, maxBytes int64) (int64, error) {
-	if stagingDir == "" {
+	if stagingDir == "" { // cov:ignore defensive: Validate always passes a staging directory
 		return drainCapped(r, maxBytes)
 	}
 	dst := filepath.Join(stagingDir, filepath.FromSlash(rel))

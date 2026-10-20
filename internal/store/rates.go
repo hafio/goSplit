@@ -33,7 +33,11 @@ func (s *Store) PutCachedRate(ctx context.Context, from, to, date, rate string) 
 }
 
 // DeleteRatesBefore purges cached rates older than the cutoff date (cleanup).
+// It also drops rows under the key "latest", which older versions used for a
+// date-less lookup: that key sorts after every date, so the date comparison
+// alone would keep such a row -- and serve its rate -- forever.
 func (s *Store) DeleteRatesBefore(ctx context.Context, cutoffDate string) error {
-	_, err := s.DB.ExecContext(ctx, s.rebind(`DELETE FROM cached_currency_rates WHERE rate_date < ?`), cutoffDate)
+	_, err := s.DB.ExecContext(ctx, s.rebind(
+		`DELETE FROM cached_currency_rates WHERE rate_date < ? OR rate_date = 'latest'`), cutoffDate)
 	return err
 }
