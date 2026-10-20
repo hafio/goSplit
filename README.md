@@ -72,7 +72,7 @@ Production flags, including keeping the secret out of `docker inspect`:
 
 ### From source
 
-Requires Go 1.21 or newer on your PATH. `go.mod` pins `toolchain go1.27.2`, so an older Go
+Requires Go 1.21 or newer on your PATH. `go.mod` pins `toolchain go1.27.3`, so an older Go
 downloads and runs that toolchain automatically; Go 1.27 or newer builds with itself.
 
 ```sh

@@ -4,7 +4,7 @@ Building, testing, releasing and extending GoSplit. For contributors.
 
 ## Prerequisites
 
-- Go 1.27. `go.mod` pins `toolchain go1.27.2` and the dev scripts export `GOTOOLCHAIN`
+- Go 1.27. `go.mod` pins `toolchain go1.27.3` and the dev scripts export `GOTOOLCHAIN`
   from it when it is not already set, so any Go 1.21+ on your PATH fetches and uses
   exactly that toolchain. An exported `GOTOOLCHAIN` (for example `local`) wins; unset it
   to get CI's toolchain.

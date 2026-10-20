@@ -8,7 +8,7 @@
 # with a different toolchain than go.mod pins (the golang image sets
 # GOTOOLCHAIN=local, so the go.mod toolchain line is not honoured here). Bump
 # both together with go.mod.
-FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS build
 WORKDIR /src
 
 # Both tag.yml and `dev.sh image` pass VERSION directly, so the `git describe`

@@ -6,9 +6,9 @@
     "semantic_hash": ""
   },
   "go.mod": {
-    "mtime": 1792425595.740398,
-    "seen": 1792425861.0318346,
-    "ast_hash": "5d49b6080b23c33d2b22e2935fe2e1a4",
+    "mtime": 1792491158.6440296,
+    "seen": 1792491364.2003512,
+    "ast_hash": "7c7f6d363ba09237bc181c4897c32bbe",
     "semantic_hash": ""
   },
   "internal/auth/middleware.go": {
@@ -528,9 +528,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1792470746.422221,
-    "seen": 1792471370.430921,
-    "ast_hash": "9e03b590cc517972674427126928229f",
+    "mtime": 1792491444.1018429,
+    "seen": 1792491841.7883253,
+    "ast_hash": "dd4137b0381e0f59bbe62c2c53366220",
     "semantic_hash": ""
   },
   "docker-compose.yml": {
@@ -1280,9 +1280,9 @@
     "semantic_hash": ""
   },
   "docs/development.md": {
-    "mtime": 1792488391.3997333,
-    "seen": 1792488775.4383445,
-    "ast_hash": "2ce8892fbe473a492470d72e0ad922c3",
+    "mtime": 1792491444.1020677,
+    "seen": 1792491841.7885818,
+    "ast_hash": "e10c480ed8cf8d161cba5ae6ec704aa7",
     "semantic_hash": ""
   },
   "docs/features.md": {
