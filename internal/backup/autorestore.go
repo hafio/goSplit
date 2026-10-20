@@ -127,7 +127,10 @@ func CheckAutoRestore(ctx context.Context, st *store.Store, cfg *config.Config) 
 func findAutoRestoreArchive(dir string) (string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		// Ask the filesystem whether anything is there at all: Windows reports
+		// reading a regular file as a directory as "path not found", which would
+		// otherwise pass a misconfigured AUTO_RESTORE_DIR off as an empty one.
+		if _, serr := os.Stat(dir); os.IsNotExist(serr) {
 			slog.Warn("auto-restore: AUTO_RESTORE_DIR does not exist", "dir", dir)
 			return "", nil
 		}

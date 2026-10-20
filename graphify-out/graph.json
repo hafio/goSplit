@@ -6434,7 +6434,7 @@
       "file_type": "code",
       "norm_label": "acquirewithrenewal()",
       "source_file": "internal/backup/autorestore.go",
-      "source_location": "L187"
+      "source_location": "L190"
     },
     {
       "id": "internal_scheduler_scheduler_go_cron_schedule",
@@ -23101,7 +23101,7 @@
       "file_type": "code",
       "norm_label": "ordashstr()",
       "source_file": "internal/backup/autorestore.go",
-      "source_location": "L173"
+      "source_location": "L176"
     },
     {
       "id": "internal_backup_autorestore_writemarker",
@@ -23112,7 +23112,7 @@
       "file_type": "code",
       "norm_label": "writemarker()",
       "source_file": "internal/backup/autorestore.go",
-      "source_location": "L161"
+      "source_location": "L164"
     },
     {
       "id": "internal_backup_container_go_backup_manifest",
@@ -32985,7 +32985,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "internal/backup/autorestore.go",
-      "source_location": "L167",
+      "source_location": "L170",
       "weight": 1.0
     },
     {
@@ -105333,7 +105333,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "internal/backup/autorestore.go",
-      "source_location": "L187",
+      "source_location": "L190",
       "weight": 1.0
     },
     {
@@ -105345,7 +105345,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "internal/backup/autorestore.go",
-      "source_location": "L187",
+      "source_location": "L190",
       "weight": 1.0
     },
     {
@@ -105357,7 +105357,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "internal/backup/autorestore.go",
-      "source_location": "L187",
+      "source_location": "L190",
       "weight": 1.0
     },
     {
@@ -105549,7 +105549,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "internal/backup/autorestore.go",
-      "source_location": "L161",
+      "source_location": "L164",
       "weight": 1.0
     },
     {
@@ -126291,7 +126291,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "internal/backup/autorestore.go",
-      "source_location": "L161",
+      "source_location": "L164",
       "weight": 1.0
     },
     {
@@ -126302,7 +126302,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "internal/backup/autorestore.go",
-      "source_location": "L173",
+      "source_location": "L176",
       "weight": 1.0
     },
     {
@@ -126313,7 +126313,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "internal/backup/autorestore.go",
-      "source_location": "L187",
+      "source_location": "L190",
       "weight": 1.0
     },
     {
@@ -164611,5 +164611,5 @@
       "source_file": "internal/web/templates/expense_detail.html"
     }
   ],
-  "built_at_commit": "af3021ec61ffaddc61f5c22771568cd71b3112b6"
+  "built_at_commit": "33c8113503c53b1fb410e82603aff8ab3d37d149"
 }
