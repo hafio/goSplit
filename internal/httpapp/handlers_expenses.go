@@ -483,6 +483,9 @@ type expenseDetailView struct {
 	Movable      bool
 	CanEdit      bool
 	IsArchive    bool
+	// IsConversion marks either leg of a currency conversion, whose delete
+	// takes the other leg with it, so the confirmation says so.
+	IsConversion bool
 	// IsNetting marks an automatic "Group debts simplified" entry: read-only for
 	// everyone, explained instead of a note.
 	IsNetting bool
@@ -524,6 +527,7 @@ func (s *Server) buildExpenseDetail(ctx context.Context, nc *nameCache, actorID 
 	// can succeed (the hand-copied version here used to miss ARCHIVE rows).
 	v.Movable = service.Movable(e)
 	v.IsNetting = service.Immutable(e)
+	v.IsConversion = service.IsConversion(e)
 	v.CanEdit = s.Svc.CanEditExpense(ctx, actorID, e)
 	for _, p := range parts {
 		v.Participants = append(v.Participants, participantView{UserID: p.UserID, Name: nc.user(ctx, p.UserID), Amount: p.Amount})

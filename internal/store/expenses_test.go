@@ -91,3 +91,65 @@ func TestCollapseToHistoricalIsAllOrNothing(t *testing.T) {
 		}
 	}
 }
+
+// TestSoftDeleteConversionTakesBothLegs: deleting either leg of a conversion
+// deletes the pair together, version-checked on the leg chosen -- a stale
+// version deletes neither -- and leaves any other conversion alone.
+func TestSoftDeleteConversionTakesBothLegs(t *testing.T) {
+	ctx := context.Background()
+	for _, pick := range []string{"from", "to"} {
+		t.Run(pick, func(t *testing.T) {
+			st := openTestStore(t)
+			a := covUser(t, st, "A")
+			b := covUser(t, st, "B")
+			pair := func() (string, string) {
+				t.Helper()
+				from := &Expense{Name: "conv from", Category: "general", Amount: 10000, SplitType: "CURRENCY_CONVERSION",
+					ExpenseDate: "2025-02-01", Currency: "USD", PaidBy: a.ID, AddedBy: a.ID}
+				to := &Expense{Name: "conv to", Category: "general", Amount: 9000, SplitType: "CURRENCY_CONVERSION",
+					ExpenseDate: "2025-02-01", Currency: "EUR", PaidBy: b.ID, AddedBy: b.ID}
+				fromID, toID, err := st.CreateConversionPair(ctx,
+					from, []ExpenseParticipant{{UserID: a.ID, Amount: 10000}, {UserID: b.ID, Amount: -10000}},
+					to, []ExpenseParticipant{{UserID: a.ID, Amount: -9000}, {UserID: b.ID, Amount: 9000}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return fromID, toID
+			}
+			fromID, toID := pair()
+			otherFrom, otherTo := pair()
+			id := fromID
+			if pick == "to" {
+				id = toID
+			}
+			deleted := func(id string) bool {
+				t.Helper()
+				e, err := st.GetExpense(ctx, id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return e.DeletedAt.Valid
+			}
+			chosen, err := st.GetExpense(ctx, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if err := st.SoftDeleteConversion(ctx, id, a.ID, chosen.Version+1); !errors.Is(err, ErrStaleExpense) {
+				t.Fatalf("delete with a stale version = %v, want ErrStaleExpense", err)
+			}
+			if deleted(fromID) || deleted(toID) {
+				t.Fatal("a stale delete removed a leg")
+			}
+			if err := st.SoftDeleteConversion(ctx, id, a.ID, chosen.Version); err != nil {
+				t.Fatal(err)
+			}
+			if !deleted(fromID) || !deleted(toID) {
+				t.Errorf("deleting the %s leg left the pair half applied: from deleted %v, to deleted %v", pick, deleted(fromID), deleted(toID))
+			}
+			if deleted(otherFrom) || deleted(otherTo) {
+				t.Error("another conversion was deleted too")
+			}
+		})
+	}
+}

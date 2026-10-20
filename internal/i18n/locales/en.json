@@ -84,6 +84,7 @@
   "detail.edit": "Edit",
   "detail.delete": "Delete",
   "detail.delete_confirm": "Delete this expense?",
+  "detail.delete_conversion_confirm": "Delete this conversion? Both sides of it are deleted together.",
   "detail.category": "Category",
   "detail.group": "Group",
   "detail.direct": "Direct expense",

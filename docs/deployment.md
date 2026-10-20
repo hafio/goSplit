@@ -233,6 +233,11 @@ are only protected from editing by this version: rolling back to an older image 
 them as ordinary expenses that a participant could edit or delete, which breaks the
 zero-sum sets they belong to. Do not edit them after a rollback.
 
+Earlier versions deleted only the side of a currency conversion you picked, leaving the
+other side live and the balance half converted. Deleting a conversion now removes both
+sides. A pair broken before the upgrade shows as a lone conversion row in a friend's
+history; delete that row too to put the balance back.
+
 If you need to roll back, restore the archive with the **old** image, then stay on it.
 An archive restores only into a database whose migrations match exactly; see
 [backup-restore.md](backup-restore.md#migration-sets-must-match-exactly).

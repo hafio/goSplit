@@ -77,6 +77,7 @@
   "detail.edit": "Modifica",
   "detail.delete": "Elimina",
   "detail.delete_confirm": "Eliminare questa spesa?",
+  "detail.delete_conversion_confirm": "Eliminare questa conversione? Le due parti vengono eliminate insieme.",
   "detail.category": "Categoria",
   "detail.group": "Gruppo",
   "detail.direct": "Spesa diretta",

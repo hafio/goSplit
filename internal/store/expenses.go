@@ -174,7 +174,7 @@ func (s *Store) insertExpenseTx(ctx context.Context, tx *sql.Tx, e *Expense, par
 		e.ID, e.Name, e.Category, e.Amount, e.SplitType, e.ExpenseDate, e.Currency,
 		e.PaidBy, e.AddedBy, e.UpdatedBy, e.GroupID, e.FileKey, e.TransactionID,
 		e.RecurrenceID, e.ConversionToID, e.MovedFromID, e.Note, InitialVersion)
-	if err != nil { // cov:ignore store-fault: needs a failing database
+	if err != nil {
 		return err
 	}
 	for _, p := range parts {
@@ -284,10 +284,45 @@ func (s *Store) UserNetByExpense(ctx context.Context, userID int64, ids []string
 // this expense, so a concurrent save is rejected instead of resurrecting the
 // deleted row.
 func (s *Store) SoftDeleteExpense(ctx context.Context, id string, byUser, expectedVersion int64) error {
-	res, err := s.DB.ExecContext(ctx, s.rebind(
+	return s.softDelete(ctx, s.DB, id, byUser, expectedVersion, nowISO())
+}
+
+// SoftDeleteConversion soft-deletes both legs of a currency conversion in one
+// transaction, so the pair is never left half applied: one leg alone would
+// leave the balance cancelled in the old currency but never recreated in the
+// new one, or the reverse. id is the leg the caller chose and is version-checked
+// exactly as SoftDeleteExpense does; its partner -- the leg it points at
+// through conversion_to_id, or the leg pointing at it -- goes with it. A partner
+// already deleted, which data from before this rule can hold, is left alone.
+func (s *Store) SoftDeleteConversion(ctx context.Context, id string, byUser, expectedVersion int64) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil { // cov:ignore store-fault: needs a failing database
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	now := nowISO()
+	if err := s.softDelete(ctx, tx, id, byUser, expectedVersion, now); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, s.rebind(
+		`UPDATE expenses SET deleted_at = ?, deleted_by = ?, updated_at = ?, version = version + 1
+		 WHERE deleted_at IS NULL
+		   AND (id = (SELECT conversion_to_id FROM expenses WHERE id = ?) OR conversion_to_id = ?)`),
+		now, byUser, now, id, id); err != nil { // cov:ignore store-fault: needs a failing database
+		return err
+	}
+	return tx.Commit()
+}
+
+// softDelete is SoftDeleteExpense's statement, run on the pool or inside a
+// transaction.
+func (s *Store) softDelete(ctx context.Context, ex interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, id string, byUser, expectedVersion int64, now string) error {
+	res, err := ex.ExecContext(ctx, s.rebind(
 		`UPDATE expenses SET deleted_at = ?, deleted_by = ?, updated_at = ?, version = version + 1
 		 WHERE id = ? AND deleted_at IS NULL AND version = ?`),
-		nowISO(), byUser, nowISO(), id, expectedVersion)
+		now, byUser, now, id, expectedVersion)
 	if err != nil {
 		return err
 	}

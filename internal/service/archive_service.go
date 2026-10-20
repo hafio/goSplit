@@ -122,7 +122,7 @@ func (s *Service) buildBatches(ctx context.Context, exps []*store.Expense, group
 		if u, err := s.Store.GetUser(ctx, uid); err == nil {
 			if u.Name != "" {
 				names[uid] = u.Name
-			} else { // cov:ignore glue: display-name fallback for a name-less invitee
+			} else {
 				names[uid] = u.Email
 			}
 		}

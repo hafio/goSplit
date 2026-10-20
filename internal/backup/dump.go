@@ -83,7 +83,7 @@ func (r *Runner) Dump(ctx context.Context, w io.Writer) (Manifest, error) {
 		return Manifest{}, err
 	}
 	k, err := NewKeyring(r.Cfg.SessionSecret, salt)
-	if err != nil { // cov:ignore impossible: fixed, valid key-derivation parameters
+	if err != nil {
 		return Manifest{}, err
 	}
 

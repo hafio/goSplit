@@ -115,7 +115,7 @@ func categories() []Category { return categoryList }
 // every render path to remember an empty map -- a missing message must degrade
 // to "no message", never to a template error on a page that is already
 // reporting a problem.
-func fieldErr(m any, key string) string { // cov:ignore glue: exercised by the httpapp form tests; coverage is per package
+func fieldErr(m any, key string) string {
 	errs, ok := m.(map[string]string)
 	if !ok {
 		return ""

@@ -77,6 +77,7 @@
   "detail.edit": "Bearbeiten",
   "detail.delete": "Löschen",
   "detail.delete_confirm": "Diese Ausgabe löschen?",
+  "detail.delete_conversion_confirm": "Diese Umrechnung löschen? Beide Seiten werden zusammen gelöscht.",
   "detail.category": "Kategorie",
   "detail.group": "Gruppe",
   "detail.direct": "Direkte Ausgabe",

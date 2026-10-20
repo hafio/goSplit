@@ -133,8 +133,11 @@ function Task-cov {
   $html = Join-Path $LogDir 'coverage.html'
   # -p 1 serializes package test binaries: on Windows, parallel runs race to
   # exec the shared covdata.exe and hit "file in use" locks (often Defender).
+  # -coverpkg counts every package's statements in every test binary, so code
+  # that only another package's tests run (store paths the HTTP suite drives)
+  # counts as covered.
   $c = Invoke-Logged 'cov' 'go' @(
-    'test','-covermode=atomic',"-coverprofile=$raw",'-p','1','-count=1','./...')
+    'test','-covermode=atomic','-coverpkg=./...',"-coverprofile=$raw",'-p','1','-count=1','./...')
   if ($c -ne 0) { return $c }
   # Drop the code marked cov:ignore (docs/development.md, Testing). It prints
   # the total before exclusions and what it removed, so neither goes unseen.

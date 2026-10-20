@@ -2,6 +2,7 @@ package httpapp
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -72,5 +73,49 @@ func TestConvertExactBothAmounts(t *testing.T) {
 	}
 	if usdBal != 7800 {
 		t.Errorf("USD balance = %d, want 7800 (bob owes alice 78.00 USD)", usdBal)
+	}
+}
+
+// TestDeletingAConversionLegDeletesBoth: the delete confirmation on either leg
+// says the whole conversion goes, and it does -- the balance returns to the old
+// currency instead of being cancelled there and never recreated in the new one.
+func TestDeletingAConversionLegDeletesBoth(t *testing.T) {
+	for _, leg := range []string{"SGD", "USD"} {
+		t.Run(leg, func(t *testing.T) {
+			h := newHarness(t)
+			h.register("Alice", "alice@example.com", "password123")
+			h.post("/friends/add", url.Values{"email": {"bob@example.com"}})
+			// Bob owes Alice 100.00 SGD, converted to 78.00 USD.
+			h.post("/expenses", url.Values{
+				"name": {"Hotpot"}, "amount": {"200.00"}, "currency": {"SGD"},
+				"date": {"2026-01-02"}, "method": {"EQUAL"}, "paid_by": {"1"},
+				"include_1": {"1"}, "include_2": {"1"},
+			})
+			_ = body(t, h.post("/friends/2/convert", url.Values{
+				"direction": {"owed"}, "from_currency": {"SGD"}, "to_currency": {"USD"},
+				"from_amount": {"100.00"}, "to_amount": {"78.00"}, "date": {"2026-01-03"},
+			}))
+			var id string
+			var version int64
+			if err := h.st.DB.QueryRow(`SELECT id, version FROM expenses WHERE split_type = 'CURRENCY_CONVERSION' AND currency = ?`, leg).Scan(&id, &version); err != nil {
+				t.Fatal(err)
+			}
+
+			if page := body(t, h.get("/expenses/"+id)); !strings.Contains(page, "Both sides of it are deleted together.") {
+				t.Error("the conversion's delete confirmation does not say both sides go")
+			}
+			_ = body(t, h.post("/expenses/"+id+"/delete", url.Values{"version": {fmt.Sprint(version)}}))
+
+			if live := countOf(t, h, `SELECT COUNT(*) FROM expenses WHERE split_type = 'CURRENCY_CONVERSION' AND deleted_at IS NULL`); live != 0 {
+				t.Errorf("%d conversion leg(s) still live after deleting the %s one", live, leg)
+			}
+			for cur, want := range map[string]int64{"SGD": 10000, "USD": 0} {
+				var bal int64
+				_ = h.st.DB.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM balance_view WHERE user_id=1 AND friend_id=2 AND currency=?`, cur).Scan(&bal)
+				if bal != want {
+					t.Errorf("%s balance after the delete = %d, want %d", cur, bal, want)
+				}
+			}
+		})
 	}
 }

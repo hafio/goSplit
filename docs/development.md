@@ -93,6 +93,11 @@ gates.
   The total is counted after `cov:ignore` exclusions (next point); the two lines above it
   give the total before them and what they removed. Totals recorded before 2026-10-20
   had no exclusions.
+- **A statement counts as covered when any package's tests run it.** `cov` passes
+  `-coverpkg=./...`, so a store path that only the HTTP suite drives is covered, and the
+  per-package percentages `go test` prints are of the whole module, not of that package.
+  Totals recorded before this (2026-10-20) counted each package's own tests only and are
+  not comparable; the first run after it set a new floor.
 - **Code where a test would only restate the code is excluded, not tested.** That means
   error pass-through (store, filesystem and flag faults, tested where they arise),
   log-only and print-only branches, usage text, states that cannot happen, glue already

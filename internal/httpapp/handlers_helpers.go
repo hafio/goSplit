@@ -33,6 +33,10 @@ func showAllHref(r *http.Request, showAll bool, expenses *[]*store.Expense) stri
 	*expenses = (*expenses)[:feedLimit]
 	q := r.URL.Query()
 	q.Set("all", "1")
+	// v is the freshness poller's fingerprint of the previous render. Echoed
+	// into the link it would make every render differ from the last, so a feed
+	// over the limit could never be answered 204.
+	q.Del("v")
 	return r.URL.Path + "?" + q.Encode()
 }
 

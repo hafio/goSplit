@@ -101,7 +101,10 @@ task_cov() {
   local raw="$LOG_DIR/coverage.raw.out" prof="$LOG_DIR/coverage.out" html="$LOG_DIR/coverage.html"
   # -p 1 serializes package test binaries: on Windows, parallel runs race to
   # exec the shared covdata.exe and hit "file in use" locks (often Defender).
-  run cov go test -covermode=atomic -coverprofile="$raw" -p 1 -count=1 ./... || return $?
+  # -coverpkg counts every package's statements in every test binary, so code
+  # that only another package's tests run (store paths the HTTP suite drives)
+  # counts as covered.
+  run cov go test -covermode=atomic -coverpkg=./... -coverprofile="$raw" -p 1 -count=1 ./... || return $?
   # Drop the code marked cov:ignore (docs/development.md, Testing). It prints
   # the total before exclusions and what it removed, so neither goes unseen.
   run cov go run ./scripts/covfilter -in="$raw" -out="$prof" || return $?

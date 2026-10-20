@@ -77,6 +77,7 @@
   "detail.edit": "Editar",
   "detail.delete": "Eliminar",
   "detail.delete_confirm": "¿Eliminar este gasto?",
+  "detail.delete_conversion_confirm": "¿Eliminar esta conversión? Se eliminan las dos partes juntas.",
   "detail.category": "Categoría",
   "detail.group": "Grupo",
   "detail.direct": "Gasto directo",

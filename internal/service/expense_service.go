@@ -103,7 +103,7 @@ func (s *Service) AddExpense(ctx context.Context, in ExpenseInput) (*store.Expen
 		return nil, err
 	}
 	parts, err := s.buildParticipants(in)
-	if err != nil { // cov:ignore pass-through: split rules are tested in internal/split
+	if err != nil {
 		return nil, err
 	}
 	e := s.newExpense(in)
@@ -345,7 +345,7 @@ func (s *Service) MoveExpense(ctx context.Context, origID string, in ExpenseInpu
 		}
 	}
 	parts, err := s.buildParticipants(in)
-	if err != nil { // cov:ignore pass-through: split rules are tested in internal/split
+	if err != nil {
 		return nil, err
 	}
 	e := s.newExpense(in)
@@ -407,7 +407,7 @@ func (s *Service) UpdateSettlement(ctx context.Context, id string, in Settlement
 	if currency != orig.Currency {
 		return nil, ErrSettlementCurrency
 	}
-	if !sameGroup(orig.GroupID, in.GroupID) && !acknowledged { // cov:ignore redundant: tested end to end in httpapp settle_edit_test
+	if !sameGroup(orig.GroupID, in.GroupID) && !acknowledged {
 		return nil, ErrMoveNoAck
 	}
 	payer, other, err := s.SettlementParties(ctx, orig)
@@ -521,7 +521,13 @@ func (s *Service) DeleteExpense(ctx context.Context, id string, actorID, version
 	// failure here must not stop a delete the actor is entitled to make. A soft
 	// delete leaves expense_participants intact either way.
 	parts, pErr := s.Store.GetParticipants(ctx, id)
-	if err := s.Store.SoftDeleteExpense(ctx, id, actorID, version); err != nil {
+	del := s.Store.SoftDeleteExpense
+	if IsConversion(e) {
+		// The two legs are one conversion: deleting one alone would leave the
+		// balance cancelled in one currency and never recreated in the other.
+		del = s.Store.SoftDeleteConversion
+	}
+	if err := del(ctx, id, actorID, version); err != nil {
 		return err
 	}
 	if viaAdmin {
@@ -548,10 +554,16 @@ func Movable(e *store.Expense) bool { return movable(e) }
 // edit, move or delete (ErrImmutable).
 func Immutable(e *store.Expense) bool { return e.SplitType == string(split.NETTING) }
 
+// IsConversion reports whether e is either leg of a currency conversion. The
+// legs are edited never and deleted only together.
+func IsConversion(e *store.Expense) bool {
+	return e.SplitType == string(split.CURRENCY_CONVERSION) || e.ConversionToID.Valid
+}
+
 // movable enforces §5.2 eligibility: currency-conversion pairs and recurrence
 // templates are not movable; everything else (incl. settlements) is.
 func movable(e *store.Expense) bool {
-	if e.SplitType == string(split.CURRENCY_CONVERSION) || e.ConversionToID.Valid {
+	if IsConversion(e) {
 		return false
 	}
 	// Historical Transactions are a synthetic collapse of many rows — not movable.
@@ -633,7 +645,7 @@ func (s *Service) assertGroupMembers(ctx context.Context, groupID int64, ids ...
 
 func (s *Service) buildParticipants(in ExpenseInput) ([]store.ExpenseParticipant, error) {
 	ps, err := split.Compute(in.Method, in.Total, in.PaidBy, in.ExpenseDate, in.Lines)
-	if err != nil { // cov:ignore pass-through: split rules are tested in internal/split
+	if err != nil {
 		return nil, err
 	}
 	out := make([]store.ExpenseParticipant, len(ps))

@@ -80,7 +80,7 @@ type Report struct {
 // have.
 func InspectFile(path string) (Header, error) {
 	f, err := os.Open(path)
-	if err != nil { // cov:ignore io-fault: the archive vanished after it was uploaded
+	if err != nil {
 		return Header{}, fmt.Errorf("backup: open %s: %w", path, err)
 	}
 	defer func() { _ = f.Close() }()

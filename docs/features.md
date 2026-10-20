@@ -208,7 +208,8 @@ lets you pick the direction. Rates are cached per day: one fetched without a dat
 today's, so the next day fetches a fresh one. Both amounts and the rate stay in sync as you type, and the
 amounts you confirm are stored exactly as shown. A conversion is recorded as a linked pair
 of expenses: one cancels the balance in the old currency, the other recreates it in the
-new one.
+new one. Neither side can be edited, and deleting either deletes both, so the balance goes
+back to the old currency rather than being left half converted.
 
 The operator can switch the rate provider or disable live rates entirely
 (`CURRENCY_RATE_PROVIDER`).

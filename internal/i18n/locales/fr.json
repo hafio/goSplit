@@ -77,6 +77,7 @@
   "detail.edit": "Modifier",
   "detail.delete": "Supprimer",
   "detail.delete_confirm": "Supprimer cette dépense ?",
+  "detail.delete_conversion_confirm": "Supprimer cette conversion ? Ses deux côtés sont supprimés ensemble.",
   "detail.category": "Catégorie",
   "detail.group": "Groupe",
   "detail.direct": "Dépense directe",
